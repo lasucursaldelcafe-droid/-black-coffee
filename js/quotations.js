@@ -516,6 +516,12 @@ const QuotationManager = {
       unitPrice: pricing.finalPrice,
       totalPrice: pricing.finalPrice * quantity,
       costBreakdown: pricing,
+      internalUnitCost: pricing.totalCost,
+      internalTotalCost: pricing.totalCost * quantity,
+      internalProfit: (pricing.finalPrice - pricing.totalCost) * quantity,
+      internalProfitMargin: pricing.finalPrice > 0
+        ? ((pricing.finalPrice - pricing.totalCost) / pricing.finalPrice) * 100
+        : 0,
       clientName: client.name,
       clientType: client.type,
       coffeeName: coffee.name,
@@ -526,6 +532,23 @@ const QuotationManager = {
     document.getElementById('quotation-modal').classList.remove('active');
     App.renderSection('quotations');
     PDFGenerator.generate(saved);
+  },
+
+  getInternalMetrics(q) {
+    const unitCost = q.internalUnitCost ?? q.costBreakdown?.totalCost ?? 0;
+    const totalCost = q.internalTotalCost ?? unitCost * (q.quantity || 1);
+    const profit = q.internalProfit ?? (q.totalPrice - totalCost);
+    const profitMargin = q.internalProfitMargin ?? (q.totalPrice > 0 ? (profit / q.totalPrice) * 100 : 0);
+    return { unitCost, totalCost, profit, profitMargin };
+  },
+
+  getReportSummary(quotations = null) {
+    const list = quotations || this.getAll();
+    const totalQuoted = list.reduce((sum, q) => sum + (q.totalPrice || 0), 0);
+    const totalCost = list.reduce((sum, q) => sum + this.getInternalMetrics(q).totalCost, 0);
+    const totalProfit = list.reduce((sum, q) => sum + this.getInternalMetrics(q).profit, 0);
+    const avgMargin = totalQuoted > 0 ? (totalProfit / totalQuoted) * 100 : 0;
+    return { count: list.length, totalQuoted, totalCost, totalProfit, avgMargin };
   },
 
   renderTable(container) {
@@ -541,7 +564,30 @@ const QuotationManager = {
       return;
     }
 
+    const summary = this.getReportSummary(quotations);
+
     container.innerHTML = `
+      <div class="grid-4 sales-summary" style="margin-bottom:24px">
+        <div class="stat-card">
+          <div class="stat-value">${summary.count}</div>
+          <div class="stat-label">Cotizaciones</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${formatCurrency(summary.totalQuoted)}</div>
+          <div class="stat-label">Valor Cotizado (cliente)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${formatCurrency(summary.totalCost)}</div>
+          <div class="stat-label">Costo Interno Total</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--success)">${formatNumber(summary.avgMargin, 1)}%</div>
+          <div class="stat-label">Margen Promedio</div>
+        </div>
+      </div>
+      <p class="form-hint" style="margin:-8px 0 16px">
+        El PDF y la vista para el cliente muestran solo el precio de entrega. Los costos internos quedan en este informe.
+      </p>
       <div class="table-container">
         <table>
           <thead>
@@ -552,13 +598,18 @@ const QuotationManager = {
               <th>Café</th>
               <th>Presentación</th>
               <th>Cantidad</th>
-              <th>Total</th>
+              <th>P. Cliente</th>
+              <th>Costo Int.</th>
+              <th>Utilidad</th>
+              <th>Margen</th>
               <th>Fecha</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            ${quotations.map((q) => `
+            ${quotations.map((q) => {
+              const metrics = this.getInternalMetrics(q);
+              return `
               <tr>
                 <td><strong>${q.number}</strong></td>
                 <td>${q.clientName}</td>
@@ -567,16 +618,27 @@ const QuotationManager = {
                 <td>${PACKAGING_SIZES[q.packaging]?.label || q.packaging}</td>
                 <td>${q.quantity}</td>
                 <td><strong>${formatCurrency(q.totalPrice)}</strong></td>
+                <td>${formatCurrency(metrics.totalCost)}</td>
+                <td style="color:${metrics.profit >= 0 ? 'var(--success)' : 'var(--danger)'}">
+                  <strong>${formatCurrency(metrics.profit)}</strong>
+                </td>
+                <td>
+                  <span class="badge ${metrics.profitMargin >= 30 ? 'badge-success' : metrics.profitMargin >= 15 ? 'badge-warning' : 'badge-danger'}">
+                    ${formatNumber(metrics.profitMargin, 1)}%
+                  </span>
+                </td>
                 <td>${formatDate(q.createdAt)}</td>
                 <td>
                   <div class="action-buttons">
-                    <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF</button>
+                    <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF Cliente</button>
                     <button class="btn btn-sm btn-secondary" onclick="QuotationManager.view('${q.id}')">Ver</button>
+                    <button class="btn btn-sm btn-secondary" onclick="QuotationManager.viewInternal('${q.id}')">Costos</button>
                     <button class="btn btn-sm btn-danger" onclick="QuotationManager.confirmDelete('${q.id}')">Eliminar</button>
                   </div>
                 </td>
               </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>
       </div>`;
@@ -587,13 +649,14 @@ const QuotationManager = {
     if (!q) return;
 
     const modal = document.getElementById('quotation-view-modal');
-    document.getElementById('quotation-view-content').innerHTML = this.renderQuotationHTML(q);
+    document.getElementById('quotation-view-content').innerHTML = this.renderClientQuotationHTML(q);
     const footer = modal.querySelector('.modal-footer');
     if (footer) {
       footer.innerHTML = `
         <button class="btn btn-danger" onclick="QuotationManager.confirmDelete('${q.id}')">Eliminar</button>
+        <button class="btn btn-secondary" onclick="QuotationManager.viewInternal('${q.id}')">Análisis interno</button>
         <button class="btn btn-secondary" data-modal-close>Cerrar</button>
-        <button class="btn btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">Descargar PDF</button>
+        <button class="btn btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF para Cliente</button>
       `;
       footer.querySelector('[data-modal-close]')?.addEventListener('click', () => {
         modal.classList.remove('active');
@@ -602,32 +665,35 @@ const QuotationManager = {
     modal.classList.add('active');
   },
 
-  renderQuotationHTML(q) {
+  viewInternal(id) {
+    const q = this.getById(id);
+    if (!q) return;
+
+    const modal = document.getElementById('quotation-view-modal');
+    document.getElementById('quotation-view-content').innerHTML = this.renderInternalAnalysisHTML(q);
+    const footer = modal.querySelector('.modal-footer');
+    if (footer) {
+      footer.innerHTML = `
+        <button class="btn btn-secondary" onclick="QuotationManager.view('${q.id}')">Vista cliente</button>
+        <button class="btn btn-secondary" data-modal-close>Cerrar</button>
+      `;
+      footer.querySelector('[data-modal-close]')?.addEventListener('click', () => {
+        modal.classList.remove('active');
+      });
+    }
+    modal.classList.add('active');
+  },
+
+  renderClientQuotationHTML(q) {
     const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
     const validUntil = new Date(q.createdAt);
     validUntil.setDate(validUntil.getDate() + (q.validity || 15));
     const mode = PRODUCTION_MODES[q.productionMode || 'full_pack']?.label || 'Full Pack';
-
-    let breakdownHtml = '';
-    if (q.costBreakdown?.breakdown) {
-      const b = q.costBreakdown.breakdown;
-      const section = (title, items) => items?.length
-        ? `<h5 style="margin:16px 0 8px">${title}</h5>${items.map((i) => `<p style="margin:4px 0">${i.label}: ${formatCurrency(i.cost)}</p>`).join('')}`
-        : '';
-
-      breakdownHtml = `
-        <div style="margin:20px 0;padding:16px;background:#f5f5f5;border-radius:8px;color:#333">
-          <h4 style="margin-bottom:12px">Desglose de Costos</h4>
-          ${section('Administrativa / Logística', b.administrative)}
-          ${section('Transformación', b.transformation)}
-          ${section('Materiales', b.materials)}
-        </div>
-      `;
-    }
+    const grindLabel = GRIND_TYPES[q.grindType || 'grano']?.label || 'En Grano';
 
     return `
       <div class="quotation-preview">
-        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:30px">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:30px;flex-wrap:wrap;gap:16px">
           <div>
             ${settings.logo ? `<img src="${settings.logo}" style="max-height:50px;margin-bottom:10px">` : ''}
             <h2>${settings.companyName}</h2>
@@ -642,18 +708,16 @@ const QuotationManager = {
         </div>
         <div style="margin-bottom:24px">
           <p><strong>Cliente:</strong> ${q.clientName}</p>
-          <p><strong>Tipo:</strong> ${CLIENT_TYPES[q.clientType]?.label || q.clientType}</p>
-          <p><strong>Modo:</strong> ${mode}</p>
-          <p><strong>Preparación:</strong> ${GRIND_TYPES[q.grindType || 'grano']?.label || 'En Grano'}</p>
+          <p><strong>Producto:</strong> ${q.coffeeName}</p>
+          <p><strong>Detalle:</strong> ${q.coffeeDetails}</p>
+          <p><strong>Presentación:</strong> ${PACKAGING_SIZES[q.packaging]?.label || q.packaging}</p>
+          <p><strong>Preparación:</strong> ${grindLabel}</p>
           ${q.productionMode === 'full_pack' ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : ''}
-          ${q.productionMode === 'maquila' ? `<p><strong>Café:</strong> ${q.clientProvidesCoffee ? 'Aportado por el cliente' : 'Comprado por BCA'}</p>` : ''}
-          ${q.processSuppliers && Object.keys(q.processSuppliers).length ? `<p><strong>Proveedores:</strong> ${this.formatProcessSuppliers(q.processSuppliers)}</p>` : ''}
         </div>
         <table style="width:100%;margin-bottom:24px">
           <thead>
             <tr>
-              <th>Producto</th>
-              <th>Presentación</th>
+              <th>Descripción</th>
               <th>Cantidad</th>
               <th>Precio Unit.</th>
               <th>Total</th>
@@ -663,22 +727,76 @@ const QuotationManager = {
             <tr>
               <td>
                 <strong>${q.coffeeName}</strong><br>
-                <small style="color:#666">${q.coffeeDetails}</small>
+                <small style="color:#666">${q.coffeeDetails} · ${PACKAGING_SIZES[q.packaging]?.label || q.packaging} · ${grindLabel}</small>
               </td>
-              <td>${PACKAGING_SIZES[q.packaging]?.label || q.packaging}</td>
               <td>${q.quantity}</td>
               <td>${formatCurrency(q.unitPrice)}</td>
               <td><strong>${formatCurrency(q.totalPrice)}</strong></td>
             </tr>
           </tbody>
         </table>
-        ${breakdownHtml}
         ${q.notes ? `<p style="margin-bottom:16px"><strong>Notas:</strong> ${q.notes}</p>` : ''}
         <div style="border-top:2px solid #333;padding-top:16px;text-align:right">
           <p style="font-size:1.3rem"><strong>TOTAL: ${formatCurrency(q.totalPrice)}</strong></p>
+          <p style="color:#666;font-size:0.85rem;margin-top:4px">Precio por producto entregado · ${mode}</p>
         </div>
       </div>
     `;
+  },
+
+  renderInternalAnalysisHTML(q) {
+    const metrics = this.getInternalMetrics(q);
+    const pricing = q.costBreakdown;
+
+    let breakdownBlock = '';
+    if (pricing?.breakdown) {
+      breakdownBlock = this.renderBreakdownHTML(
+        pricing,
+        q.labels || parseLabelSelection(q.label),
+        q.margin || 0,
+        q.quantity || 1
+      );
+    }
+
+    const supplierBlock = q.processSuppliers && Object.keys(q.processSuppliers).length
+      ? `<p class="form-hint" style="margin-bottom:12px"><strong>Proveedores:</strong> ${this.formatProcessSuppliers(q.processSuppliers)}</p>`
+      : '';
+
+    return `
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <span class="card-title">Análisis interno · ${q.number}</span>
+            <span class="badge badge-neutral">Solo plataforma</span>
+          </div>
+          <p><strong>Cliente:</strong> ${q.clientName} · <strong>Café:</strong> ${q.coffeeName}</p>
+          ${supplierBlock}
+          <div class="grid-4 sales-summary" style="margin-top:16px">
+            <div class="stat-card">
+              <div class="stat-value">${formatCurrency(q.totalPrice)}</div>
+              <div class="stat-label">Precio al cliente</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${formatCurrency(metrics.totalCost)}</div>
+              <div class="stat-label">Costo interno</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--success)">${formatCurrency(metrics.profit)}</div>
+              <div class="stat-label">Utilidad estimada</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${formatNumber(metrics.profitMargin, 1)}%</div>
+              <div class="stat-label">Margen</div>
+            </div>
+          </div>
+        </div>
+        ${breakdownBlock || '<p class="form-hint">Sin desglose detallado guardado para esta cotización.</p>'}
+      </div>
+    `;
+  },
+
+  renderQuotationHTML(q) {
+    return this.renderClientQuotationHTML(q);
   },
 
   create() {

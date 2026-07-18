@@ -18,7 +18,8 @@ const PDFGenerator = {
 
     const validUntil = new Date(quotation.createdAt);
     validUntil.setDate(validUntil.getDate() + (quotation.validity || 15));
-    const mode = PRODUCTION_MODES[quotation.productionMode || 'full_pack']?.label || 'Full Pack';
+    const grindLabel = GRIND_TYPES[quotation.grindType || 'grano']?.label || 'En Grano';
+    const packagingLabel = PACKAGING_SIZES[quotation.packaging]?.label || quotation.packaging;
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
@@ -28,7 +29,9 @@ const PDFGenerator = {
     doc.setFontSize(10);
     doc.setTextColor(100);
     doc.text(settings.tagline, 20, 32);
-    doc.text(settings.email, 20, 38);
+    if (settings.email) {
+      doc.text(settings.email, 20, 38);
+    }
 
     doc.setTextColor(0);
     doc.setFont('helvetica', 'bold');
@@ -49,97 +52,39 @@ const PDFGenerator = {
     doc.text('Cliente:', 20, 62);
     doc.setFont('helvetica', 'normal');
     doc.text(quotation.clientName, 50, 62);
-    doc.text(`Tipo: ${CLIENT_TYPES[quotation.clientType]?.label || quotation.clientType}`, 50, 68);
-    doc.text(`Modo: ${mode}`, 50, 74);
 
-    if (quotation.processSuppliers && Object.keys(quotation.processSuppliers).length) {
-      const supplierText = QuotationManager.formatProcessSuppliers(quotation.processSuppliers);
-      const split = doc.splitTextToSize(`Proveedores: ${supplierText}`, 140);
-      doc.setFontSize(8);
-      doc.text(split, 50, 80);
-      doc.setFontSize(10);
-    }
+    doc.setFont('helvetica', 'bold');
+    doc.text('Producto:', 20, 70);
+    doc.setFont('helvetica', 'normal');
+    doc.text(quotation.coffeeName, 50, 70);
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    const details = doc.splitTextToSize(quotation.coffeeDetails || '', 140);
+    doc.text(details, 50, 76);
+    doc.setTextColor(0);
+    doc.setFontSize(10);
+    doc.text(`Presentación: ${packagingLabel}`, 50, 84 + (details.length - 1) * 4);
+    doc.text(`Preparación: ${grindLabel}`, 50, 90 + (details.length - 1) * 4);
 
-    doc.line(20, quotation.processSuppliers ? 88 : 80, 190, quotation.processSuppliers ? 88 : 80);
+    const tableY = 98 + (details.length - 1) * 4;
+    doc.line(20, tableY - 4, 190, tableY - 4);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    const tableY = quotation.processSuppliers ? 98 : 90;
-    doc.text('Producto', 20, tableY);
-    doc.text('Presentación', 80, tableY);
-    doc.text('Cant.', 130, tableY);
-    doc.text('P. Unit.', 150, tableY);
+    doc.text('Descripción', 20, tableY);
+    doc.text('Cant.', 120, tableY);
+    doc.text('P. Unit.', 145, tableY);
     doc.text('Total', 175, tableY);
-
     doc.line(20, tableY + 4, 190, tableY + 4);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
     const rowY = tableY + 12;
     doc.text(quotation.coffeeName, 20, rowY);
-    doc.setFontSize(8);
-    doc.setTextColor(100);
-    doc.text(quotation.coffeeDetails, 20, rowY + 6);
-    doc.setTextColor(0);
-    doc.setFontSize(10);
-    doc.text(PACKAGING_SIZES[quotation.packaging]?.label || quotation.packaging, 80, rowY);
-    doc.text(String(quotation.quantity), 130, rowY);
-    doc.text(formatCurrency(quotation.unitPrice), 150, rowY);
+    doc.text(String(quotation.quantity), 120, rowY);
+    doc.text(formatCurrency(quotation.unitPrice), 145, rowY);
     doc.text(formatCurrency(quotation.totalPrice), 175, rowY);
 
     let yPos = rowY + 18;
-
-    if (quotation.costBreakdown?.breakdown) {
-      const b = quotation.costBreakdown.breakdown;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.text('Desglose de Costos:', 20, yPos);
-      yPos += 8;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-
-      const printSection = (title, items) => {
-        if (!items?.length) return;
-        doc.setFont('helvetica', 'bold');
-        doc.text(title, 25, yPos);
-        yPos += 5;
-        doc.setFont('helvetica', 'normal');
-        items.forEach((item) => {
-          doc.text(`${item.label}:`, 30, yPos);
-          doc.text(formatCurrency(item.cost), 110, yPos);
-          yPos += 5;
-        });
-        yPos += 2;
-      };
-
-      printSection('Administrativa / Logística', b.administrative);
-      printSection('Transformación', b.transformation);
-      printSection('Materiales', b.materials);
-
-      doc.text(`Margen (${quotation.margin}%):`, 25, yPos);
-      doc.text(formatCurrency(quotation.unitPrice - quotation.costBreakdown.totalCost), 110, yPos);
-      yPos += 10;
-    } else if (quotation.costBreakdown) {
-      const breakdown = quotation.costBreakdown;
-      doc.setFont('helvetica', 'bold');
-      doc.text('Desglose de Costos:', 20, yPos);
-      yPos += 8;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      [
-        ['Café', breakdown.coffeeCost],
-        ['Proceso', breakdown.processCost],
-        ['Empaque', breakdown.packagingCost],
-        ['Etiquetas', breakdown.labelCost]
-      ].forEach(([label, value]) => {
-        if (value) {
-          doc.text(`${label}:`, 25, yPos);
-          doc.text(formatCurrency(value), 110, yPos);
-          yPos += 5;
-        }
-      });
-      yPos += 5;
-    }
 
     if (quotation.notes) {
       doc.setFont('helvetica', 'bold');
@@ -157,13 +102,15 @@ const PDFGenerator = {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
     doc.text(`TOTAL: ${formatCurrency(quotation.totalPrice)}`, 120, yPos + 8);
-
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text('Precio por producto entregado', 120, yPos + 14);
+
     doc.setTextColor(150);
     doc.text('Documento generado por Black Coffee Administration', 20, 285);
 
     doc.save(`${quotation.number}_${quotation.clientName.replace(/\s+/g, '_')}.pdf`);
-    Toast.show('PDF generado correctamente', 'success');
+    Toast.show('PDF para cliente generado correctamente', 'success');
   }
 };

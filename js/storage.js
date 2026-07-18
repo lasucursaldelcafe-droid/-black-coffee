@@ -28,10 +28,16 @@ const Storage = {
 
   set(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
+    if (typeof FirebaseSync !== 'undefined' && FirebaseSync.isEnabled()) {
+      FirebaseSync.queuePush(key, value);
+    }
   },
 
   remove(key) {
     localStorage.removeItem(key);
+    if (typeof FirebaseSync !== 'undefined' && FirebaseSync.isEnabled()) {
+      FirebaseSync.queueDelete(key);
+    }
   },
 
   generateId() {

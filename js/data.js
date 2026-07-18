@@ -1,12 +1,12 @@
-const DATA_VERSION = 1;
+const DATA_VERSION = 2;
 const DATA_VERSION_KEY = 'bca_data_version';
 
 const DataSeed = {
   init() {
-    if (Storage.get(DATA_VERSION_KEY) !== DATA_VERSION) {
-      this.resetAllToZero();
+    const storedVersion = Storage.get(DATA_VERSION_KEY);
+    if (storedVersion !== DATA_VERSION) {
+      this.migrate(storedVersion);
       Storage.set(DATA_VERSION_KEY, DATA_VERSION);
-      return;
     }
 
     this.seedProductionCosts();
@@ -16,6 +16,44 @@ const DataSeed = {
     this.seedSuppliers();
     this.seedInventory();
     this.ensureTransformationSuppliers();
+  },
+
+  migrate(fromVersion) {
+    if (fromVersion === null || fromVersion === undefined) {
+      return;
+    }
+    if (fromVersion === 1) {
+      this.migrateV1ToV2();
+      return;
+    }
+    if (fromVersion !== DATA_VERSION) {
+      console.warn(`Migración desconocida desde versión ${fromVersion}`);
+    }
+  },
+
+  migrateV1ToV2() {
+    const quotations = Storage.get(STORAGE_KEYS.QUOTATIONS) || [];
+    const enriched = quotations.map((q) => this.enrichQuotationMetrics(q));
+    if (enriched.length > 0) {
+      Storage.set(STORAGE_KEYS.QUOTATIONS, enriched);
+    }
+  },
+
+  enrichQuotationMetrics(quotation) {
+    const unitCost = quotation.costBreakdown?.totalCost || 0;
+    const unitPrice = quotation.unitPrice || 0;
+    const quantity = quotation.quantity || 1;
+    const totalCost = unitCost * quantity;
+    const profit = quotation.totalPrice - totalCost;
+    const profitMargin = quotation.totalPrice > 0 ? (profit / quotation.totalPrice) * 100 : 0;
+
+    return {
+      ...quotation,
+      internalUnitCost: unitCost,
+      internalTotalCost: totalCost,
+      internalProfit: profit,
+      internalProfitMargin: profitMargin
+    };
   },
 
   resetAllToZero() {

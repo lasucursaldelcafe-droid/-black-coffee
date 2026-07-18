@@ -5,6 +5,16 @@ const App = {
     Auth.init();
     if (!Auth.requireAuth()) return;
 
+    return this.bootstrap();
+  },
+
+  async bootstrap() {
+    try {
+      await FirebaseSync.init();
+    } catch (error) {
+      console.error('No se pudo iniciar Firebase:', error);
+    }
+
     DataSeed.init();
     EmailService.init();
 
@@ -391,6 +401,14 @@ const App = {
           <textarea class="form-control" id="settings-hero-subtitle" rows="2">${settings.heroSubtitle}</textarea>
         </div>
       </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Base de Datos</span></div>
+        <p class="form-hint" style="margin-bottom:12px">
+          Estado de sincronización en la nube. Sin Firebase configurado, los datos solo viven en este navegador.
+        </p>
+        <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
+        <p class="form-hint">Configura los 6 secrets de Firebase en GitHub Actions. Guía: docs/FIREBASE_SETUP.md</p>
+      </div>
       <div class="card">
         <div class="card-header"><span class="card-title">Alertas de Inventario</span></div>
         <div class="form-group">
@@ -478,4 +496,6 @@ const App = {
   }
 };
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+document.addEventListener('DOMContentLoaded', () => {
+  App.init().catch((error) => console.error('Error al iniciar la aplicación:', error));
+});
