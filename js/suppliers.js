@@ -3,15 +3,27 @@ const SupplierManager = {
 
   migrate(supplier) {
     if (!supplier) return supplier;
+    const base = {
+      services: [],
+      serviceRates: {},
+      address: '',
+      city: '',
+      department: '',
+      invima: '',
+      kimba: '',
+      ...supplier
+    };
     if (supplier.category) {
       return {
-        services: [],
-        address: '',
-        city: '',
-        department: '',
-        invima: '',
-        kimba: '',
-        ...supplier
+        ...base,
+        serviceRates: {
+          ...(typeof supplier.serviceRates === 'object' && !Array.isArray(supplier.serviceRates)
+            ? supplier.serviceRates
+            : {}),
+          ...(supplier.serviceRates?.empacada && typeof supplier.serviceRates.empacada === 'object'
+            ? { empacada: supplier.serviceRates.empacada }
+            : {})
+        }
       };
     }
 
@@ -28,7 +40,9 @@ const SupplierManager = {
       category = 'operational';
       if (/tost/i.test(legacyType)) services.push('tostion');
       if (/trill/i.test(legacyType)) services.push('trilla');
-      if (/selecci/i.test(legacyType)) services.push('seleccion');
+      if (/selecci.*verde|verde.*selecci/i.test(legacyType)) services.push('greenSelection');
+      else if (/selecci/i.test(legacyType)) services.push('seleccion');
+      if (/molienda|molido/i.test(legacyType)) services.push('molienda');
       if (/empac/i.test(legacyType)) services.push('empacada');
     }
 
@@ -36,6 +50,7 @@ const SupplierManager = {
       ...supplier,
       category,
       services,
+      serviceRates: supplier.serviceRates || {},
       address: supplier.address || '',
       city: supplier.city || '',
       department: supplier.department || supplier.region || '',
@@ -75,6 +90,137 @@ const SupplierManager = {
     return this.getById(id)?.name || 'Proveedor desconocido';
   },
 
+  getServiceRateFromSupplier(supplier, serviceKey, packagingSize = '250g') {
+    if (!supplier?.serviceRates) return null;
+    if (serviceKey === 'empacada') {
+      const rates = supplier.serviceRates.empacada;
+      if (!rates || typeof rates !== 'object') return null;
+      const value = rates[packagingSize];
+      return value === undefined || value === null || value === '' ? null : Number(value);
+    }
+    const value = supplier.serviceRates[serviceKey];
+    return value === undefined || value === null || value === '' ? null : Number(value);
+  },
+
+  getEffectiveServiceRate(serviceKey, supplierId, packagingSize = '250g') {
+    const costs = ProductionCosts.get();
+    const supplier = supplierId ? this.getById(supplierId) : null;
+    const supplierRate = supplier ? this.getServiceRateFromSupplier(supplier, serviceKey, packagingSize) : null;
+    if (supplierRate !== null && !Number.isNaN(supplierRate) && supplierRate > 0) {
+      return supplierRate;
+    }
+    return getGlobalServiceRate(costs, serviceKey, packagingSize);
+  },
+
+  formatServiceRatesSummary(supplier) {
+    const data = this.migrate(supplier);
+    if (data.category === 'logistics') {
+      const rate = data.serviceRates?.transporte;
+      return rate > 0 ? `${formatCurrency(rate)}/kg` : 'Tarifa global';
+    }
+    if (data.category !== 'operational') return '—';
+
+    const parts = (data.services || [])
+      .map((key) => {
+        if (key === 'empacada') {
+          const rates = data.serviceRates?.empacada || {};
+          const configured = Object.entries(rates).filter(([, v]) => Number(v) > 0);
+          if (!configured.length) return null;
+          return configured.map(([size, v]) => `${PACKAGING_SIZES[size]?.label || size}: ${formatCurrency(v)}`).join(', ');
+        }
+        const rate = data.serviceRates?.[key];
+        if (!rate || Number(rate) <= 0) return null;
+        return `${SUPPLIER_SERVICES[key]?.label || key}: ${formatCurrency(rate)}`;
+      })
+      .filter(Boolean);
+
+    return parts.length ? parts.join(' · ') : 'Tarifas globales';
+  },
+
+  renderServiceRatesFields(category, services = [], serviceRates = {}) {
+    const fields = [];
+
+    if (category === 'logistics') {
+      fields.push(`
+        <div class="form-group">
+          <label>Tarifa de transporte (${getServiceRateUnitLabel('transporte')})</label>
+          <input type="number" class="form-control supplier-rate-input" data-service="transporte"
+            value="${serviceRates.transporte ?? 0}" min="0" step="1" placeholder="0 = usar costo global">
+        </div>
+      `);
+      return fields.join('');
+    }
+
+    if (category !== 'operational' || !services.length) return '';
+
+    services.forEach((key) => {
+      if (key === 'empacada') {
+        Object.entries(PACKAGING_SIZES).forEach(([size, val]) => {
+          fields.push(`
+            <div class="form-group">
+              <label>${SUPPLIER_SERVICES.empacada.label} — ${val.label}</label>
+              <input type="number" class="form-control supplier-rate-input" data-service="empacada" data-packaging="${size}"
+                value="${serviceRates.empacada?.[size] ?? 0}" min="0" step="1" placeholder="0 = tarifa global">
+            </div>
+          `);
+        });
+        return;
+      }
+      fields.push(`
+        <div class="form-group">
+          <label>${SUPPLIER_SERVICES[key]?.label || key} (${getServiceRateUnitLabel(key)})</label>
+          <input type="number" class="form-control supplier-rate-input" data-service="${key}"
+            value="${serviceRates[key] ?? 0}" min="0" step="1" placeholder="0 = tarifa global">
+        </div>
+      `);
+    });
+
+    return `
+      <h4 style="margin:16px 0 8px;font-size:0.95rem;color:var(--text-secondary)">Tarifas del proveedor</h4>
+      <p class="form-hint" style="margin-bottom:12px">Indique cuánto cobra por cada servicio. Si deja 0, se usa el costo global de Producción.</p>
+      ${fields.join('')}
+    `;
+  },
+
+  collectServiceRatesFromForm(category) {
+    const rates = {};
+    if (category === 'logistics') {
+      const input = document.querySelector('.supplier-rate-input[data-service="transporte"]');
+      rates.transporte = parseFloat(input?.value) || 0;
+      return rates;
+    }
+
+    const empacadaRates = {};
+    document.querySelectorAll('.supplier-rate-input[data-service="empacada"]').forEach((input) => {
+      empacadaRates[input.dataset.packaging] = parseFloat(input.value) || 0;
+    });
+    if (Object.keys(empacadaRates).length) rates.empacada = empacadaRates;
+
+    document.querySelectorAll('.supplier-rate-input[data-service]:not([data-packaging])').forEach((input) => {
+      const key = input.dataset.service;
+      if (key && key !== 'empacada') rates[key] = parseFloat(input.value) || 0;
+    });
+
+    return rates;
+  },
+
+  refreshServiceRatesFields() {
+    const container = document.getElementById('supplier-rates-fields');
+    if (!container) return;
+    const category = document.getElementById('supplier-category')?.value || 'coffee';
+    let services = [];
+    try {
+      services = JSON.parse(document.getElementById('supplier-services')?.value || '[]');
+    } catch {
+      services = [];
+    }
+    const existingRates = container.dataset.rates ? JSON.parse(container.dataset.rates) : {};
+    const collected = this.collectServiceRatesFromForm(category);
+    const mergedRates = { ...existingRates, ...collected };
+    container.dataset.rates = JSON.stringify(mergedRates);
+    container.innerHTML = this.renderServiceRatesFields(category, services, mergedRates);
+  },
+
   renderSelect(serviceKey, options = {}) {
     const {
       id = `supplier-${serviceKey}`,
@@ -87,11 +233,14 @@ const SupplierManager = {
     return `
       <select class="form-control" id="${id}" ${required ? 'required' : ''}>
         <option value="">${placeholder}</option>
-        ${suppliers.map((s) => `
+        ${suppliers.map((s) => {
+          const customRate = this.getServiceRateFromSupplier(s, serviceKey);
+          const rateHint = customRate > 0 ? ` · ${formatCurrency(customRate)}` : '';
+          return `
           <option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>
-            ${s.name}${s.invima ? ` · INVIMA ${s.invima}` : ''}
-          </option>
-        `).join('')}
+            ${s.name}${rateHint}${s.invima ? ` · INVIMA ${s.invima}` : ''}
+          </option>`;
+        }).join('')}
       </select>
       ${suppliers.length === 0 ? `<p class="form-hint" style="margin-top:4px">No hay proveedores para ${getProcessSupplierLabel(serviceKey)}. <a href="#" onclick="SupplierManager.createForService('${serviceKey}');return false">Agregar uno</a></p>` : ''}
     `;
@@ -169,17 +318,29 @@ const SupplierManager = {
       ...Object.entries(SUPPLIER_CATEGORIES).map(([key, val]) => [key, val.shortLabel])
     ];
 
+    const quickAddButtons = Object.entries(SUPPLIER_SERVICES).map(([key, val]) => `
+      <button type="button" class="btn btn-sm btn-secondary"
+        onclick="SupplierManager.createForService('${key}')">${val.label}</button>
+    `).join('');
+
     if (suppliers.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">🌱</div>
           <h3>No hay proveedores registrados</h3>
-          <p>Agrega caficultores, tostadores, empacadoras y transportistas</p>
+          <p>Registre caficultores y cada proveedor de transformación con su tarifa</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px">
+            ${quickAddButtons}
+          </div>
         </div>`;
       return;
     }
 
     container.innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <span class="form-hint" style="align-self:center;margin-right:4px">Agregar rápido:</span>
+        ${quickAddButtons}
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
         ${filterButtons.map(([key, label]) => `
           <button type="button" class="btn btn-sm ${this._filter === key ? 'btn-primary' : 'btn-secondary'}"
@@ -193,6 +354,7 @@ const SupplierManager = {
               <th>Proveedor</th>
               <th>Categoría</th>
               <th>Servicios / Tipo</th>
+              <th>Tarifas</th>
               <th>Ubicación</th>
               <th>INVIMA / KIMBA</th>
               <th>Contacto</th>
@@ -208,6 +370,7 @@ const SupplierManager = {
                 </td>
                 <td><span class="badge badge-neutral">${SUPPLIER_CATEGORIES[s.category]?.shortLabel || s.category}</span></td>
                 <td style="font-size:0.85rem">${this.formatServices(s)}</td>
+                <td style="font-size:0.8rem">${this.formatServiceRatesSummary(s)}</td>
                 <td>${this.formatLocation(s)}</td>
                 <td>${this.renderComplianceBadges(s)}</td>
                 <td>${s.phone || s.email || s.contact || '—'}</td>
@@ -227,6 +390,7 @@ const SupplierManager = {
     const data = supplier ? this.migrate(supplier) : {
       category: preset.category || 'coffee',
       services: preset.services || [],
+      serviceRates: preset.serviceRates || {},
       type: 'Caficultor'
     };
 
@@ -261,7 +425,7 @@ const SupplierManager = {
       </div>
       <div class="form-group" id="supplier-services-group" style="display:none">
         <label>Servicios que ofrece</label>
-        <p class="form-hint" style="margin-bottom:8px">Seleccione los procesos que realiza este proveedor operativo</p>
+        <p class="form-hint" style="margin-bottom:8px">Trilladora, selección, tostión, molienda o empacado — puede elegir varios</p>
         <div class="selection-grid selection-grid-multi" id="supplier-services-selection">
           ${Object.entries(SUPPLIER_SERVICES)
             .filter(([, val]) => val.category === 'operational')
@@ -271,6 +435,7 @@ const SupplierManager = {
         </div>
         <input type="hidden" id="supplier-services" value='${JSON.stringify(data.services || [])}'>
       </div>
+      <div id="supplier-rates-fields" data-rates='${JSON.stringify(data.serviceRates || {})}'></div>
       <div class="form-group">
         <label>Dirección</label>
         <input type="text" class="form-control" id="supplier-address" value="${data.address || ''}" placeholder="Calle, barrio, bodega...">
@@ -334,6 +499,7 @@ const SupplierManager = {
       document.getElementById('supplier-coffee-type-group').style.display = category === 'coffee' ? 'block' : 'none';
       document.getElementById('supplier-region-group').style.display = category === 'coffee' ? 'block' : 'none';
       document.getElementById('supplier-services-group').style.display = category === 'operational' ? 'block' : 'none';
+      this.refreshServiceRatesFields();
     };
 
     document.getElementById('supplier-category-selection')?.querySelectorAll('.selection-btn').forEach((btn) => {
@@ -352,6 +518,7 @@ const SupplierManager = {
         btn.classList.toggle('active');
         const selected = [...servicesContainer.querySelectorAll('.selection-btn.active')].map((b) => b.dataset.value);
         servicesHidden.value = JSON.stringify(selected);
+        this.refreshServiceRatesFields();
       });
     });
 
@@ -382,6 +549,7 @@ const SupplierManager = {
       category,
       type: document.getElementById('supplier-type')?.value || 'Caficultor',
       services,
+      serviceRates: this.collectServiceRatesFromForm(category),
       region: document.getElementById('supplier-region')?.value || '',
       department: document.getElementById('supplier-department').value.trim(),
       city: document.getElementById('supplier-city').value.trim(),

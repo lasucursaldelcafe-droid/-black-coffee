@@ -87,22 +87,22 @@ const ProductionCosts = {
     return this.calculateGreenToRoasted(inputKg, coffeeState, activeSteps).mermaDetails;
   },
 
-  getTransformationCost(stepKey, amount, packagingSize, costs) {
+  getTransformationCost(stepKey, amount, packagingSize, costs, supplierId = null) {
     const step = TRANSFORMATION_STEPS[stepKey];
     if (!step) return 0;
 
     if (stepKey === 'empacada') {
-      const labor = costs.transformation.packagingLabor[packagingSize];
-      return labor || 0;
+      return SupplierManager.getEffectiveServiceRate('empacada', supplierId, packagingSize);
     }
 
     if (stepKey === 'molienda') {
+      const rate = SupplierManager.getEffectiveServiceRate('molienda', supplierId, packagingSize);
       const pkg = PACKAGING_SIZES[packagingSize];
       const pounds = pkg.grams / 453.592;
-      return pounds * costs.transformation.grinding;
+      return pounds * rate;
     }
 
-    const rate = costs.transformation[step.costKey] || 0;
+    const rate = SupplierManager.getEffectiveServiceRate(stepKey, supplierId, packagingSize);
     return rate * amount;
   },
 
@@ -112,8 +112,11 @@ const ProductionCosts = {
       productionMode = 'full_pack',
       maquilaSteps = [],
       clientProvidesCoffee = false,
-      grindType = 'grano'
+      grindType = 'grano',
+      processSuppliers = {}
     } = options;
+
+    const supplierMap = { ...costs.defaultSuppliers, ...processSuppliers };
 
     const activeSteps = this.getActiveSteps({
       productionMode,
@@ -194,35 +197,39 @@ const ProductionCosts = {
       if (!activeSteps.includes(stepKey)) return;
       if (stepKey === 'trilla' && coffee.state !== 'pergamino') return;
 
-      const stepCost = this.getTransformationCost(stepKey, greenKgNeeded, packagingSize, costs);
+      const stepCost = this.getTransformationCost(stepKey, greenKgNeeded, packagingSize, costs, supplierMap[stepKey]);
+      const rate = SupplierManager.getEffectiveServiceRate(stepKey, supplierMap[stepKey], packagingSize);
+      const supplierName = SupplierManager.getName(supplierMap[stepKey]);
       breakdown.transformation.push({
         key: stepKey,
         label: TRANSFORMATION_STEPS[stepKey].label,
         cost: stepCost,
-        detail: `${formatNumber(greenKgNeeded, 3)} kg`
+        detail: `${formatNumber(greenKgNeeded, 3)} kg × ${formatCurrency(rate)}${supplierMap[stepKey] ? ` · ${supplierName}` : ''}`
       });
       totalCost += stepCost;
     });
 
     if (activeSteps.includes('molienda')) {
-      const stepCost = this.getTransformationCost('molienda', 0, packagingSize, costs);
+      const rate = SupplierManager.getEffectiveServiceRate('molienda', supplierMap.molienda, packagingSize);
+      const stepCost = this.getTransformationCost('molienda', 0, packagingSize, costs, supplierMap.molienda);
       const pounds = pkg.grams / 453.592;
       breakdown.transformation.push({
         key: 'molienda',
         label: 'Molienda',
         cost: stepCost,
-        detail: `${formatNumber(pounds, 2)} lb × ${formatCurrency(costs.transformation.grinding)}`
+        detail: `${formatNumber(pounds, 2)} lb × ${formatCurrency(rate)}${supplierMap.molienda ? ` · ${SupplierManager.getName(supplierMap.molienda)}` : ''}`
       });
       totalCost += stepCost;
     }
 
     if (activeSteps.includes('empacada')) {
-      const stepCost = this.getTransformationCost('empacada', 0, packagingSize, costs);
+      const rate = SupplierManager.getEffectiveServiceRate('empacada', supplierMap.empacada, packagingSize);
+      const stepCost = this.getTransformationCost('empacada', 0, packagingSize, costs, supplierMap.empacada);
       breakdown.transformation.push({
         key: 'empacada',
         label: 'Empacada (mano de obra)',
         cost: stepCost,
-        detail: PACKAGING_SIZES[packagingSize].label
+        detail: `${PACKAGING_SIZES[packagingSize].label} · ${formatCurrency(rate)}${supplierMap.empacada ? ` · ${SupplierManager.getName(supplierMap.empacada)}` : ''}`
       });
       totalCost += stepCost;
     }
@@ -417,7 +424,7 @@ const ProductionCosts = {
         </div>
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Proveedores por Defecto</h4>
-      <p class="form-hint" style="margin-bottom:12px">Se preseleccionan al registrar compras, tostión, lotes y cotizaciones</p>
+      <p class="form-hint" style="margin-bottom:12px">Se preseleccionan al registrar compras, tostión, lotes y cotizaciones. Las tarifas por proveedor se configuran en <strong>Proveedores</strong>.</p>
       <div class="form-row">
         <div class="form-group">
           <label>Proveedor de Café</label>

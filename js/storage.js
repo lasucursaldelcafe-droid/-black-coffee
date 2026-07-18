@@ -125,9 +125,9 @@ const SUPPLIER_CATEGORIES = {
     description: 'Caficultores, cooperativas y compradores de café verde'
   },
   operational: {
-    label: 'Proveedor Operativo',
-    shortLabel: 'Operativo',
-    description: 'Tostadores, trilladoras, seleccionadoras y empacadoras'
+    label: 'Proveedor de Transformación',
+    shortLabel: 'Transformación',
+    description: 'Trilladora, selección, tostión, molienda y empacado'
   },
   logistics: {
     label: 'Proveedor Logístico',
@@ -137,13 +137,13 @@ const SUPPLIER_CATEGORIES = {
 };
 
 const SUPPLIER_SERVICES = {
-  trilla: { label: 'Trilladora', category: 'operational' },
-  greenSelection: { label: 'Selección en Verde', category: 'operational' },
-  tostion: { label: 'Tostador', category: 'operational' },
-  seleccion: { label: 'Selección Post-Tostión', category: 'operational' },
-  molienda: { label: 'Molienda', category: 'operational' },
-  empacada: { label: 'Empacadora', category: 'operational' },
-  transporte: { label: 'Transporte / Flete', category: 'logistics' }
+  trilla: { label: 'Trilladora', category: 'operational', unit: 'por kg' },
+  greenSelection: { label: 'Selección en Verde', category: 'operational', unit: 'por kg' },
+  tostion: { label: 'Tostador', category: 'operational', unit: 'por kg' },
+  seleccion: { label: 'Selección Post-Tostión', category: 'operational', unit: 'por kg' },
+  molienda: { label: 'Molienda', category: 'operational', unit: 'por libra' },
+  empacada: { label: 'Empacadora', category: 'operational', unit: 'por unidad' },
+  transporte: { label: 'Transporte / Flete', category: 'logistics', unit: 'por kg' }
 };
 
 const COFFEE_SUPPLIER_TYPES = ['Caficultor', 'Cooperativa', 'Exportador', 'Beneficio', 'Otro'];
@@ -156,6 +156,27 @@ function getProcessSupplierLabel(key) {
   if (key === 'compra') return 'Proveedor de Café';
   if (key === 'transporte') return SUPPLIER_SERVICES.transporte.label;
   return TRANSFORMATION_STEPS[key]?.label || SUPPLIER_SERVICES[key]?.label || key;
+}
+
+function getGlobalServiceRate(costs, serviceKey, packagingSize = '250g') {
+  if (serviceKey === 'empacada') {
+    return costs.transformation.packagingLabor[packagingSize] || 0;
+  }
+  if (serviceKey === 'molienda') {
+    return costs.transformation.grinding || 0;
+  }
+  if (serviceKey === 'transporte') {
+    return 0;
+  }
+  const step = TRANSFORMATION_STEPS[serviceKey];
+  if (step?.costKey) {
+    return costs.transformation[step.costKey] || 0;
+  }
+  return 0;
+}
+
+function getServiceRateUnitLabel(serviceKey) {
+  return SUPPLIER_SERVICES[serviceKey]?.unit || 'por kg';
 }
 
 function getFullPackSteps(coffeeState) {

@@ -258,6 +258,7 @@ const QuotationManager = {
 
     section.style.display = fields.length ? 'block' : 'none';
     container.innerHTML = fields.join('');
+    this.updatePreview();
   },
 
   getProcessSuppliersFromForm() {
@@ -325,6 +326,8 @@ const QuotationManager = {
       });
       document.getElementById(id)?.addEventListener('input', () => this.updatePreview());
     });
+
+    document.getElementById('quot-suppliers-fields')?.addEventListener('change', () => this.updatePreview());
   },
 
   bindSingleSelect(containerId, hiddenId) {
@@ -459,8 +462,9 @@ const QuotationManager = {
     const client = ClientManager.getById(clientId);
     if (!coffee || !client) return;
 
+    const processSuppliers = this.getProcessSuppliersFromForm();
     const pricing = ProductionCosts.calculateSellingPrice(
-      coffee, packaging, margin, client.type, labels, options
+      coffee, packaging, margin, client.type, labels, { ...options, processSuppliers }
     );
 
     preview.innerHTML = this.renderBreakdownHTML(pricing, labels, margin, quantity);
@@ -491,7 +495,7 @@ const QuotationManager = {
     const coffee = CoffeeManager.getById(coffeeId);
     const client = ClientManager.getById(clientId);
     const pricing = ProductionCosts.calculateSellingPrice(
-      coffee, packaging, margin, client.type, labels, options
+      coffee, packaging, margin, client.type, labels, { ...options, processSuppliers }
     );
 
     const quotation = {
