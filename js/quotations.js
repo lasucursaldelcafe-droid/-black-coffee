@@ -20,7 +20,7 @@ const QuotationManager = {
       totalPrice: quotation.totalPrice
     });
 
-    Notifications.add(`Cotización ${quotation.number} eliminada`, 'warning');
+    Notifications.add(`Cotización ${quotation.number} eliminada`, 'warning', { section: 'quotations' });
   },
 
   confirmDelete(id) {
@@ -47,7 +47,9 @@ const QuotationManager = {
     }
 
     Storage.set(STORAGE_KEYS.QUOTATIONS, quotations);
-    Notifications.add(`Cotización ${quotation.number} creada`, 'success');
+    Notifications.add(`Cotización ${quotation.number} creada`, 'success', {
+      section: 'quotations', entityId: quotation.id, action: 'view'
+    });
     EmailService.sendQuotation(quotation);
     return quotation;
   },

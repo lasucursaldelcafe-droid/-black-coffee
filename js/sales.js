@@ -73,7 +73,8 @@ const SalesManager = {
 
     Notifications.add(
       `Venta registrada: ${sale.quantity} × ${PACKAGING_SIZES[sale.packaging]?.label || sale.packaging} por ${sale.userName}`,
-      'success'
+      'success',
+      { section: 'sales', entityId: sale.id }
     );
 
     return sale;
@@ -160,7 +161,7 @@ const SalesManager = {
       totalRevenue: sale.totalRevenue
     });
 
-    Notifications.add(`Venta eliminada: ${sale.coffeeName}`, 'warning');
+    Notifications.add(`Venta eliminada: ${sale.coffeeName}`, 'warning', { section: 'sales' });
   },
 
   confirmDelete(id) {
@@ -246,7 +247,7 @@ const SalesManager = {
             </thead>
             <tbody>
               ${sales.map((s) => `
-                <tr>
+                <tr data-sale-id="${s.id}">
                   <td>${formatDateTime(s.soldAt)}</td>
                   <td><strong>${s.coffeeName}</strong></td>
                   <td>${s.clientName}</td>

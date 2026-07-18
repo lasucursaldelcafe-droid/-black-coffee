@@ -13,6 +13,7 @@ const SupplierManager = {
 
     if (index >= 0) {
       suppliers[index] = { ...suppliers[index], ...supplier, updatedAt: new Date().toISOString() };
+      supplier = suppliers[index];
     } else {
       supplier.id = Storage.generateId();
       supplier.createdAt = new Date().toISOString();
@@ -20,14 +21,16 @@ const SupplierManager = {
     }
 
     Storage.set(STORAGE_KEYS.SUPPLIERS, suppliers);
-    Notifications.add(`Proveedor "${supplier.name}" guardado`, 'success');
+    Notifications.add(`Proveedor "${supplier.name}" guardado`, 'success', {
+      section: 'suppliers', entityId: supplier.id, action: 'edit'
+    });
     return supplier;
   },
 
   delete(id) {
     const suppliers = this.getAll().filter(s => s.id !== id);
     Storage.set(STORAGE_KEYS.SUPPLIERS, suppliers);
-    Notifications.add('Proveedor eliminado', 'warning');
+    Notifications.add('Proveedor eliminado', 'warning', { section: 'suppliers' });
   },
 
   renderTable(container) {

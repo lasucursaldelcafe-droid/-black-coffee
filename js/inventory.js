@@ -52,7 +52,9 @@ const InventoryManager = {
     });
     Storage.set(STORAGE_KEYS.PURCHASES, purchases);
 
-    Notifications.add(`Compra registrada: ${kg}kg por ${session?.name || 'usuario'}`, 'success');
+    Notifications.add(`Compra registrada: ${kg}kg por ${session?.name || 'usuario'}`, 'success', {
+      section: 'inventory', entityId: coffeeId, action: 'purchase'
+    });
     EmailService.sendNotification('Nueva Compra de Café',
       `Se registró una compra de ${kg}kg de café por ${session?.name || 'usuario'}. Costo: ${formatCurrency(kg * cost)}`);
   },
@@ -83,7 +85,9 @@ const InventoryManager = {
       }
     });
 
-    Notifications.add(`Tostión completada: ${formatNumber(result.roastedKg)}kg tostado`, 'info');
+    Notifications.add(`Tostión completada: ${formatNumber(result.roastedKg)}kg tostado`, 'info', {
+      section: 'inventory', entityId: coffeeId, action: 'roast'
+    });
     return result;
   },
 
@@ -123,7 +127,9 @@ const InventoryManager = {
       }
     });
 
-    Notifications.add(`Inventario ajustado: ${coffee.name} (${fieldLabel})`, 'info');
+    Notifications.add(`Inventario ajustado: ${coffee.name} (${fieldLabel})`, 'info', {
+      section: 'inventory', entityId: coffeeId
+    });
   },
 
   checkLowStock(coffeeId) {
@@ -134,7 +140,8 @@ const InventoryManager = {
     if (item && coffee && item.greenKg <= (item.minStockKg || settings.lowStockThreshold)) {
       Notifications.add(
         `⚠️ Stock bajo: ${coffee.name} (${formatNumber(item.greenKg)}kg restantes)`,
-        'warning'
+        'warning',
+        { section: 'inventory', entityId: coffeeId, action: 'purchase' }
       );
       EmailService.sendNotification('Alerta de Stock Bajo',
         `El café "${coffee.name}" tiene solo ${formatNumber(item.greenKg)}kg en inventario. Se recomienda realizar una nueva compra.`);

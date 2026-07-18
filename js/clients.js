@@ -13,6 +13,7 @@ const ClientManager = {
 
     if (index >= 0) {
       clients[index] = { ...clients[index], ...client, updatedAt: new Date().toISOString() };
+      client = clients[index];
     } else {
       client.id = Storage.generateId();
       client.createdAt = new Date().toISOString();
@@ -20,14 +21,16 @@ const ClientManager = {
     }
 
     Storage.set(STORAGE_KEYS.CLIENTS, clients);
-    Notifications.add(`Cliente "${client.name}" guardado`, 'success');
+    Notifications.add(`Cliente "${client.name}" guardado`, 'success', {
+      section: 'clients', entityId: client.id, action: 'edit'
+    });
     return client;
   },
 
   delete(id) {
     const clients = this.getAll().filter(c => c.id !== id);
     Storage.set(STORAGE_KEYS.CLIENTS, clients);
-    Notifications.add('Cliente eliminado', 'warning');
+    Notifications.add('Cliente eliminado', 'warning', { section: 'clients' });
   },
 
   renderTable(container) {

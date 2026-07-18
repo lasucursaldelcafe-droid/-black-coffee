@@ -19,6 +19,51 @@ const App = {
     this.navigateTo('dashboard');
   },
 
+  handleNotificationLink(link) {
+    if (!link?.section) return;
+
+    Notifications.closePanel();
+
+    this.navigateTo(link.section);
+
+    if (!link.entityId && !link.action) return;
+
+    setTimeout(() => {
+      const { section, entityId, action } = link;
+
+      switch (section) {
+        case 'quotations':
+          if (action === 'view' && entityId) QuotationManager.view(entityId);
+          break;
+        case 'coffees':
+          if (action === 'edit' && entityId) CoffeeManager.edit(entityId);
+          break;
+        case 'clients':
+          if (action === 'edit' && entityId) ClientManager.edit(entityId);
+          break;
+        case 'suppliers':
+          if (action === 'edit' && entityId) SupplierManager.edit(entityId);
+          break;
+        case 'inventory':
+          if (action === 'purchase' && entityId) InventoryManager.showPurchaseForm(entityId);
+          else if (action === 'roast' && entityId) InventoryManager.showRoastForm(entityId);
+          break;
+        case 'sales':
+          if (entityId) {
+            const row = document.querySelector(`[data-sale-id="${entityId}"]`);
+            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row?.classList.add('highlight-row');
+            setTimeout(() => row?.classList.remove('highlight-row'), 2000);
+          }
+          break;
+        case 'costs':
+          break;
+        default:
+          break;
+      }
+    }, 150);
+  },
+
   bindNavigation() {
     document.querySelectorAll('.nav-item').forEach(item => {
       item.addEventListener('click', () => {
@@ -68,6 +113,7 @@ const App = {
     document.getElementById('save-quotation-btn')?.addEventListener('click', () => QuotationManager.saveFromForm());
     document.getElementById('save-inventory-btn')?.addEventListener('click', () => InventoryManager.saveFromForm());
     document.getElementById('save-sale-btn')?.addEventListener('click', () => SalesManager.saveFromForm());
+    document.getElementById('confirm-import-btn')?.addEventListener('click', () => ImportManager.confirmImport());
     document.getElementById('save-costs-btn')?.addEventListener('click', () => {
       ProductionCosts.saveFromForm();
       document.getElementById('costs-modal')?.classList.remove('active');
@@ -261,6 +307,37 @@ const App = {
       <button class="btn btn-secondary" onclick="CoffeeManager.create()">Agregar Café</button>
       <button class="btn btn-secondary" onclick="ClientManager.create()">Agregar Cliente</button>
     `;
+
+    document.getElementById('dashboard-recent').innerHTML = `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Flujo de Gestión</span></div>
+        <div class="workflow-steps">
+          <button class="workflow-step" onclick="App.navigateTo('inventory')">
+            <span class="workflow-num">1</span>
+            <span>Compra</span>
+            <small>Registrar café verde</small>
+          </button>
+          <span class="workflow-arrow">→</span>
+          <button class="workflow-step" onclick="App.navigateTo('inventory')">
+            <span class="workflow-num">2</span>
+            <span>Transformación</span>
+            <small>Tostión y mermas</small>
+          </button>
+          <span class="workflow-arrow">→</span>
+          <button class="workflow-step" onclick="QuotationManager.create()">
+            <span class="workflow-num">3</span>
+            <span>Cotización</span>
+            <small>Full Pack o Maquila</small>
+          </button>
+          <span class="workflow-arrow">→</span>
+          <button class="workflow-step" onclick="SalesManager.create()">
+            <span class="workflow-num">4</span>
+            <span>Venta</span>
+            <small>Registrar y ver margen</small>
+          </button>
+        </div>
+      </div>
+    ` + document.getElementById('dashboard-recent').innerHTML;
   },
 
   renderSettings() {

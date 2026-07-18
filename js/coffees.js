@@ -7,12 +7,13 @@ const CoffeeManager = {
     return this.getAll().find(c => c.id === id);
   },
 
-  save(coffee) {
+  save(coffee, options = {}) {
     const coffees = this.getAll();
     const index = coffees.findIndex(c => c.id === coffee.id);
 
     if (index >= 0) {
       coffees[index] = { ...coffees[index], ...coffee, updatedAt: new Date().toISOString() };
+      coffee = coffees[index];
     } else {
       coffee.id = Storage.generateId();
       coffee.createdAt = new Date().toISOString();
@@ -32,7 +33,11 @@ const CoffeeManager = {
     }
 
     Storage.set(STORAGE_KEYS.COFFEES, coffees);
-    Notifications.add(`Café "${coffee.name}" guardado`, 'success');
+    if (options.notify !== false) {
+      Notifications.add(`Café "${coffee.name}" guardado`, 'success', {
+        section: 'coffees', entityId: coffee.id, action: 'edit'
+      });
+    }
     return coffee;
   },
 
@@ -47,7 +52,7 @@ const CoffeeManager = {
     Storage.set(STORAGE_KEYS.INVENTORY, inventory);
 
     AuditLog.log('delete_coffee', coffee.name, { coffeeName: coffee.name, coffeeId: id });
-    Notifications.add(`Café "${coffee.name}" eliminado`, 'warning');
+    Notifications.add(`Café "${coffee.name}" eliminado`, 'warning', { section: 'coffees' });
   },
 
   confirmDelete(id) {

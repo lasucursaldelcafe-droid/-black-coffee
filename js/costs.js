@@ -6,7 +6,7 @@ const ProductionCosts = {
   save(costs) {
     costs.lastUpdated = new Date().toISOString();
     Storage.set(STORAGE_KEYS.PRODUCTION_COSTS, costs);
-    Notifications.add('Costos de producción actualizados', 'info');
+    Notifications.add('Costos de producción actualizados', 'info', { section: 'costs' });
     EmailService.sendNotification(
       'Costos de Producción Actualizados',
       'Se han modificado los costos de producción en la plataforma BCA.'
