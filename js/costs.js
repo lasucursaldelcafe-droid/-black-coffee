@@ -66,9 +66,10 @@ const ProductionCosts = {
     };
   },
 
-  calculateUnitCost(coffee, packagingSize, labelSize = 'small') {
+  calculateUnitCost(coffee, packagingSize, labelSizes = ['small']) {
     const costs = this.get();
     const { roastedKg } = this.calculateGreenToRoasted(1, coffee.state);
+    const labels = parseLabelSelection(labelSizes);
     
     const greenCostPerKg = coffee.pricePerKg + (coffee.transportIncluded ? 0 : (coffee.transportCost || 0));
     const greenCostForRoastedKg = greenCostPerKg / roastedKg;
@@ -76,7 +77,12 @@ const ProductionCosts = {
     const roastingCost = costs.roasting;
     const selectionCost = costs.selection;
     const packagingCost = costs.packaging[packagingSize] || 0;
-    const labelCost = costs.labels[labelSize] || costs.labels.small;
+    const labelDetails = labels.map((size) => ({
+      size,
+      name: LABEL_NAMES[size] || size,
+      cost: costs.labels[size] || 0
+    }));
+    const labelCost = labelDetails.reduce((sum, item) => sum + item.cost, 0);
     const increaseCost = costs.costIncrease.enabled ? costs.costIncrease.amount : 0;
 
     const pkg = PACKAGING_SIZES[packagingSize];
@@ -94,6 +100,8 @@ const ProductionCosts = {
       selectionCost: selectionCost * roastedKgNeeded,
       packagingCost,
       labelCost,
+      labelDetails,
+      labels,
       increaseCost,
       totalCost,
       roastedKgNeeded,
@@ -101,8 +109,8 @@ const ProductionCosts = {
     };
   },
 
-  calculateSellingPrice(coffee, packagingSize, profitMargin, clientType, labelSize = 'small') {
-    const unitCost = this.calculateUnitCost(coffee, packagingSize, labelSize);
+  calculateSellingPrice(coffee, packagingSize, profitMargin, clientType, labelSizes = ['small']) {
+    const unitCost = this.calculateUnitCost(coffee, packagingSize, labelSizes);
     const clientMultiplier = CLIENT_TYPES[clientType]?.multiplier || 1;
     const basePrice = unitCost.totalCost * (1 + profitMargin / 100);
     const finalPrice = basePrice / clientMultiplier;

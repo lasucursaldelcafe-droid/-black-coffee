@@ -70,12 +70,13 @@ const QuotationManager = {
         <input type="hidden" id="quot-packaging-value" value="250g">
       </div>
       <div class="form-group">
-        <label>Etiqueta</label>
-        <div class="selection-grid" id="quot-label">
-          <button type="button" class="selection-btn active" data-value="small">Pequeña ($500)</button>
-          <button type="button" class="selection-btn" data-value="large">Grande ($1,000)</button>
+        <label>Etiquetas</label>
+        <p class="form-hint" style="margin-bottom:8px">Selección múltiple: puede incluir pequeña, grande o ambas</p>
+        <div class="selection-grid selection-grid-multi" id="quot-label">
+          <button type="button" class="selection-btn active" data-value="small">Pequeña (${formatCurrency((Storage.get(STORAGE_KEYS.PRODUCTION_COSTS) || DEFAULT_PRODUCTION_COSTS).labels.small)})</button>
+          <button type="button" class="selection-btn" data-value="large">Grande (${formatCurrency((Storage.get(STORAGE_KEYS.PRODUCTION_COSTS) || DEFAULT_PRODUCTION_COSTS).labels.large)})</button>
         </div>
-        <input type="hidden" id="quot-label-value" value="small">
+        <input type="hidden" id="quot-label-value" value='["small"]'>
       </div>
       <div class="form-group">
         <label>Margen de Ganancia</label>
@@ -109,43 +110,72 @@ const QuotationManager = {
   },
 
   bindQuotationEvents() {
-    ['quot-packaging', 'quot-label', 'quot-margin'].forEach(id => {
+    ['quot-packaging', 'quot-margin'].forEach((id) => {
       const container = document.getElementById(id);
       if (!container) return;
-      const hiddenId = id.replace('quot-', '') + '-value';
-      container.querySelectorAll('.selection-btn').forEach(btn => {
+      const hidden = document.getElementById(`${id}-value`);
+      container.querySelectorAll('.selection-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
-          container.querySelectorAll('.selection-btn').forEach(b => b.classList.remove('active'));
+          container.querySelectorAll('.selection-btn').forEach((b) => b.classList.remove('active'));
           btn.classList.add('active');
-          document.getElementById(hiddenId).value = btn.dataset.value;
+          if (hidden) hidden.value = btn.dataset.value;
           this.updatePreview();
         });
       });
     });
 
-    ['quot-client', 'quot-coffee', 'quot-quantity'].forEach(id => {
+    const labelContainer = document.getElementById('quot-label');
+    const labelHidden = document.getElementById('quot-label-value');
+    if (labelContainer && labelHidden) {
+      labelContainer.querySelectorAll('.selection-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          btn.classList.toggle('active');
+          let selected = [...labelContainer.querySelectorAll('.selection-btn.active')].map((b) => b.dataset.value);
+          if (selected.length === 0) {
+            btn.classList.add('active');
+            selected = [btn.dataset.value];
+          }
+          labelHidden.value = JSON.stringify(selected);
+          this.updatePreview();
+        });
+      });
+    }
+
+    ['quot-client', 'quot-coffee', 'quot-quantity'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', () => this.updatePreview());
       document.getElementById(id)?.addEventListener('input', () => this.updatePreview());
     });
+  },
+
+  getSelectedLabels() {
+    return parseLabelSelection(document.getElementById('quot-label-value')?.value);
   },
 
   updatePreview() {
     const coffeeId = document.getElementById('quot-coffee')?.value;
     const clientId = document.getElementById('quot-client')?.value;
     const packaging = document.getElementById('quot-packaging-value')?.value || '250g';
-    const label = document.getElementById('quot-label-value')?.value || 'small';
-    const margin = parseInt(document.getElementById('quot-margin-value')?.value || '35');
-    const quantity = parseInt(document.getElementById('quot-quantity')?.value || '1');
+    const labels = this.getSelectedLabels();
+    const margin = parseInt(document.getElementById('quot-margin-value')?.value || '35', 10);
+    const quantity = parseInt(document.getElementById('quot-quantity')?.value || '1', 10);
     const preview = document.getElementById('quotation-preview-area');
 
-    if (!coffeeId || !clientId || !preview) return;
+    if (!coffeeId || !clientId || !preview) {
+      if (preview) {
+        preview.innerHTML = '<p class="form-hint">Seleccione cliente y café para ver el desglose de costos.</p>';
+      }
+      return;
+    }
 
     const coffee = CoffeeManager.getById(coffeeId);
     const client = ClientManager.getById(clientId);
     if (!coffee || !client) return;
 
-    const pricing = ProductionCosts.calculateSellingPrice(coffee, packaging, margin, client.type, label);
+    const pricing = ProductionCosts.calculateSellingPrice(coffee, packaging, margin, client.type, labels);
     const total = pricing.finalPrice * quantity;
+    const labelRows = pricing.labelDetails.map((item) => `
+      <div class="cost-row"><span class="cost-label">Etiqueta ${item.name}</span><span>${formatCurrency(item.cost)}</span></div>
+    `).join('');
 
     preview.innerHTML = `
       <div class="cost-breakdown">
@@ -154,7 +184,8 @@ const QuotationManager = {
         <div class="cost-row"><span class="cost-label">Tostión</span><span>${formatCurrency(pricing.roastingCost)}</span></div>
         <div class="cost-row"><span class="cost-label">Selección</span><span>${formatCurrency(pricing.selectionCost)}</span></div>
         <div class="cost-row"><span class="cost-label">Empaque</span><span>${formatCurrency(pricing.packagingCost)}</span></div>
-        <div class="cost-row"><span class="cost-label">Etiqueta</span><span>${formatCurrency(pricing.labelCost)}</span></div>
+        ${labelRows}
+        <div class="cost-row"><span class="cost-label">Total etiquetas (${formatLabelSelection(labels)})</span><span>${formatCurrency(pricing.labelCost)}</span></div>
         ${pricing.increaseCost > 0 ? `<div class="cost-row"><span class="cost-label">Costo de Alza</span><span>${formatCurrency(pricing.increaseCost)}</span></div>` : ''}
         <div class="cost-row"><span class="cost-label">Costo Total</span><span>${formatCurrency(pricing.totalCost)}</span></div>
         <div class="cost-row"><span class="cost-label">Margen (${margin}%)</span><span>+${formatCurrency(pricing.finalPrice - pricing.totalCost)}</span></div>
@@ -168,10 +199,10 @@ const QuotationManager = {
     const clientId = document.getElementById('quot-client').value;
     const coffeeId = document.getElementById('quot-coffee').value;
     const packaging = document.getElementById('quot-packaging-value').value;
-    const label = document.getElementById('quot-label-value').value;
-    const margin = parseInt(document.getElementById('quot-margin-value').value);
-    const quantity = parseInt(document.getElementById('quot-quantity').value);
-    const validity = parseInt(document.getElementById('quot-validity').value);
+    const labels = this.getSelectedLabels();
+    const margin = parseInt(document.getElementById('quot-margin-value').value, 10);
+    const quantity = parseInt(document.getElementById('quot-quantity').value, 10);
+    const validity = parseInt(document.getElementById('quot-validity').value, 10);
     const notes = document.getElementById('quot-notes').value;
 
     if (!clientId || !coffeeId) {
@@ -181,13 +212,14 @@ const QuotationManager = {
 
     const coffee = CoffeeManager.getById(coffeeId);
     const client = ClientManager.getById(clientId);
-    const pricing = ProductionCosts.calculateSellingPrice(coffee, packaging, margin, client.type, label);
+    const pricing = ProductionCosts.calculateSellingPrice(coffee, packaging, margin, client.type, labels);
 
     const quotation = {
       clientId,
       coffeeId,
       packaging,
-      label,
+      labels,
+      label: labels.join(','),
       margin,
       quantity,
       validity,
@@ -288,6 +320,7 @@ const QuotationManager = {
         <div style="margin-bottom:24px">
           <p><strong>Cliente:</strong> ${q.clientName}</p>
           <p><strong>Tipo:</strong> ${CLIENT_TYPES[q.clientType]?.label || q.clientType}</p>
+          <p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>
         </div>
         <table style="width:100%;margin-bottom:24px">
           <thead>

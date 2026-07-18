@@ -131,3 +131,30 @@ function formatNumber(num, decimals = 2) {
     maximumFractionDigits: decimals
   }).format(num);
 }
+
+const LABEL_NAMES = {
+  small: 'Pequeña',
+  large: 'Grande'
+};
+
+function formatLabelSelection(labels) {
+  const list = Array.isArray(labels) ? labels : (labels ? [labels] : []);
+  if (list.length === 0) return 'Sin etiqueta';
+  return list.map((label) => LABEL_NAMES[label] || label).join(' + ');
+}
+
+function parseLabelSelection(value) {
+  if (!value) return ['small'];
+  if (Array.isArray(value)) return value.length > 0 ? value : ['small'];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : ['small'];
+  } catch {
+    return value ? [value] : ['small'];
+  }
+}
+
+function calculateLabelCost(labels, costs) {
+  const list = parseLabelSelection(labels);
+  return list.reduce((sum, size) => sum + (costs.labels[size] || 0), 0);
+}
