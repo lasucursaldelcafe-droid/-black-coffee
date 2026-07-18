@@ -20,6 +20,7 @@ const App = {
 
     this.bindNavigation();
     this.bindModals();
+    this.bindSyncEvents();
     this.renderUserInfo();
     this.applySettings();
     this.checkProductionCostsModal();
@@ -72,6 +73,49 @@ const App = {
           break;
       }
     }, 150);
+  },
+
+  bindSyncEvents() {
+    window.addEventListener('bca-data-changed', () => {
+      this.applySettings();
+      this.renderSection(this.currentSection);
+      Notifications.updateBadge();
+      FirebaseSync.updateStatusElement();
+    });
+
+    window.addEventListener('bca-sync-complete', (event) => {
+      const { pushed, pulled } = event.detail || {};
+      Toast.show(`Sincronización completa · ${pushed} enviados · ${pulled} recibidos`, 'success');
+      this.applySettings();
+      this.renderSection(this.currentSection);
+      Notifications.updateBadge();
+      FirebaseSync.updateStatusElement();
+    });
+  },
+
+  async runFullSync() {
+    const btn = document.getElementById('sync-all-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Sincronizando...';
+    }
+    FirebaseSync.updateStatusElement();
+
+    try {
+      const result = await FirebaseSync.syncAll();
+      Toast.show(`Todo sincronizado · ${result.pushed} enviados · ${result.pulled} recibidos`, 'success');
+      this.applySettings();
+      this.renderSection(this.currentSection);
+      Notifications.updateBadge();
+    } catch (error) {
+      Toast.show(error.message || 'No se pudo sincronizar', 'danger');
+    } finally {
+      FirebaseSync.updateStatusElement();
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Sincronizar todo';
+      }
+    }
   },
 
   bindNavigation() {
@@ -407,7 +451,10 @@ const App = {
           Estado de sincronización en la nube. Sin Firebase configurado, los datos solo viven en este navegador.
         </p>
         <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
-        <p class="form-hint">Configura los 6 secrets de Firebase en GitHub Actions. Guía: docs/FIREBASE_SETUP.md</p>
+        <p class="form-hint" style="margin-bottom:12px">
+          Los datos se comparten entre dispositivos en tiempo real. La sesión de login no se sincroniza.
+        </p>
+        <button type="button" class="btn btn-secondary" id="sync-all-btn">Sincronizar todo</button>
       </div>
       <div class="card">
         <div class="card-header"><span class="card-title">Alertas de Inventario</span></div>
@@ -440,6 +487,7 @@ const App = {
     }
 
     document.getElementById('save-settings-btn')?.addEventListener('click', () => this.saveSettings());
+    document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
   },
 
   saveSettings() {
