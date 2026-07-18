@@ -194,7 +194,7 @@ const App = {
 
     document.getElementById('dashboard-alerts').innerHTML = alerts.join('');
 
-    const recentSales = sales.slice(0, 5);
+    const recentSales = [...sales].sort((a, b) => new Date(b.soldAt) - new Date(a.soldAt)).slice(0, 5);
     document.getElementById('dashboard-recent').innerHTML = recentSales.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
