@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Black Coffee Administration</title>
+  <meta name="description" content="Plataforma contable y logística para distribución de café specialty — Black Coffee Administration." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+</head>
+<body>
+  <div id="app">
+    <!-- LOGIN -->
+    <section id="view-login" class="view view-login is-active">
+      <div class="login-hero" aria-hidden="true">
+        <div class="login-hero__overlay"></div>
+        <img
+          class="login-hero__img"
+          src="https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=1920&q=80"
+          alt=""
+        />
+      </div>
+      <div class="login-panel">
+        <div class="login-brand">
+          <div class="brand-mark" id="login-logo-fallback">BC</div>
+          <img id="login-logo" class="brand-logo is-hidden" alt="Black Coffee" />
+          <h1 class="login-title">Black Coffee<br /><span>Administration</span></h1>
+          <p class="login-sub">Control de costos, cotizaciones, inventario y logística specialty.</p>
+        </div>
+        <form id="login-form" class="login-form" autocomplete="on">
+          <label class="field">
+            <span>Usuario</span>
+            <select id="login-user" required>
+              <option value="">Seleccionar usuario</option>
+              <option value="ximena">Ximena Polo</option>
+              <option value="pablo">Pablo Colorado Gómez</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Contraseña</span>
+            <input type="password" id="login-pass" required placeholder="••••••••" />
+          </label>
+          <p id="login-error" class="form-error" hidden></p>
+          <button type="submit" class="btn btn-primary btn-block">Ingresar a la plataforma</button>
+        </form>
+        <p class="login-foot">Notificaciones → ghostspecialtycoffee@gmail.com</p>
+      </div>
+    </section>
+
+    <!-- APP SHELL -->
+    <section id="view-app" class="view view-app">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand-mark brand-mark--sm" id="sidebar-logo-fallback">BC</div>
+          <img id="sidebar-logo" class="brand-logo brand-logo--sm is-hidden" alt="Logo" />
+          <div>
+            <strong>Black Coffee</strong>
+            <small>Administration</small>
+          </div>
+        </div>
+        <nav class="sidebar__nav" id="main-nav">
+          <button data-route="dashboard" class="nav-item is-active">Dashboard</button>
+          <button data-route="costos" class="nav-item">Costos producción</button>
+          <button data-route="cafes" class="nav-item">Variedades / Café</button>
+          <button data-route="inventario" class="nav-item">Inventario</button>
+          <button data-route="cotizaciones" class="nav-item">Cotizaciones</button>
+          <button data-route="compras" class="nav-item">Compras</button>
+          <button data-route="ventas" class="nav-item">Ventas</button>
+          <button data-route="clientes" class="nav-item">Clientes</button>
+          <button data-route="proveedores" class="nav-item">Proveedores</button>
+          <button data-route="notificaciones" class="nav-item">Notificaciones <span class="badge" id="nav-notif-count">0</span></button>
+          <button data-route="branding" class="nav-item">Branding / Visual</button>
+        </nav>
+        <div class="sidebar__user">
+          <div>
+            <strong id="session-name">—</strong>
+            <small id="session-role">Operador</small>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-logout">Salir</button>
+        </div>
+      </aside>
+
+      <div class="main-wrap">
+        <header class="topbar">
+          <button type="button" class="btn btn-ghost btn-icon" id="btn-menu" aria-label="Menú">☰</button>
+          <div class="topbar__title">
+            <h2 id="page-title">Dashboard</h2>
+            <p id="page-sub">Resumen operativo</p>
+          </div>
+          <div class="topbar__actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-quick-quote">Nueva cotización</button>
+            <button type="button" class="notif-bell" id="btn-bell" aria-label="Notificaciones">
+              <span>🔔</span>
+              <i id="bell-count">0</i>
+            </button>
+          </div>
+        </header>
+
+        <main class="content" id="content"></main>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODAL: cambio de costos -->
+  <div class="modal" id="modal-cost-check" role="dialog" aria-modal="true" aria-labelledby="cost-check-title" hidden>
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel modal__panel--wide">
+      <h3 id="cost-check-title">¿Hay algún cambio en los costos de producción?</h3>
+      <p class="modal__lead">Al ingresar, confirma si los parámetros base siguen vigentes o actualízalos ahora.</p>
+      <div class="chip-row" id="cost-check-choice">
+        <button type="button" class="chip chip--active" data-cost-choice="no">No, todo igual</button>
+        <button type="button" class="chip" data-cost-choice="yes">Sí, hay cambios</button>
+      </div>
+      <div id="cost-check-editor" class="cost-check-editor is-collapsed"></div>
+      <div class="modal__actions">
+        <button type="button" class="btn btn-primary" id="btn-confirm-costs">Continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL genérico -->
+  <div class="modal" id="modal-generic" role="dialog" aria-modal="true" hidden>
+    <div class="modal__backdrop" data-close-modal></div>
+    <div class="modal__panel" id="modal-generic-panel">
+      <button type="button" class="modal__close" data-close-modal aria-label="Cerrar">×</button>
+      <div id="modal-generic-body"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <!-- Plantilla PDF oculta -->
+  <div id="pdf-root" class="pdf-root" aria-hidden="true"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/calculator.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
