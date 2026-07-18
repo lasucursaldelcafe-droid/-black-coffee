@@ -25,16 +25,30 @@ const InventoryManager = {
     return inventory[index];
   },
 
-  addPurchase(coffeeId, kg, cost, supplierId = null) {
+  addPurchase(coffeeId, kg, cost, supplierIds = {}) {
     const item = this.getByCoffeeId(coffeeId);
     const coffee = CoffeeManager.getById(coffeeId);
     if (!item || !coffee) return;
+
+    const coffeeSupplierId = typeof supplierIds === 'string'
+      ? supplierIds
+      : (supplierIds.compra || supplierIds.coffee || null);
+    const transportSupplierId = typeof supplierIds === 'object' ? (supplierIds.transporte || null) : null;
 
     const newKg = item.greenKg + kg;
     this.update(coffeeId, { greenKg: newKg }, {
       action: 'purchase',
       entity: coffee.name,
-      details: { coffeeName: coffee.name, coffeeId, kg, costPerKg: cost, supplierId }
+      details: {
+        coffeeName: coffee.name,
+        coffeeId,
+        kg,
+        costPerKg: cost,
+        supplierId: coffeeSupplierId,
+        supplierName: SupplierManager.getName(coffeeSupplierId),
+        transportSupplierId,
+        transportSupplierName: SupplierManager.getName(transportSupplierId)
+      }
     });
 
     const purchases = Storage.get(STORAGE_KEYS.PURCHASES) || [];
@@ -45,7 +59,8 @@ const InventoryManager = {
       kg,
       costPerKg: cost,
       totalCost: kg * cost,
-      supplierId: supplierId || null,
+      supplierId: coffeeSupplierId,
+      transportSupplierId,
       userId: session?.userId,
       userName: session?.name,
       date: new Date().toISOString()
@@ -59,7 +74,7 @@ const InventoryManager = {
       `Se registró una compra de ${kg}kg de café por ${session?.name || 'usuario'}. Costo: ${formatCurrency(kg * cost)}`);
   },
 
-  processRoasting(coffeeId, greenKg) {
+  processRoasting(coffeeId, greenKg, supplierId = null) {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
 
@@ -81,7 +96,9 @@ const InventoryManager = {
         coffeeId,
         greenKg,
         roastedKg: result.roastedKg,
-        mermaKg: greenKg - result.roastedKg
+        mermaKg: greenKg - result.roastedKg,
+        supplierId,
+        supplierName: SupplierManager.getName(supplierId)
       }
     });
 
@@ -89,6 +106,56 @@ const InventoryManager = {
       section: 'inventory', entityId: coffeeId, action: 'roast'
     });
     return result;
+  },
+
+  registerProductionBatch(coffeeId, greenKg, processSuppliers = {}) {
+    const coffee = CoffeeManager.getById(coffeeId);
+    if (!coffee) return;
+
+    const activeSteps = ProductionCosts.getActiveSteps({
+      productionMode: 'full_pack',
+      coffee,
+      grindType: 'grano'
+    });
+
+    const result = this.processRoasting(coffeeId, greenKg, processSuppliers.tostion || null);
+    if (!result) return;
+
+    const steps = activeSteps.map((stepKey) => ({
+      step: stepKey,
+      label: getProcessSupplierLabel(stepKey),
+      supplierId: processSuppliers[stepKey] || null,
+      supplierName: SupplierManager.getName(processSuppliers[stepKey])
+    }));
+
+    const batches = Storage.get(STORAGE_KEYS.PRODUCTION_BATCHES) || [];
+    const session = Auth.getSession();
+    batches.unshift({
+      id: Storage.generateId(),
+      coffeeId,
+      coffeeName: coffee.name,
+      greenKg,
+      roastedKg: result.roastedKg,
+      processSuppliers,
+      steps,
+      userId: session?.userId,
+      userName: session?.name,
+      createdAt: new Date().toISOString()
+    });
+    if (batches.length > 100) batches.length = 100;
+    Storage.set(STORAGE_KEYS.PRODUCTION_BATCHES, batches);
+
+    AuditLog.log('production_batch', coffee.name, {
+      coffeeName: coffee.name,
+      coffeeId,
+      greenKg,
+      roastedKg: result.roastedKg,
+      steps
+    });
+
+    Notifications.add(`Lote de producción registrado: ${coffee.name}`, 'success', {
+      section: 'inventory', entityId: coffeeId
+    });
   },
 
   adjustStock(coffeeId, field, newValue, reason = '') {
@@ -209,6 +276,7 @@ const InventoryManager = {
           <div class="action-buttons">
             <button class="btn btn-sm btn-primary" onclick="InventoryManager.showPurchaseForm('${coffee.id}')">Registrar Compra</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showRoastForm('${coffee.id}')">Registrar Tostión</button>
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote con Proveedores</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showAdjustForm('${coffee.id}')">Ajustar Stock</button>
           </div>
         </div>
@@ -233,6 +301,7 @@ const InventoryManager = {
 
   showPurchaseForm(coffeeId) {
     const coffee = CoffeeManager.getById(coffeeId);
+    const defaults = ProductionCosts.get().defaultSuppliers || {};
     const modal = document.getElementById('inventory-modal');
     document.getElementById('inventory-modal-title').textContent = `Compra - ${coffee.name}`;
 
@@ -250,11 +319,12 @@ const InventoryManager = {
         </div>
       </div>
       <div class="form-group">
-        <label>Proveedor</label>
-        <select class="form-control" id="inv-supplier">
-          <option value="">Seleccionar...</option>
-          ${SupplierManager.getAll().map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}
-        </select>
+        <label>Proveedor de Café</label>
+        ${SupplierManager.renderSelect('compra', { id: 'inv-supplier-coffee', selectedId: defaults.compra || '' })}
+      </div>
+      <div class="form-group">
+        <label>Proveedor Logístico (opcional)</label>
+        ${SupplierManager.renderSelect('transporte', { id: 'inv-supplier-transport', selectedId: defaults.transporte || '', placeholder: 'Sin transporte externo...' })}
       </div>
     `;
 
@@ -264,6 +334,7 @@ const InventoryManager = {
   showRoastForm(coffeeId) {
     const coffee = CoffeeManager.getById(coffeeId);
     const item = this.getByCoffeeId(coffeeId);
+    const defaults = ProductionCosts.get().defaultSuppliers || {};
     const modal = document.getElementById('inventory-modal');
     document.getElementById('inventory-modal-title').textContent = `Tostión - ${coffee.name}`;
 
@@ -275,6 +346,10 @@ const InventoryManager = {
         <label>Cantidad a Tostar (kg verde)</label>
         <input type="number" class="form-control" id="inv-kg" step="0.1" max="${item.greenKg}" required>
       </div>
+      <div class="form-group">
+        <label>Tostador</label>
+        ${SupplierManager.renderSelect('tostion', { id: 'inv-supplier-roast', selectedId: defaults.tostion || '' })}
+      </div>
       <div id="roast-preview" style="margin-top:16px"></div>
     `;
 
@@ -282,6 +357,57 @@ const InventoryManager = {
       const kg = parseFloat(e.target.value);
       if (kg > 0) {
         const result = ProductionCosts.calculateGreenToRoasted(kg, coffee.state);
+        document.getElementById('roast-preview').innerHTML = `
+          <div class="cost-breakdown">
+            <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(kg)} kg verde</span></div>
+            <div class="cost-row"><span class="cost-label">Salida estimada</span><span>${formatNumber(result.roastedKg)} kg tostado</span></div>
+            <div class="cost-row"><span class="cost-label">Merma total</span><span>${formatNumber(kg - result.roastedKg)} kg</span></div>
+          </div>`;
+      }
+    });
+
+    modal.classList.add('active');
+  },
+
+  showProductionBatchForm(coffeeId) {
+    const coffee = CoffeeManager.getById(coffeeId);
+    const item = this.getByCoffeeId(coffeeId);
+    const defaults = ProductionCosts.get().defaultSuppliers || {};
+    const activeSteps = ProductionCosts.getActiveSteps({
+      productionMode: 'full_pack',
+      coffee,
+      grindType: 'grano'
+    });
+    const modal = document.getElementById('inventory-modal');
+    document.getElementById('inventory-modal-title').textContent = `Lote de Producción - ${coffee.name}`;
+
+    document.getElementById('inventory-form').innerHTML = `
+      <input type="hidden" id="inv-coffee-id" value="${coffeeId}">
+      <input type="hidden" id="inv-action" value="production_batch">
+      <p class="form-hint" style="margin-bottom:16px">
+        Registre el lote indicando qué proveedor realizó cada proceso. Stock verde: <strong>${formatNumber(item.greenKg)} kg</strong>
+      </p>
+      <div class="form-group">
+        <label>Cantidad a procesar (kg verde)</label>
+        <input type="number" class="form-control" id="inv-kg" step="0.1" max="${item.greenKg}" required>
+      </div>
+      <h4 style="margin:16px 0 8px;font-size:0.95rem;color:var(--text-secondary)">Proveedores por proceso</h4>
+      ${activeSteps.map((stepKey) => `
+        <div class="form-group">
+          <label>${getProcessSupplierLabel(stepKey)}</label>
+          ${SupplierManager.renderSelect(stepKey, {
+            id: `inv-supplier-${stepKey}`,
+            selectedId: defaults[stepKey] || ''
+          })}
+        </div>
+      `).join('')}
+      <div id="roast-preview" style="margin-top:16px"></div>
+    `;
+
+    document.getElementById('inv-kg')?.addEventListener('input', (e) => {
+      const kg = parseFloat(e.target.value);
+      if (kg > 0) {
+        const result = ProductionCosts.calculateGreenToRoasted(kg, coffee.state, activeSteps);
         document.getElementById('roast-preview').innerHTML = `
           <div class="cost-breakdown">
             <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(kg)} kg verde</span></div>
@@ -345,19 +471,40 @@ const InventoryManager = {
     if (action === 'purchase') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       const cost = parseFloat(document.getElementById('inv-cost').value);
-      const supplierId = document.getElementById('inv-supplier')?.value || null;
       if (!kg || kg <= 0) {
         Toast.show('Ingrese una cantidad válida', 'danger');
         return;
       }
-      this.addPurchase(coffeeId, kg, cost, supplierId);
+      this.addPurchase(coffeeId, kg, cost, {
+        compra: document.getElementById('inv-supplier-coffee')?.value || null,
+        transporte: document.getElementById('inv-supplier-transport')?.value || null
+      });
     } else if (action === 'roast') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       if (!kg || kg <= 0) {
         Toast.show('Ingrese una cantidad válida', 'danger');
         return;
       }
-      this.processRoasting(coffeeId, kg);
+      const supplierId = document.getElementById('inv-supplier-roast')?.value || null;
+      this.processRoasting(coffeeId, kg, supplierId);
+    } else if (action === 'production_batch') {
+      const kg = parseFloat(document.getElementById('inv-kg').value);
+      if (!kg || kg <= 0) {
+        Toast.show('Ingrese una cantidad válida', 'danger');
+        return;
+      }
+      const coffee = CoffeeManager.getById(coffeeId);
+      const activeSteps = ProductionCosts.getActiveSteps({
+        productionMode: 'full_pack',
+        coffee,
+        grindType: 'grano'
+      });
+      const processSuppliers = {};
+      activeSteps.forEach((stepKey) => {
+        const el = document.getElementById(`inv-supplier-${stepKey}`);
+        if (el?.value) processSuppliers[stepKey] = el.value;
+      });
+      this.registerProductionBatch(coffeeId, kg, processSuppliers);
     } else if (action === 'adjust') {
       const field = document.getElementById('inv-field').value;
       const newValue = document.getElementById('inv-new-value').value;

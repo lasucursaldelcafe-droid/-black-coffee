@@ -52,7 +52,15 @@ const PDFGenerator = {
     doc.text(`Tipo: ${CLIENT_TYPES[quotation.clientType]?.label || quotation.clientType}`, 50, 68);
     doc.text(`Modo: ${mode}`, 50, 74);
 
-    doc.line(20, 80, 190, 80);
+    if (quotation.processSuppliers && Object.keys(quotation.processSuppliers).length) {
+      const supplierText = QuotationManager.formatProcessSuppliers(quotation.processSuppliers);
+      const split = doc.splitTextToSize(`Proveedores: ${supplierText}`, 140);
+      doc.setFontSize(8);
+      doc.text(split, 50, 80);
+      doc.setFontSize(10);
+    }
+
+    doc.line(20, quotation.processSuppliers ? 88 : 80, 190, quotation.processSuppliers ? 88 : 80);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);

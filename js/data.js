@@ -72,12 +72,91 @@ const DataSeed = {
         {
           id: Storage.generateId(),
           name: 'Óscar Alejandro',
+          category: 'coffee',
           type: 'Caficultor',
+          services: [],
           region: 'Cauca',
+          department: 'Cauca',
+          city: 'Piendamó',
+          address: 'Vereda El Paraíso',
+          invima: '',
+          kimba: '',
           contact: 'Óscar Alejandro',
           email: '',
           phone: '',
           notes: 'Productor de café de especialidad en el Cauca. Fermentación controlada.',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: Storage.generateId(),
+          name: 'Ghost Specialty Coffee — Tostión',
+          category: 'operational',
+          type: 'Tostador',
+          services: ['tostion', 'seleccion', 'empacada'],
+          region: 'Huila',
+          department: 'Huila',
+          city: 'Pitalito',
+          address: 'Bruselas, Pitalito',
+          invima: 'RSA-GHOST-001',
+          kimba: '',
+          contact: 'Producción Ghost',
+          email: 'ghostspecialtycoffee@gmail.com',
+          phone: '',
+          notes: 'Planta de tostión y empacado principal.',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: Storage.generateId(),
+          name: 'Beneficio La Trilla',
+          category: 'operational',
+          type: 'Trilladora',
+          services: ['trilla', 'greenSelection'],
+          region: 'Huila',
+          department: 'Huila',
+          city: 'Pitalito',
+          address: 'Km 2 vía Bruselas',
+          invima: '',
+          kimba: '',
+          contact: 'Coordinación Beneficio',
+          email: '',
+          phone: '',
+          notes: 'Trilla y selección en verde.',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: Storage.generateId(),
+          name: 'Transportes del Huila',
+          category: 'logistics',
+          type: 'Transporte',
+          services: ['transporte'],
+          region: 'Huila',
+          department: 'Huila',
+          city: 'Neiva',
+          address: 'Terminal de cargas',
+          invima: '',
+          kimba: 'KIMBA-TH-2024',
+          contact: 'Despachos',
+          email: '',
+          phone: '',
+          notes: 'Flete origen Huila → punto de tostión. Tarifa referencia $1,500/kg.',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: Storage.generateId(),
+          name: 'Fresco Coffee — Empaque',
+          category: 'operational',
+          type: 'Empacadora',
+          services: ['empacada', 'seleccion'],
+          region: 'Valle del Cauca',
+          department: 'Valle del Cauca',
+          city: 'Cali',
+          address: 'Bodega maquila Cali',
+          invima: 'RSA-FRESCO-01',
+          kimba: '',
+          contact: 'Fresco Coffee',
+          email: '',
+          phone: '',
+          notes: 'Maquila y empacado para Fresco Coffee. Presentación 340g.',
           createdAt: new Date().toISOString()
         }
       ];
@@ -108,6 +187,9 @@ const DataSeed = {
     }
     if (!Storage.get(STORAGE_KEYS.SALES)) {
       Storage.set(STORAGE_KEYS.SALES, []);
+    }
+    if (!Storage.get(STORAGE_KEYS.PRODUCTION_BATCHES)) {
+      Storage.set(STORAGE_KEYS.PRODUCTION_BATCHES, []);
     }
     if (!Storage.get(STORAGE_KEYS.NOTIFICATIONS)) {
       Storage.set(STORAGE_KEYS.NOTIFICATIONS, []);

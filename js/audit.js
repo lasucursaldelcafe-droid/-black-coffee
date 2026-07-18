@@ -1,9 +1,11 @@
 const AUDIT_ACTIONS = {
   purchase: 'Compra',
   roast: 'Tostión',
+  production_batch: 'Lote de producción',
   adjust: 'Ajuste manual',
   delete_coffee: 'Eliminación de café',
   delete_quotation: 'Eliminación de cotización',
+  delete_supplier: 'Eliminación de proveedor',
   update_inventory: 'Actualización de inventario',
   sale: 'Venta registrada',
   delete_sale: 'Eliminación de venta'
@@ -74,9 +76,11 @@ const AuditLog = {
     const icons = {
       purchase: '📥',
       roast: '🔥',
+      production_batch: '⚙️',
       adjust: '✏️',
       delete_coffee: '🗑️',
       delete_quotation: '🗑️',
+      delete_supplier: '🗑️',
       update_inventory: '📦',
       sale: '💰',
       delete_sale: '🗑️'
@@ -88,15 +92,19 @@ const AuditLog = {
     const d = entry.details || {};
     switch (entry.action) {
       case 'purchase':
-        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg)} kg verde${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}`;
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg)} kg verde${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'roast':
-        return `${d.coffeeName || entry.entity}: ${formatNumber(d.greenKg)} kg verde → ${formatNumber(d.roastedKg)} kg tostado`;
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.greenKg)} kg verde → ${formatNumber(d.roastedKg)} kg tostado${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'production_batch':
+        return `${d.coffeeName || entry.entity}: ${d.steps?.map((s) => `${s.label}: ${s.supplierName || '—'}`).join(' · ') || 'Lote registrado'}`;
       case 'adjust':
         return `${d.coffeeName || entry.entity}: ${d.field} ${d.previousValue} → ${d.newValue} kg${d.reason ? ` · ${d.reason}` : ''}`;
       case 'delete_coffee':
         return `Café eliminado: ${d.coffeeName || entry.entity}`;
       case 'delete_quotation':
         return `Cotización eliminada: ${d.number || entry.entity}`;
+      case 'delete_supplier':
+        return `Proveedor eliminado: ${d.name || entry.entity}`;
       case 'sale':
         return `${d.coffeeName || entry.entity}: ${d.quantity} × ${d.packaging || ''} · ${formatCurrency(d.totalRevenue || 0)} · Margen ${formatNumber(d.profitMargin || 0, 1)}% · Vendió: ${d.soldBy || entry.userName}`;
       case 'delete_sale':

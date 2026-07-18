@@ -183,13 +183,108 @@ const QuotationManager = {
         <textarea class="form-control" id="quot-notes" rows="2" placeholder="Condiciones especiales, descuentos, etc."></textarea>
       </div>
 
+      <div id="quot-suppliers-section" style="display:none;margin-top:8px">
+        <div class="form-group">
+          <label>Proveedores por Proceso</label>
+          <p class="form-hint" style="margin-bottom:8px">Indique dónde se realizará cada etapa (tostador, empacadora, transporte, etc.)</p>
+          <div id="quot-suppliers-fields"></div>
+        </div>
+      </div>
+
       <div id="quotation-preview-area" style="margin-top:20px"></div>
     `;
 
     this.bindQuotationEvents();
     this.updateModeVisibility();
+    this.updateSupplierFields();
     this.updatePreview();
     modal.classList.add('active');
+  },
+
+  getActiveQuoteSteps() {
+    const coffeeId = document.getElementById('quot-coffee')?.value;
+    const coffee = coffeeId ? CoffeeManager.getById(coffeeId) : null;
+    if (!coffee) return [];
+
+    const options = this.getQuoteOptions();
+    return ProductionCosts.getActiveSteps({
+      productionMode: options.productionMode,
+      coffee,
+      maquilaSteps: options.maquilaSteps,
+      grindType: options.grindType
+    });
+  },
+
+  updateSupplierFields() {
+    const section = document.getElementById('quot-suppliers-section');
+    const container = document.getElementById('quot-suppliers-fields');
+    if (!section || !container) return;
+
+    const coffeeId = document.getElementById('quot-coffee')?.value;
+    if (!coffeeId) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const options = this.getQuoteOptions();
+    const steps = this.getActiveQuoteSteps();
+    const defaults = ProductionCosts.get().defaultSuppliers || {};
+    const fields = [];
+
+    if (options.productionMode === 'full_pack' || !options.clientProvidesCoffee) {
+      fields.push(`
+        <div class="form-group">
+          <label>${getProcessSupplierLabel('compra')}</label>
+          ${SupplierManager.renderSelect('compra', { id: 'quot-supplier-compra', selectedId: defaults.compra || '' })}
+        </div>
+        <div class="form-group">
+          <label>${getProcessSupplierLabel('transporte')}</label>
+          ${SupplierManager.renderSelect('transporte', { id: 'quot-supplier-transporte', selectedId: defaults.transporte || '', placeholder: 'Opcional...' })}
+        </div>
+      `);
+    }
+
+    steps.forEach((stepKey) => {
+      fields.push(`
+        <div class="form-group">
+          <label>${getProcessSupplierLabel(stepKey)}</label>
+          ${SupplierManager.renderSelect(stepKey, {
+            id: `quot-supplier-${stepKey}`,
+            selectedId: defaults[stepKey] || ''
+          })}
+        </div>
+      `);
+    });
+
+    section.style.display = fields.length ? 'block' : 'none';
+    container.innerHTML = fields.join('');
+  },
+
+  getProcessSuppliersFromForm() {
+    const suppliers = {};
+    const options = this.getQuoteOptions();
+    const steps = this.getActiveQuoteSteps();
+
+    if (options.productionMode === 'full_pack' || !options.clientProvidesCoffee) {
+      const compra = document.getElementById('quot-supplier-compra')?.value;
+      const transporte = document.getElementById('quot-supplier-transporte')?.value;
+      if (compra) suppliers.compra = compra;
+      if (transporte) suppliers.transporte = transporte;
+    }
+
+    steps.forEach((stepKey) => {
+      const value = document.getElementById(`quot-supplier-${stepKey}`)?.value;
+      if (value) suppliers[stepKey] = value;
+    });
+
+    return suppliers;
+  },
+
+  formatProcessSuppliers(processSuppliers = {}) {
+    return Object.entries(processSuppliers)
+      .filter(([, id]) => id)
+      .map(([key, id]) => `${getProcessSupplierLabel(key)}: ${SupplierManager.getName(id)}`)
+      .join(' · ');
   },
 
   bindQuotationEvents() {
@@ -201,6 +296,7 @@ const QuotationManager = {
         btn.classList.add('active');
         if (modeHidden) modeHidden.value = btn.dataset.value;
         this.updateModeVisibility();
+        this.updateSupplierFields();
         this.updatePreview();
       });
     });
@@ -209,6 +305,7 @@ const QuotationManager = {
       document.getElementById('client-coffee-status').textContent = e.target.checked
         ? 'Sí, el cliente aporta el café'
         : 'No, nosotros compramos el café';
+      this.updateSupplierFields();
       this.updatePreview();
     });
 
@@ -216,10 +313,16 @@ const QuotationManager = {
     this.bindSingleSelect('quot-packaging', 'quot-packaging-value');
     this.bindSingleSelect('quot-grind', 'quot-grind-value');
     this.bindSingleSelect('quot-margin', 'quot-margin-value');
+    document.getElementById('quot-grind')?.querySelectorAll('.selection-btn').forEach((btn) => {
+      btn.addEventListener('click', () => setTimeout(() => this.updateSupplierFields(), 0));
+    });
     this.bindMultiSelect('quot-label', 'quot-label-value', true);
 
     ['quot-client', 'quot-coffee', 'quot-quantity'].forEach((id) => {
-      document.getElementById(id)?.addEventListener('change', () => this.updatePreview());
+      document.getElementById(id)?.addEventListener('change', () => {
+        if (id === 'quot-coffee') this.updateSupplierFields();
+        this.updatePreview();
+      });
       document.getElementById(id)?.addEventListener('input', () => this.updatePreview());
     });
   },
@@ -253,6 +356,9 @@ const QuotationManager = {
           selected = [btn.dataset.value];
         }
         hidden.value = JSON.stringify(selected);
+        if (containerId === 'quot-maquila-steps') {
+          QuotationManager.updateSupplierFields();
+        }
         this.updatePreview();
       });
     });
@@ -370,6 +476,7 @@ const QuotationManager = {
     const validity = parseInt(document.getElementById('quot-validity').value, 10);
     const notes = document.getElementById('quot-notes').value;
     const options = this.getQuoteOptions();
+    const processSuppliers = this.getProcessSuppliersFromForm();
 
     if (!clientId || !coffeeId) {
       Toast.show('Seleccione cliente y café', 'danger');
@@ -401,6 +508,7 @@ const QuotationManager = {
       maquilaSteps: options.maquilaSteps,
       clientProvidesCoffee: options.clientProvidesCoffee,
       grindType: options.grindType,
+      processSuppliers,
       unitPrice: pricing.finalPrice,
       totalPrice: pricing.finalPrice * quantity,
       costBreakdown: pricing,
@@ -535,6 +643,7 @@ const QuotationManager = {
           <p><strong>Preparación:</strong> ${GRIND_TYPES[q.grindType || 'grano']?.label || 'En Grano'}</p>
           ${q.productionMode === 'full_pack' ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : ''}
           ${q.productionMode === 'maquila' ? `<p><strong>Café:</strong> ${q.clientProvidesCoffee ? 'Aportado por el cliente' : 'Comprado por BCA'}</p>` : ''}
+          ${q.processSuppliers && Object.keys(q.processSuppliers).length ? `<p><strong>Proveedores:</strong> ${this.formatProcessSuppliers(q.processSuppliers)}</p>` : ''}
         </div>
         <table style="width:100%;margin-bottom:24px">
           <thead>

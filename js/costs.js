@@ -416,6 +416,48 @@ const ProductionCosts = {
           <input type="number" class="form-control" id="merma-seleccion" value="${m.seleccion}" step="0.1">
         </div>
       </div>
+      <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Proveedores por Defecto</h4>
+      <p class="form-hint" style="margin-bottom:12px">Se preseleccionan al registrar compras, tostión, lotes y cotizaciones</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Proveedor de Café</label>
+          ${SupplierManager.renderSelect('compra', { id: 'default-supplier-compra', selectedId: costs.defaultSuppliers?.compra || '' })}
+        </div>
+        <div class="form-group">
+          <label>Transporte / Logística</label>
+          ${SupplierManager.renderSelect('transporte', { id: 'default-supplier-transporte', selectedId: costs.defaultSuppliers?.transporte || '' })}
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Trilladora</label>
+          ${SupplierManager.renderSelect('trilla', { id: 'default-supplier-trilla', selectedId: costs.defaultSuppliers?.trilla || '' })}
+        </div>
+        <div class="form-group">
+          <label>Selección en Verde</label>
+          ${SupplierManager.renderSelect('greenSelection', { id: 'default-supplier-greenSelection', selectedId: costs.defaultSuppliers?.greenSelection || '' })}
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tostador</label>
+          ${SupplierManager.renderSelect('tostion', { id: 'default-supplier-tostion', selectedId: costs.defaultSuppliers?.tostion || '' })}
+        </div>
+        <div class="form-group">
+          <label>Selección Post-Tostión</label>
+          ${SupplierManager.renderSelect('seleccion', { id: 'default-supplier-seleccion', selectedId: costs.defaultSuppliers?.seleccion || '' })}
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Molienda</label>
+          ${SupplierManager.renderSelect('molienda', { id: 'default-supplier-molienda', selectedId: costs.defaultSuppliers?.molienda || '' })}
+        </div>
+        <div class="form-group">
+          <label>Empacadora</label>
+          ${SupplierManager.renderSelect('empacada', { id: 'default-supplier-empacada', selectedId: costs.defaultSuppliers?.empacada || '' })}
+        </div>
+      </div>
     `;
 
     document.getElementById('cost-increase-enabled')?.addEventListener('change', (e) => {
@@ -458,6 +500,16 @@ const ProductionCosts = {
         greenSelection: parseFloat(document.getElementById('merma-green-selection').value),
         tostion: parseFloat(document.getElementById('merma-tostion').value),
         seleccion: parseFloat(document.getElementById('merma-seleccion').value)
+      },
+      defaultSuppliers: {
+        compra: document.getElementById('default-supplier-compra')?.value || null,
+        transporte: document.getElementById('default-supplier-transporte')?.value || null,
+        trilla: document.getElementById('default-supplier-trilla')?.value || null,
+        greenSelection: document.getElementById('default-supplier-greenSelection')?.value || null,
+        tostion: document.getElementById('default-supplier-tostion')?.value || null,
+        seleccion: document.getElementById('default-supplier-seleccion')?.value || null,
+        molienda: document.getElementById('default-supplier-molienda')?.value || null,
+        empacada: document.getElementById('default-supplier-empacada')?.value || null
       }
     };
     this.save(costs);

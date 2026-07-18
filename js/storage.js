@@ -12,7 +12,8 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'bca_notifications',
   SETTINGS: 'bca_settings',
   COSTS_CHECKED: 'bca_costs_checked_date',
-  AUDIT_LOG: 'bca_audit_log'
+  AUDIT_LOG: 'bca_audit_log',
+  PRODUCTION_BATCHES: 'bca_production_batches'
 };
 
 const Storage = {
@@ -73,6 +74,16 @@ const DEFAULT_PRODUCTION_COSTS = {
     tostion: 16,
     seleccion: 3
   },
+  defaultSuppliers: {
+    compra: null,
+    transporte: null,
+    trilla: null,
+    greenSelection: null,
+    tostion: null,
+    seleccion: null,
+    molienda: null,
+    empacada: null
+  },
   lastUpdated: new Date().toISOString()
 };
 
@@ -107,6 +118,46 @@ const GRIND_TYPES = {
   molido: { label: 'Molido', requiresMolienda: true }
 };
 
+const SUPPLIER_CATEGORIES = {
+  coffee: {
+    label: 'Proveedor de Café',
+    shortLabel: 'Café',
+    description: 'Caficultores, cooperativas y compradores de café verde'
+  },
+  operational: {
+    label: 'Proveedor Operativo',
+    shortLabel: 'Operativo',
+    description: 'Tostadores, trilladoras, seleccionadoras y empacadoras'
+  },
+  logistics: {
+    label: 'Proveedor Logístico',
+    shortLabel: 'Logística',
+    description: 'Transporte, flete y distribución'
+  }
+};
+
+const SUPPLIER_SERVICES = {
+  trilla: { label: 'Trilladora', category: 'operational' },
+  greenSelection: { label: 'Selección en Verde', category: 'operational' },
+  tostion: { label: 'Tostador', category: 'operational' },
+  seleccion: { label: 'Selección Post-Tostión', category: 'operational' },
+  molienda: { label: 'Molienda', category: 'operational' },
+  empacada: { label: 'Empacadora', category: 'operational' },
+  transporte: { label: 'Transporte / Flete', category: 'logistics' }
+};
+
+const COFFEE_SUPPLIER_TYPES = ['Caficultor', 'Cooperativa', 'Exportador', 'Beneficio', 'Otro'];
+
+const PROCESS_SUPPLIER_KEYS = [
+  'compra', 'transporte', 'trilla', 'greenSelection', 'tostion', 'seleccion', 'molienda', 'empacada'
+];
+
+function getProcessSupplierLabel(key) {
+  if (key === 'compra') return 'Proveedor de Café';
+  if (key === 'transporte') return SUPPLIER_SERVICES.transporte.label;
+  return TRANSFORMATION_STEPS[key]?.label || SUPPLIER_SERVICES[key]?.label || key;
+}
+
 function getFullPackSteps(coffeeState) {
   const steps = ['tostion', 'seleccion', 'empacada'];
   if (coffeeState === 'pergamino') steps.unshift('trilla');
@@ -123,7 +174,11 @@ function migrateProductionCosts(stored) {
       administrative: { ...DEFAULT_PRODUCTION_COSTS.administrative, ...stored.administrative },
       packaging: { ...DEFAULT_PRODUCTION_COSTS.packaging, ...stored.packaging },
       labels: { ...DEFAULT_PRODUCTION_COSTS.labels, ...stored.labels },
-      mermas: { ...DEFAULT_PRODUCTION_COSTS.mermas, ...stored.mermas }
+      mermas: { ...DEFAULT_PRODUCTION_COSTS.mermas, ...stored.mermas },
+      defaultSuppliers: {
+        ...DEFAULT_PRODUCTION_COSTS.defaultSuppliers,
+        ...(stored.defaultSuppliers || {})
+      }
     };
   }
   return {
@@ -136,7 +191,8 @@ function migrateProductionCosts(stored) {
     packaging: stored.packaging || DEFAULT_PRODUCTION_COSTS.packaging,
     labels: stored.labels || DEFAULT_PRODUCTION_COSTS.labels,
     costIncrease: stored.costIncrease || DEFAULT_PRODUCTION_COSTS.costIncrease,
-    mermas: stored.mermas || DEFAULT_PRODUCTION_COSTS.mermas
+    mermas: stored.mermas || DEFAULT_PRODUCTION_COSTS.mermas,
+    defaultSuppliers: stored.defaultSuppliers || DEFAULT_PRODUCTION_COSTS.defaultSuppliers
   };
 }
 
