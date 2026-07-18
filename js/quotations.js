@@ -7,6 +7,32 @@ const QuotationManager = {
     return this.getAll().find((q) => q.id === id);
   },
 
+  delete(id) {
+    const quotation = this.getById(id);
+    if (!quotation) return;
+
+    const quotations = this.getAll().filter((q) => q.id !== id);
+    Storage.set(STORAGE_KEYS.QUOTATIONS, quotations);
+
+    AuditLog.log('delete_quotation', quotation.number, {
+      number: quotation.number,
+      clientName: quotation.clientName,
+      totalPrice: quotation.totalPrice
+    });
+
+    Notifications.add(`Cotización ${quotation.number} eliminada`, 'warning');
+  },
+
+  confirmDelete(id) {
+    const q = this.getById(id);
+    if (!q) return;
+    if (confirm(`¿Eliminar la cotización ${q.number} de ${q.clientName}? Esta acción no se puede deshacer.`)) {
+      this.delete(id);
+      App.renderSection('quotations');
+      document.getElementById('quotation-view-modal')?.classList.remove('active');
+    }
+  },
+
   save(quotation) {
     const quotations = this.getAll();
     if (!quotation.id) {
@@ -429,8 +455,11 @@ const QuotationManager = {
                 <td><strong>${formatCurrency(q.totalPrice)}</strong></td>
                 <td>${formatDate(q.createdAt)}</td>
                 <td>
-                  <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF</button>
-                  <button class="btn btn-sm btn-secondary" onclick="QuotationManager.view('${q.id}')">Ver</button>
+                  <div class="action-buttons">
+                    <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF</button>
+                    <button class="btn btn-sm btn-secondary" onclick="QuotationManager.view('${q.id}')">Ver</button>
+                    <button class="btn btn-sm btn-danger" onclick="QuotationManager.confirmDelete('${q.id}')">Eliminar</button>
+                  </div>
                 </td>
               </tr>
             `).join('')}
@@ -445,6 +474,17 @@ const QuotationManager = {
 
     const modal = document.getElementById('quotation-view-modal');
     document.getElementById('quotation-view-content').innerHTML = this.renderQuotationHTML(q);
+    const footer = modal.querySelector('.modal-footer');
+    if (footer) {
+      footer.innerHTML = `
+        <button class="btn btn-danger" onclick="QuotationManager.confirmDelete('${q.id}')">Eliminar</button>
+        <button class="btn btn-secondary" data-modal-close>Cerrar</button>
+        <button class="btn btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">Descargar PDF</button>
+      `;
+      footer.querySelector('[data-modal-close]')?.addEventListener('click', () => {
+        modal.classList.remove('active');
+      });
+    }
     modal.classList.add('active');
   },
 

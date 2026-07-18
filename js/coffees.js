@@ -37,12 +37,26 @@ const CoffeeManager = {
   },
 
   delete(id) {
-    const coffees = this.getAll().filter(c => c.id !== id);
+    const coffee = this.getById(id);
+    if (!coffee) return;
+
+    const coffees = this.getAll().filter((c) => c.id !== id);
     Storage.set(STORAGE_KEYS.COFFEES, coffees);
 
-    const inventory = (Storage.get(STORAGE_KEYS.INVENTORY) || []).filter(i => i.coffeeId !== id);
+    const inventory = (Storage.get(STORAGE_KEYS.INVENTORY) || []).filter((i) => i.coffeeId !== id);
     Storage.set(STORAGE_KEYS.INVENTORY, inventory);
-    Notifications.add('Café eliminado', 'warning');
+
+    AuditLog.log('delete_coffee', coffee.name, { coffeeName: coffee.name, coffeeId: id });
+    Notifications.add(`Café "${coffee.name}" eliminado`, 'warning');
+  },
+
+  confirmDelete(id) {
+    const coffee = this.getById(id);
+    if (!coffee) return;
+    if (confirm(`¿Eliminar el café "${coffee.name}" y su inventario asociado? Esta acción no se puede deshacer.`)) {
+      this.delete(id);
+      App.renderSection('coffees');
+    }
   },
 
   renderGrid(container) {
@@ -71,9 +85,10 @@ const CoffeeManager = {
             ${coffee.fermentation ? `<br>${coffee.fermentation}` : ''}
           </div>
           <div class="coffee-card-price">${formatCurrency(coffee.pricePerKg)}/kg</div>
-          <div style="margin-top:12px;display:flex;gap:8px;">
+          <div class="action-buttons" style="margin-top:12px">
             <button class="btn btn-sm btn-secondary" onclick="CoffeeManager.edit('${coffee.id}')">Editar</button>
             <button class="btn btn-sm btn-primary" onclick="QuotationManager.createForCoffee('${coffee.id}')">Cotizar</button>
+            <button class="btn btn-sm btn-danger" onclick="CoffeeManager.confirmDelete('${coffee.id}')">Eliminar</button>
           </div>
         </div>
       </div>

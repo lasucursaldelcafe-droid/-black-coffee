@@ -364,17 +364,54 @@
   color: var(--text-primary);
   font-size: 1.5rem;
   cursor: pointer;
-  padding: 4px;
+  padding: 8px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.sidebar-backdrop.active {
+  display: block;
+  opacity: 1;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inventory-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.inventory-stat {
+  font-size: 1.5rem;
 }
 
 @media (max-width: 1024px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .page-content { padding: 20px; }
+  .inventory-stats { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
+    box-shadow: var(--shadow-lg);
   }
 
   .sidebar.open {
@@ -386,7 +423,9 @@
   }
 
   .menu-toggle {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .grid-2,
@@ -401,6 +440,70 @@
 
   .hero h2 {
     font-size: 1.5rem;
+  }
+
+  .page-content {
+    padding: 16px;
+  }
+
+  .top-header {
+    padding: 0 16px;
+  }
+
+  .page-title {
+    font-size: 1.1rem;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .section-header .btn {
+    width: 100%;
+  }
+
+  .inventory-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-stat {
+    font-size: 1.25rem;
+  }
+
+  .quotation-preview {
+    padding: 20px;
+    font-size: 0.85rem;
+  }
+
+  .login-card {
+    padding: 28px 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .action-buttons .btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+
+  th, td {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    padding: 12px 16px;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
   }
 }
 

@@ -29,6 +29,12 @@ const App = {
 
     document.getElementById('menu-toggle')?.addEventListener('click', () => {
       document.querySelector('.sidebar')?.classList.toggle('open');
+      document.getElementById('sidebar-backdrop')?.classList.toggle('active');
+    });
+
+    document.getElementById('sidebar-backdrop')?.addEventListener('click', () => {
+      document.querySelector('.sidebar')?.classList.remove('open');
+      document.getElementById('sidebar-backdrop')?.classList.remove('active');
     });
 
     document.getElementById('logout-btn')?.addEventListener('click', () => Auth.logout());
@@ -104,6 +110,7 @@ const App = {
     document.getElementById('page-title').textContent = titles[section] || section;
 
     document.querySelector('.sidebar')?.classList.remove('open');
+    document.getElementById('sidebar-backdrop')?.classList.remove('active');
     this.renderSection(section);
   },
 

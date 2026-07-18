@@ -11,7 +11,8 @@ const STORAGE_KEYS = {
   SALES: 'bca_sales',
   NOTIFICATIONS: 'bca_notifications',
   SETTINGS: 'bca_settings',
-  COSTS_CHECKED: 'bca_costs_checked_date'
+  COSTS_CHECKED: 'bca_costs_checked_date',
+  AUDIT_LOG: 'bca_audit_log'
 };
 
 const Storage = {
