@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Black Coffee Administration — plataforma contable y operativa para distribución de café especial."
+    />
+    <title>Black Coffee Administration</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0a0a'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' font-family='Arial' font-size='28' font-weight='700' fill='%23f4f4f4'%3EBC%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <!-- LOGIN -->
+    <section id="auth-view" class="auth-shell">
+      <div class="auth-hero">
+        <h1 class="brand-mark">
+          <span>Black Coffee</span>
+          Administration
+        </h1>
+        <p class="hero-copy" id="hero-tagline">
+          Distribución, producción y cotización de café especial. Costos, mermas,
+          clientes e inventario en un solo panel.
+        </p>
+      </div>
+      <div class="auth-panel">
+        <form class="auth-card" id="login-form" autocomplete="on">
+          <h1>Ingresar</h1>
+          <p>Acceso para el equipo operativo de la distribuidora.</p>
+          <div id="login-error" class="auth-error hidden"></div>
+          <div class="field">
+            <label for="login-user">Usuario</label>
+            <input id="login-user" name="username" required placeholder="ximena.polo" />
+          </div>
+          <div class="field">
+            <label for="login-pass">Clave</label>
+            <input id="login-pass" name="password" type="password" required />
+          </div>
+          <button class="btn btn-primary" type="submit">Entrar a la plataforma</button>
+          <div class="auth-hint">
+            Usuarios: <strong>ximena.polo</strong> · <strong>pablo.colorado</strong><br />
+            Notificaciones: ghostspecialtycoffee@gmail.com
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- APP -->
+    <section id="app-view" class="app-shell hidden">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+          <div id="sidebar-logo" class="sidebar-logo placeholder">BC</div>
+          <div>
+            <strong id="sidebar-brand-name">Black Coffee</strong>
+            <small>Administration</small>
+          </div>
+        </div>
+        <nav class="nav" id="main-nav"></nav>
+        <div class="sidebar-foot">
+          <div class="user-pill" id="current-user-label">—</div>
+          <button class="btn btn-ghost btn-sm" id="btn-logout" type="button">Cerrar sesión</button>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div class="actions">
+            <button class="btn btn-ghost btn-sm mobile-toggle" id="btn-menu" type="button">Menú</button>
+            <h2 id="page-title">Dashboard</h2>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-ghost btn-sm bell" id="btn-notifications" type="button" title="Notificaciones">
+              Avisos
+              <span id="notif-dot" class="bell-dot hidden"></span>
+            </button>
+            <button class="btn btn-soft btn-sm" id="btn-quick-quote" type="button">Nueva cotización</button>
+          </div>
+        </header>
+        <main class="content" id="page-root"></main>
+      </div>
+    </section>
+
+    <!-- MODALS -->
+    <div id="modal-root"></div>
+    <div class="toast-stack" id="toast-stack"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/calculations.js"></script>
+    <script src="js/pdf.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>
