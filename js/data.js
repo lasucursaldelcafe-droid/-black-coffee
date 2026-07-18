@@ -1,4 +1,4 @@
-const DATA_VERSION = 4;
+const DATA_VERSION = 5;
 const DATA_VERSION_KEY = 'bca_data_version';
 
 const DataSeed = {
@@ -59,6 +59,10 @@ const DataSeed = {
       this.migrateV3ToV4();
       return;
     }
+    if (fromVersion === 4) {
+      this.migrateV4ToV5();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -77,14 +81,20 @@ const DataSeed = {
   },
 
   migrateV3ToV4() {
+    this.linkCoffeeSuppliers();
+  },
+
+  migrateV4ToV5() {
     const settings = Storage.get(STORAGE_KEYS.SETTINGS);
-    if (settings && (!settings.email || settings.email === 'ghostspecialtycoffee@gmail.com')) {
+    if (settings && (!settings.email || settings.email === 'lasucursaldelcafe@gmail.com')) {
       Storage.set(STORAGE_KEYS.SETTINGS, {
         ...settings,
-        email: 'lasucursaldelcafe@gmail.com'
+        email: 'ghostspecialtycoffee@gmail.com'
       });
     }
-    this.linkCoffeeSuppliers();
+    if (typeof EmailService !== 'undefined') {
+      EmailService.email = 'ghostspecialtycoffee@gmail.com';
+    }
   },
 
   enrichQuotationMetrics(quotation) {

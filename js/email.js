@@ -1,4 +1,4 @@
-const NOTIFICATION_EMAIL = 'lasucursaldelcafe@gmail.com';
+const NOTIFICATION_EMAIL = 'ghostspecialtycoffee@gmail.com';
 
 const EmailService = {
   email: NOTIFICATION_EMAIL,

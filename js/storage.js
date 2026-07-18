@@ -249,7 +249,7 @@ function migrateProductionCosts(stored) {
 const DEFAULT_SETTINGS = {
   companyName: 'Black Coffee Administration',
   tagline: 'Gestión integral de café de especialidad',
-  email: 'lasucursaldelcafe@gmail.com',
+  email: 'ghostspecialtycoffee@gmail.com',
   logo: null,
   heroTitle: 'Bienvenido a Black Coffee Administration',
   heroSubtitle: 'Plataforma integral para la gestión de producción, cotizaciones e inventario de café de especialidad.',
