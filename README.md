@@ -2,9 +2,15 @@
 
 Plataforma integral de gestión contable y logística para café de especialidad. Desarrollada en HTML, CSS y JavaScript puro — lista para compartir por enlace.
 
-## 🚀 Acceso Rápido
+## 🚀 Plataforma en vivo
 
-Abre `index.html` en tu navegador o despliega en cualquier hosting estático (GitHub Pages, Netlify, Vercel).
+**URL activa:** https://cdn.jsdelivr.net/gh/lasucursaldelcafe-droid/-black-coffee@gh-pages/index.html
+
+Cada push a `main` actualiza automáticamente la rama `gh-pages` vía GitHub Actions.
+
+**GitHub Pages (pendiente activación org):** https://lasucursaldelcafe-droid.github.io/-black-coffee/
+
+> El workflow de despliegue ya está configurado. Cuando la organización habilite GitHub Pages en el repositorio (Settings → Pages → Deploy from branch `gh-pages`), la URL de GitHub Pages quedará activa automáticamente.
 
 ## 👤 Usuarios del Sistema
 
