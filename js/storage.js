@@ -1,3 +1,5 @@
+const LOCAL_SYNC_META_KEY = 'bca_local_sync_meta';
+
 const STORAGE_KEYS = {
   USERS: 'bca_users',
   SESSION: 'bca_session',
@@ -26,16 +28,39 @@ const Storage = {
     }
   },
 
-  set(key, value) {
+  getLocalSyncMeta() {
+    try {
+      const data = localStorage.getItem(LOCAL_SYNC_META_KEY);
+      return data ? JSON.parse(data) : {};
+    } catch {
+      return {};
+    }
+  },
+
+  markLocalWrite(key) {
+    const meta = this.getLocalSyncMeta();
+    meta[key] = Date.now();
+    localStorage.setItem(LOCAL_SYNC_META_KEY, JSON.stringify(meta));
+  },
+
+  setRemote(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
-    if (typeof FirebaseSync !== 'undefined' && FirebaseSync.isEnabled()) {
+  },
+
+  set(key, value, options = {}) {
+    localStorage.setItem(key, JSON.stringify(value));
+    if (options.fromRemote) return;
+
+    this.markLocalWrite(key);
+    if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.queuePush(key, value);
     }
   },
 
   remove(key) {
     localStorage.removeItem(key);
-    if (typeof FirebaseSync !== 'undefined' && FirebaseSync.isEnabled()) {
+    this.markLocalWrite(key);
+    if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.queueDelete(key);
     }
   },

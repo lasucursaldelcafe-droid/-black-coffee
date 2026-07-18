@@ -1,4 +1,4 @@
-const DATA_VERSION = 6;
+const DATA_VERSION = 7;
 const DATA_VERSION_KEY = 'bca_data_version';
 
 const DataSeed = {
@@ -72,6 +72,10 @@ const DataSeed = {
       this.migrateV5ToV6();
       return;
     }
+    if (fromVersion === 6) {
+      this.migrateV6ToV7();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -110,6 +114,43 @@ const DataSeed = {
     this.repairStorage();
   },
 
+  migrateV6ToV7() {
+    this.backfillLocalSyncMeta();
+  },
+
+  backfillLocalSyncMeta() {
+    const keys = [
+      ...Object.values(STORAGE_KEYS),
+      'bca_data_version',
+      'bca_email_queue'
+    ];
+    const meta = Storage.getLocalSyncMeta();
+    let changed = false;
+
+    keys.forEach((key) => {
+      if (meta[key]) return;
+      const value = Storage.get(key);
+      if (value === null || value === undefined) return;
+
+      let ts = 0;
+      if (Array.isArray(value)) {
+        ts = value.reduce((max, item) => {
+          const itemTs = Date.parse(item?.updatedAt || item?.createdAt || item?.soldAt || item?.lastUpdated || 0) || 0;
+          return Math.max(max, itemTs);
+        }, 0);
+      } else if (typeof value === 'object') {
+        ts = Date.parse(value.lastUpdated || value.updatedAt || value.createdAt || 0) || 0;
+      }
+
+      meta[key] = ts || Date.now();
+      changed = true;
+    });
+
+    if (changed) {
+      localStorage.setItem(LOCAL_SYNC_META_KEY, JSON.stringify(meta));
+    }
+  },
+
   repairStorage() {
     const listKeys = [
       STORAGE_KEYS.COFFEES,
@@ -126,9 +167,18 @@ const DataSeed = {
 
     listKeys.forEach((key) => {
       const value = Storage.get(key);
-      if (value !== null && value !== undefined && !Array.isArray(value)) {
-        Storage.remove(key);
+      if (value === null || value === undefined) return;
+
+      if (Array.isArray(value)) return;
+
+      // Recuperar datos si Firebase guardó la forma { payload: [...] } en localStorage
+      if (typeof value === 'object' && Array.isArray(value.payload)) {
+        Storage.set(key, value.payload);
+        return;
       }
+
+      console.warn(`Datos corruptos en ${key}, se eliminarán`);
+      Storage.remove(key);
     });
 
     if (typeof Auth !== 'undefined') {

@@ -15,6 +15,8 @@ const FirebaseSync = {
   _pulling: false,
   _suppressRemote: false,
   _lastPushedAt: {},
+  _pendingPushKeys: new Map(),
+  _offlinePushKeys: new Map(),
   _unsubscribe: null,
 
   isEnabled() {
@@ -80,12 +82,14 @@ const FirebaseSync = {
     this.setupRealtimeListener();
     this.setupConnectivityListeners();
     this.updateStatusElement();
+    await this._flushOfflinePushes();
     return true;
   },
 
   _runBackgroundSync() {
-    this.syncAll({ silent: true })
-      .then(() => this.pushAllLocal())
+    // Subir datos locales primero para no perder cambios recientes
+    this.pushAllLocal()
+      .then(() => this.syncAll({ silent: true }))
       .then(() => {
         window.dispatchEvent(new CustomEvent('bca-data-changed', {
           detail: { source: 'firebase-bootstrap' }
@@ -156,12 +160,13 @@ const FirebaseSync = {
         const localRaw = localStorage.getItem(key);
         const remote = remoteByKey.get(key);
         const localPayload = localRaw ? JSON.parse(localRaw) : null;
-        const localUpdated = this._extractUpdatedAt(localPayload);
-        const remoteUpdated = remote?.updatedAt || 0;
+        const localUpdated = this._getLocalUpdatedAt(key, localPayload);
 
         if (!localPayload && remote?.payload !== undefined) {
-          localStorage.setItem(key, JSON.stringify(remote.payload));
-          pulled += 1;
+          if (!this._isEmptyPayload(remote.payload)) {
+            Storage.setRemote(key, remote.payload);
+            pulled += 1;
+          }
           return;
         }
 
@@ -172,8 +177,8 @@ const FirebaseSync = {
           return;
         }
 
-        if (remoteUpdated > localUpdated) {
-          localStorage.setItem(key, JSON.stringify(remote.payload));
+        if (this._shouldApplyRemote(key, localPayload, remote)) {
+          Storage.setRemote(key, remote.payload);
           pulled += 1;
         } else {
           keysToPush.push(key);
@@ -207,6 +212,7 @@ const FirebaseSync = {
     } finally {
       this._pulling = false;
       this.syncing = false;
+      this._flushPendingPushes();
     }
   },
 
@@ -245,16 +251,20 @@ const FirebaseSync = {
 
     window.addEventListener('online', () => {
       if (!this.isEnabled()) return;
-      this.syncAll({ silent: true }).catch((error) => {
-        console.warn('Re-sincronización al volver en línea:', error.message);
-      });
+      this.pushAllLocal()
+        .then(() => this.syncAll({ silent: true }))
+        .catch((error) => {
+          console.warn('Re-sincronización al volver en línea:', error.message);
+        });
     });
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible' || !this.isEnabled()) return;
-      this.syncAll({ silent: true }).catch((error) => {
-        console.warn('Re-sincronización al volver a la pestaña:', error.message);
-      });
+      this.pushAllLocal()
+        .then(() => this.syncAll({ silent: true }))
+        .catch((error) => {
+          console.warn('Re-sincronización al volver a la pestaña:', error.message);
+        });
     });
   },
 
@@ -280,14 +290,12 @@ const FirebaseSync = {
 
         const localRaw = localStorage.getItem(key);
         const localPayload = localRaw ? JSON.parse(localRaw) : null;
-        const localUpdated = this._extractUpdatedAt(localPayload);
-        const remoteUpdated = remote?.updatedAt || 0;
 
         if (!remote?.payload && remote?.payload !== null) return;
 
-        if (!localPayload || remoteUpdated > localUpdated) {
+        if (!localPayload || this._shouldApplyRemote(key, localPayload, remote)) {
           this._suppressRemote = true;
-          localStorage.setItem(key, JSON.stringify(remote.payload));
+          Storage.setRemote(key, remote.payload);
           this._suppressRemote = false;
           changed = true;
         }
@@ -305,8 +313,18 @@ const FirebaseSync = {
   },
 
   queuePush(key, value) {
-    if (!this.isEnabled() || this._pulling || this._suppressRemote) return;
+    if (this._suppressRemote) return;
     if (!this.getAllSyncKeys().includes(key)) return;
+
+    if (this._pulling) {
+      this._pendingPushKeys.set(key, value);
+      return;
+    }
+
+    if (!this.isEnabled()) {
+      this._offlinePushKeys.set(key, value);
+      return;
+    }
 
     clearTimeout(this._writeTimers[key]);
     this._writeTimers[key] = setTimeout(async () => {
@@ -321,13 +339,20 @@ const FirebaseSync = {
       } catch (error) {
         console.error(`Error sincronizando ${key}:`, error);
         this.lastError = error.message || `Error al guardar ${key}`;
+        this._offlinePushKeys.set(key, value);
       }
     }, 350);
   },
 
   queueDelete(key) {
-    if (!this.isEnabled() || this._pulling) return;
     if (!this.getAllSyncKeys().includes(key)) return;
+
+    if (this._pulling) {
+      this._pendingPushKeys.delete(key);
+      return;
+    }
+
+    if (!this.isEnabled()) return;
 
     clearTimeout(this._writeTimers[key]);
     this._writeTimers[key] = setTimeout(async () => {
@@ -337,6 +362,57 @@ const FirebaseSync = {
         console.error(`Error eliminando ${key} en Firebase:`, error);
       }
     }, 350);
+  },
+
+  _flushPendingPushes() {
+    if (this._pendingPushKeys.size === 0) return;
+
+    const pending = new Map(this._pendingPushKeys);
+    this._pendingPushKeys.clear();
+
+    pending.forEach((value, key) => {
+      this.queuePush(key, value);
+    });
+  },
+
+  async _flushOfflinePushes() {
+    if (!this.isEnabled() || this._offlinePushKeys.size === 0) return;
+
+    const offline = new Map(this._offlinePushKeys);
+    this._offlinePushKeys.clear();
+
+    const keys = [...offline.keys()];
+    await this.pushKeys(keys);
+  },
+
+  _getLocalUpdatedAt(key, payload) {
+    const meta = typeof Storage !== 'undefined' ? Storage.getLocalSyncMeta() : {};
+    const metaTs = meta[key] || 0;
+    const contentTs = this._extractUpdatedAt(payload);
+    const pushedTs = this._lastPushedAt[key] || 0;
+    return Math.max(metaTs, contentTs, pushedTs);
+  },
+
+  _shouldApplyRemote(key, localPayload, remote) {
+    const localUpdated = this._getLocalUpdatedAt(key, localPayload);
+    const remoteUpdated = remote?.updatedAt || 0;
+
+    if (localUpdated >= remoteUpdated) {
+      return false;
+    }
+
+    if (this._isEmptyPayload(remote?.payload) && !this._isEmptyPayload(localPayload)) {
+      return false;
+    }
+
+    return true;
+  },
+
+  _isEmptyPayload(payload) {
+    if (payload === null || payload === undefined) return true;
+    if (Array.isArray(payload)) return payload.length === 0;
+    if (typeof payload === 'object') return Object.keys(payload).length === 0;
+    return false;
   },
 
   _extractUpdatedAt(value) {
