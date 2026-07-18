@@ -86,11 +86,15 @@ const PDFGenerator = {
       doc.setFontSize(9);
 
       const breakdown = quotation.costBreakdown;
+      const labelItems = breakdown.labelDetails?.length
+        ? breakdown.labelDetails.map((item) => [`Etiqueta ${item.name}`, item.cost])
+        : [['Etiqueta', breakdown.labelCost]];
+
       const items = [
         ['Café', breakdown.coffeeCost],
         ['Proceso (tostión + selección)', breakdown.processCost],
         ['Empaque', breakdown.packagingCost],
-        ['Etiqueta', breakdown.labelCost]
+        ...labelItems
       ];
 
       if (breakdown.increaseCost > 0) {

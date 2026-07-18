@@ -376,6 +376,11 @@ tr:last-child td {
   box-shadow: var(--shadow-md);
 }
 
+.selection-grid-multi .selection-btn.active {
+  border-color: var(--text-primary);
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-hover) 100%);
+}
+
 /* Stats */
 .stat-card {
   background: var(--bg-card);
