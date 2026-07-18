@@ -1,5 +1,6 @@
 const SupplierManager = {
   _filter: 'all',
+  _serviceFilter: 'all',
 
   migrate(supplier) {
     if (!supplier) return supplier;
@@ -307,15 +308,35 @@ const SupplierManager = {
     App.renderSection('suppliers');
   },
 
+  setServiceFilter(serviceKey) {
+    this._serviceFilter = serviceKey || 'all';
+    App.renderSection('suppliers');
+  },
+
   renderTable(container) {
     const suppliers = this.getAll();
-    const filtered = this._filter === 'all'
+    let filtered = this._filter === 'all'
       ? suppliers
       : suppliers.filter((s) => s.category === this._filter);
+
+    if (this._serviceFilter !== 'all') {
+      filtered = filtered.filter((s) => {
+        if (this._serviceFilter === 'transporte') {
+          return s.category === 'logistics' || s.services?.includes('transporte');
+        }
+        return s.services?.includes(this._serviceFilter);
+      });
+    }
 
     const filterButtons = [
       ['all', 'Todos'],
       ...Object.entries(SUPPLIER_CATEGORIES).map(([key, val]) => [key, val.shortLabel])
+    ];
+
+    const serviceFilterButtons = [
+      ['all', 'Todos los servicios'],
+      ...getTransformationServiceKeys().map((key) => [key, SUPPLIER_SERVICES[key].label]),
+      ['transporte', SUPPLIER_SERVICES.transporte.label]
     ];
 
     const quickAddButtons = Object.entries(SUPPLIER_SERVICES).map(([key, val]) => `
@@ -337,9 +358,28 @@ const SupplierManager = {
     }
 
     container.innerHTML = `
+      <div class="card" style="margin-bottom:16px;padding:16px">
+        <h4 style="margin:0 0 8px;font-size:0.95rem">Cadena de transformación</h4>
+        <p class="form-hint" style="margin-bottom:12px">Cada etapa debe tener al menos un proveedor registrado con su tarifa</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${getTransformationServiceKeys().map((key) => {
+            const count = suppliers.filter((s) => s.services?.includes(key)).length;
+            const missing = count === 0;
+            return `<span class="badge ${missing ? 'badge-danger' : 'badge-success'}" title="${missing ? 'Sin proveedor' : `${count} proveedor(es)`}">
+              ${SUPPLIER_SERVICES[key].label}${missing ? ' ⚠' : ''}
+            </span>`;
+          }).join('')}
+        </div>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <span class="form-hint" style="align-self:center;margin-right:4px">Agregar rápido:</span>
+        <span class="form-hint" style="align-self:center;margin-right:4px">Agregar:</span>
         ${quickAddButtons}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        ${serviceFilterButtons.map(([key, label]) => `
+          <button type="button" class="btn btn-sm ${this._serviceFilter === key ? 'btn-primary' : 'btn-secondary'}"
+            onclick="SupplierManager.setServiceFilter('${key}')">${label}</button>
+        `).join('')}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
         ${filterButtons.map(([key, label]) => `
@@ -422,6 +462,14 @@ const SupplierManager = {
             `).join('')}
           </select>
         </div>
+        <div class="form-group" id="supplier-operational-type-group" style="display:none">
+          <label>Tipo (Transformación)</label>
+          <select class="form-control" id="supplier-operational-type">
+            ${OPERATIONAL_SUPPLIER_TYPES.map((t) => `
+              <option value="${t}" ${data.type === t ? 'selected' : ''}>${t}</option>
+            `).join('')}
+          </select>
+        </div>
       </div>
       <div class="form-group" id="supplier-services-group" style="display:none">
         <label>Servicios que ofrece</label>
@@ -497,6 +545,7 @@ const SupplierManager = {
     const updateCategoryUI = () => {
       const category = document.getElementById('supplier-category')?.value || 'coffee';
       document.getElementById('supplier-coffee-type-group').style.display = category === 'coffee' ? 'block' : 'none';
+      document.getElementById('supplier-operational-type-group').style.display = category === 'operational' ? 'block' : 'none';
       document.getElementById('supplier-region-group').style.display = category === 'coffee' ? 'block' : 'none';
       document.getElementById('supplier-services-group').style.display = category === 'operational' ? 'block' : 'none';
       this.refreshServiceRatesFields();
@@ -547,7 +596,9 @@ const SupplierManager = {
       id: document.getElementById('supplier-id').value || undefined,
       name: document.getElementById('supplier-name').value.trim(),
       category,
-      type: document.getElementById('supplier-type')?.value || 'Caficultor',
+      type: category === 'operational'
+        ? (document.getElementById('supplier-operational-type')?.value || 'Otro')
+        : (document.getElementById('supplier-type')?.value || 'Caficultor'),
       services,
       serviceRates: this.collectServiceRatesFromForm(category),
       region: document.getElementById('supplier-region')?.value || '',
@@ -578,6 +629,15 @@ const SupplierManager = {
 
   createForService(serviceKey) {
     const service = SUPPLIER_SERVICES[serviceKey];
+    const typeByService = {
+      trilla: 'Trilladora',
+      greenSelection: 'Seleccionadora',
+      tostion: 'Tostador',
+      seleccion: 'Seleccionadora',
+      molienda: 'Molino',
+      empacada: 'Empacadora',
+      transporte: 'Transporte'
+    };
     if (!service) {
       this.create();
       return;
@@ -585,7 +645,8 @@ const SupplierManager = {
     document.getElementById('supplier-modal')?.classList.remove('active');
     this.showForm(null, {
       category: service.category,
-      services: service.category === 'operational' ? [serviceKey] : ['transporte']
+      services: service.category === 'operational' ? [serviceKey] : ['transporte'],
+      type: typeByService[serviceKey] || 'Otro'
     });
   },
 

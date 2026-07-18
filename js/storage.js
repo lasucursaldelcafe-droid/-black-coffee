@@ -148,6 +148,16 @@ const SUPPLIER_SERVICES = {
 
 const COFFEE_SUPPLIER_TYPES = ['Caficultor', 'Cooperativa', 'Exportador', 'Beneficio', 'Otro'];
 
+const OPERATIONAL_SUPPLIER_TYPES = [
+  'Trilladora',
+  'Seleccionadora',
+  'Tostador',
+  'Molino',
+  'Empacadora',
+  'Beneficio',
+  'Otro'
+];
+
 const PROCESS_SUPPLIER_KEYS = [
   'compra', 'transporte', 'trilla', 'greenSelection', 'tostion', 'seleccion', 'molienda', 'empacada'
 ];
@@ -180,9 +190,22 @@ function getServiceRateUnitLabel(serviceKey) {
 }
 
 function getFullPackSteps(coffeeState) {
-  const steps = ['tostion', 'seleccion', 'empacada'];
+  const steps = ['greenSelection', 'tostion', 'seleccion', 'empacada'];
   if (coffeeState === 'pergamino') steps.unshift('trilla');
   return steps;
+}
+
+const TRANSFORMATION_PIPELINE_ORDER = [
+  'trilla',
+  'greenSelection',
+  'tostion',
+  'seleccion',
+  'molienda',
+  'empacada'
+];
+
+function getTransformationServiceKeys() {
+  return TRANSFORMATION_PIPELINE_ORDER.filter((key) => SUPPLIER_SERVICES[key]?.category === 'operational');
 }
 
 function migrateProductionCosts(stored) {
@@ -260,8 +283,8 @@ const PACKAGING_SIZES = {
 };
 
 const COFFEE_STATES = {
-  verde: { label: 'Café Verde', mermas: ['tostion', 'seleccion'] },
-  pergamino: { label: 'Café Pergamino', mermas: ['trilla', 'tostion', 'seleccion'] }
+  verde: { label: 'Café Verde', mermas: ['greenSelection', 'tostion', 'seleccion'] },
+  pergamino: { label: 'Café Pergamino', mermas: ['trilla', 'greenSelection', 'tostion', 'seleccion'] }
 };
 
 function formatCurrency(amount) {
