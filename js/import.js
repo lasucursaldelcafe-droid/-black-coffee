@@ -206,24 +206,194 @@ const ImportManager = {
 
   showModal() {
     const modal = document.getElementById('import-modal');
+    document.getElementById('import-modal-title').textContent = 'Importar Cafés';
     document.getElementById('import-form').innerHTML = `
-      <p class="form-hint" style="margin-bottom:16px">
-        Sube un Excel (.xlsx, .xls) o CSV con columnas como: <strong>Nombre</strong>, <strong>Variedad</strong>,
-        <strong>Región</strong>, <strong>Proceso</strong>, <strong>Precio/kg</strong>, Caficultor, Fermentación, Altitud.
-      </p>
-      <div class="form-group">
-        <label>Archivo Excel / CSV</label>
-        <input type="file" class="form-control" id="import-file" accept=".xlsx,.xls,.csv">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        <button type="button" class="btn btn-secondary btn-sm" id="import-tab-excel">Excel / CSV</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="import-tab-pdf">PDF Ghost</button>
+        <button type="button" class="btn btn-primary btn-sm" id="import-tab-ghost">Catálogo Ghost (15 cafés)</button>
+      </div>
+      <div id="import-panel-excel">
+        <p class="form-hint" style="margin-bottom:16px">
+          Sube un Excel (.xlsx, .xls) o CSV con columnas como: <strong>Nombre</strong>, <strong>Variedad</strong>,
+          <strong>Región</strong>, <strong>Proceso</strong>, <strong>Precio/kg</strong>, Caficultor, Fermentación, Altitud.
+        </p>
+        <div class="form-group">
+          <label>Archivo Excel / CSV</label>
+          <input type="file" class="form-control" id="import-file" accept=".xlsx,.xls,.csv">
+        </div>
+      </div>
+      <div id="import-panel-pdf" style="display:none">
+        <p class="form-hint" style="margin-bottom:16px">
+          Sube uno o más PDFs de fichas Ghost Specialty Coffee. Se extraerán nombre, código, precio y merma.
+        </p>
+        <div class="form-group">
+          <label>Archivos PDF</label>
+          <input type="file" class="form-control" id="import-pdf-files" accept=".pdf" multiple>
+        </div>
+      </div>
+      <div id="import-panel-ghost" style="display:none">
+        <p class="form-hint">
+          Importa los <strong>15 cafés</strong> extraídos de los PDFs Ghost (Blend Regional, Geisha, Papayo, Fresco Coffee, etc.)
+          con análisis de congruencia contra costos BCA.
+        </p>
       </div>
       <div id="import-preview"></div>
       <div id="import-congruence"></div>
     `;
 
+    const showPanel = (panel) => {
+      ['excel', 'pdf', 'ghost'].forEach((p) => {
+        document.getElementById(`import-panel-${p}`).style.display = p === panel ? 'block' : 'none';
+        const btn = document.getElementById(`import-tab-${p}`);
+        if (btn) btn.className = p === panel ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+      });
+      document.getElementById('import-preview').innerHTML = '';
+      document.getElementById('import-congruence').innerHTML = '';
+      this._pendingImport = null;
+      this._importSource = panel;
+    };
+
+    document.getElementById('import-tab-excel')?.addEventListener('click', () => showPanel('excel'));
+    document.getElementById('import-tab-pdf')?.addEventListener('click', () => showPanel('pdf'));
+    document.getElementById('import-tab-ghost')?.addEventListener('click', () => {
+      showPanel('ghost');
+      this.loadGhostCatalogPreview();
+    });
+
     document.getElementById('import-file')?.addEventListener('change', (e) => {
       this.handleFileSelect(e.target.files[0]);
     });
 
+    document.getElementById('import-pdf-files')?.addEventListener('change', (e) => {
+      this.handlePdfFiles(e.target.files);
+    });
+
+    showPanel('excel');
     modal.classList.add('active');
+  },
+
+  async loadGhostCatalogPreview() {
+    const preview = document.getElementById('import-preview');
+    const congruence = document.getElementById('import-congruence');
+    preview.innerHTML = '<p class="form-hint">Cargando catálogo Ghost...</p>';
+
+    try {
+      const entries = await GhostCatalog.loadCatalog();
+      GhostCatalog._catalog = entries;
+      const coffees = entries.map((e) => GhostCatalog.toCoffeeRecord(e));
+      this._pendingImport = coffees;
+      this._importSource = 'ghost';
+
+      const analysis = GhostCatalog.analyzeAll(entries);
+
+      preview.innerHTML = `
+        <div class="cost-breakdown" style="margin-top:16px">
+          <h4 style="margin-bottom:8px">Catálogo Ghost (${entries.length} cafés)</h4>
+          <div class="table-container" style="max-height:200px;overflow-y:auto">
+            <table>
+              <thead><tr><th>Código</th><th>Nombre</th><th>Precio/kg</th><th>Proceso</th></tr></thead>
+              <tbody>
+                ${entries.map((e) => `
+                  <tr>
+                    <td>${e.ghostCode}</td>
+                    <td>${e.name}</td>
+                    <td>${formatCurrency(e.priceEfectivo || e.priceVerde)}</td>
+                    <td>${e.process}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      GhostCatalog.renderCongruenceReport(analysis, congruence);
+    } catch (err) {
+      preview.innerHTML = `<p style="color:var(--danger)">Error: ${err.message}</p>`;
+    }
+  },
+
+  async handlePdfFiles(files) {
+    if (!files?.length) return;
+
+    const preview = document.getElementById('import-preview');
+    const congruence = document.getElementById('import-congruence');
+    preview.innerHTML = '<p class="form-hint">Procesando PDFs...</p>';
+    congruence.innerHTML = '';
+
+    try {
+      await this._ensurePdfJs();
+      const entries = [];
+
+      for (const file of files) {
+        const text = await this._extractPdfText(file);
+        const entry = GhostCatalog.parsePdfText(text, file.name);
+        if (entry) entries.push(entry);
+      }
+
+      if (!entries.length) {
+        preview.innerHTML = '<p style="color:var(--danger)">No se pudieron extraer cafés de los PDFs</p>';
+        return;
+      }
+
+      const coffees = entries.map((e) => GhostCatalog.toCoffeeRecord(e));
+      this._pendingImport = coffees;
+      this._importSource = 'pdf';
+
+      const analysis = GhostCatalog.analyzeAll(entries);
+
+      preview.innerHTML = `
+        <div class="cost-breakdown" style="margin-top:16px">
+          <h4 style="margin-bottom:8px">Extraídos de PDF (${entries.length})</h4>
+          <div class="table-container" style="max-height:200px;overflow-y:auto">
+            <table>
+              <thead><tr><th>Archivo</th><th>Nombre</th><th>Precio/kg</th></tr></thead>
+              <tbody>
+                ${entries.map((e) => `
+                  <tr>
+                    <td style="font-size:0.8rem">${e.sourceFile}</td>
+                    <td>${e.name}</td>
+                    <td>${formatCurrency(e.priceEfectivo || e.priceVerde)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      GhostCatalog.renderCongruenceReport(analysis, congruence);
+    } catch (err) {
+      preview.innerHTML = `<p style="color:var(--danger)">Error al leer PDFs: ${err.message}</p>`;
+    }
+  },
+
+  async _ensurePdfJs() {
+    if (window.pdfjsLib) return;
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      script.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        resolve();
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  },
+
+  async _extractPdfText(file) {
+    const buffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((item) => item.str).join(' ') + '\n';
+    }
+    return text;
   },
 
   async handleFileSelect(file) {
@@ -257,6 +427,7 @@ const ImportManager = {
       }
 
       this._pendingImport = result.coffees;
+      this._importSource = 'excel';
 
       const analysis = this.analyzeCongruence(result.coffees);
 
@@ -309,9 +480,33 @@ const ImportManager = {
       return;
     }
 
-    const result = this.importCoffees(this._pendingImport, { skipDuplicates: false });
+    let result;
+    if (this._importSource === 'ghost' || this._importSource === 'pdf') {
+      const entries = this._pendingImport.map((c) => ({
+        name: c.name,
+        ghostCode: c.ghostCode,
+        variety: c.variety,
+        region: c.region,
+        process: c.process,
+        fermentation: c.fermentation,
+        farmer: c.farmer,
+        priceVerde: c.ghostMeta?.priceVerde || c.pricePerKg,
+        transportCost: c.transportCost,
+        priceEfectivo: c.pricePerKg,
+        mermaTostion: c.ghostMeta?.mermaTostion,
+        salePrices: c.ghostMeta?.salePrices,
+        productionMode: c.ghostMeta?.productionMode,
+        sourceFile: c.ghostMeta?.sourceFile,
+        notes: c.notes
+      }));
+      result = GhostCatalog.importCatalog(entries);
+    } else {
+      result = this.importCoffees(this._pendingImport, { skipDuplicates: false });
+    }
+
     document.getElementById('import-modal')?.classList.remove('active');
     this._pendingImport = null;
+    this._importSource = null;
     App.renderSection('coffees');
     Toast.show(`Importados: ${result.added} nuevos, ${result.updated} actualizados`, 'success');
   }
