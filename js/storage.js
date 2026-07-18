@@ -41,38 +41,38 @@ const Storage = {
 
 const DEFAULT_PRODUCTION_COSTS = {
   transformation: {
-    trilla: 1200,
-    greenSelection: 1500,
-    roasting: 3700,
-    selection: 1900,
-    grinding: 200,
+    trilla: 0,
+    greenSelection: 0,
+    roasting: 0,
+    selection: 0,
+    grinding: 0,
     packagingLabor: {
-      '250g': 800,
-      '500g': 1000,
-      '5lb': 1500
+      '250g': 0,
+      '500g': 0,
+      '5lb': 0
     }
   },
   administrative: {
     negotiation: 0
   },
   packaging: {
-    '250g': 1500,
-    '500g': 1900,
-    '5lb': 3000
+    '250g': 0,
+    '500g': 0,
+    '5lb': 0
   },
   labels: {
-    large: 1000,
-    small: 500
+    large: 0,
+    small: 0
   },
   costIncrease: {
     enabled: false,
-    amount: 1500
+    amount: 0
   },
   mermas: {
-    trilla: 20,
-    greenSelection: 2,
-    tostion: 16,
-    seleccion: 3
+    trilla: 0,
+    greenSelection: 0,
+    tostion: 0,
+    seleccion: 0
   },
   defaultSuppliers: {
     compra: null,
@@ -205,7 +205,7 @@ const DEFAULT_SETTINGS = {
   heroSubtitle: 'Plataforma integral para la gestión de producción, cotizaciones e inventario de café de especialidad.',
   primaryColor: '#f5f5f5',
   accentColor: '#e5e5e5',
-  lowStockThreshold: 10
+  lowStockThreshold: 0
 };
 
 const COFFEE_VARIETIES = [

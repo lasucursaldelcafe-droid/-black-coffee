@@ -1,11 +1,88 @@
+const DATA_VERSION = 1;
+const DATA_VERSION_KEY = 'bca_data_version';
+
 const DataSeed = {
   init() {
+    if (Storage.get(DATA_VERSION_KEY) !== DATA_VERSION) {
+      this.resetAllToZero();
+      Storage.set(DATA_VERSION_KEY, DATA_VERSION);
+      return;
+    }
+
     this.seedProductionCosts();
     this.seedSettings();
     this.seedCoffees();
     this.seedClients();
     this.seedSuppliers();
     this.seedInventory();
+  },
+
+  resetAllToZero() {
+    Storage.set(STORAGE_KEYS.PRODUCTION_COSTS, {
+      ...DEFAULT_PRODUCTION_COSTS,
+      lastUpdated: new Date().toISOString()
+    });
+
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
+    Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, lowStockThreshold: 0 });
+
+    const coffees = (Storage.get(STORAGE_KEYS.COFFEES) || []).map((coffee) => ({
+      ...coffee,
+      pricePerKg: 0,
+      transportCost: 0,
+      transportIncluded: false
+    }));
+
+    if (coffees.length === 0) {
+      coffees.push(this.createSampleCoffee());
+    }
+
+    Storage.set(STORAGE_KEYS.COFFEES, coffees);
+
+    Storage.set(STORAGE_KEYS.INVENTORY, coffees.map((coffee) => ({
+      id: Storage.generateId(),
+      coffeeId: coffee.id,
+      greenKg: 0,
+      roastedKg: 0,
+      packagedUnits: {},
+      minStockKg: 0,
+      lastUpdated: new Date().toISOString()
+    })));
+
+    Storage.set(STORAGE_KEYS.QUOTATIONS, []);
+    Storage.set(STORAGE_KEYS.PURCHASES, []);
+    Storage.set(STORAGE_KEYS.SALES, []);
+    Storage.set(STORAGE_KEYS.PRODUCTION_BATCHES, []);
+    Storage.set(STORAGE_KEYS.NOTIFICATIONS, []);
+    Storage.set(STORAGE_KEYS.AUDIT_LOG, []);
+    Storage.remove(STORAGE_KEYS.COSTS_CHECKED);
+
+    if (!Storage.get(STORAGE_KEYS.CLIENTS)?.length) {
+      this.seedClients(true);
+    }
+    if (!Storage.get(STORAGE_KEYS.SUPPLIERS)?.length) {
+      this.seedSuppliers(true);
+    }
+  },
+
+  createSampleCoffee() {
+    return {
+      id: Storage.generateId(),
+      name: 'Óscar Alejandro',
+      variety: 'Caturra',
+      region: 'Cauca',
+      process: 'Lavado',
+      fermentation: '24 horas',
+      farmer: 'Óscar Alejandro',
+      pricePerKg: 0,
+      transportIncluded: false,
+      transportCost: 0,
+      state: 'verde',
+      altitude: '1800 msnm',
+      notes: 'Café de especialidad con fermentación controlada de 24 horas. Notas a chocolate, caramelo y frutos rojos.',
+      image: null,
+      createdAt: new Date().toISOString()
+    };
   },
 
   seedProductionCosts() {
@@ -22,31 +99,12 @@ const DataSeed = {
 
   seedCoffees() {
     if (!Storage.get(STORAGE_KEYS.COFFEES)) {
-      const coffees = [
-        {
-          id: Storage.generateId(),
-          name: 'Óscar Alejandro',
-          variety: 'Caturra',
-          region: 'Cauca',
-          process: 'Lavado',
-          fermentation: '24 horas',
-          farmer: 'Óscar Alejandro',
-          pricePerKg: 33000,
-          transportIncluded: true,
-          transportCost: 0,
-          state: 'verde',
-          altitude: '1800 msnm',
-          notes: 'Café de especialidad con fermentación controlada de 24 horas. Notas a chocolate, caramelo y frutos rojos.',
-          image: null,
-          createdAt: new Date().toISOString()
-        }
-      ];
-      Storage.set(STORAGE_KEYS.COFFEES, coffees);
+      Storage.set(STORAGE_KEYS.COFFEES, [this.createSampleCoffee()]);
     }
   },
 
-  seedClients() {
-    if (!Storage.get(STORAGE_KEYS.CLIENTS)) {
+  seedClients(force = false) {
+    if (force || !Storage.get(STORAGE_KEYS.CLIENTS)) {
       const clients = [
         {
           id: Storage.generateId(),
@@ -66,8 +124,8 @@ const DataSeed = {
     }
   },
 
-  seedSuppliers() {
-    if (!Storage.get(STORAGE_KEYS.SUPPLIERS)) {
+  seedSuppliers(force = false) {
+    if (force || !Storage.get(STORAGE_KEYS.SUPPLIERS)) {
       const suppliers = [
         {
           id: Storage.generateId(),
@@ -138,7 +196,7 @@ const DataSeed = {
           contact: 'Despachos',
           email: '',
           phone: '',
-          notes: 'Flete origen Huila → punto de tostión. Tarifa referencia $1,500/kg.',
+          notes: 'Flete origen Huila → punto de tostión.',
           createdAt: new Date().toISOString()
         },
         {
@@ -156,7 +214,7 @@ const DataSeed = {
           contact: 'Fresco Coffee',
           email: '',
           phone: '',
-          notes: 'Maquila y empacado para Fresco Coffee. Presentación 340g.',
+          notes: 'Maquila y empacado para Fresco Coffee.',
           createdAt: new Date().toISOString()
         }
       ];
@@ -167,13 +225,13 @@ const DataSeed = {
   seedInventory() {
     if (!Storage.get(STORAGE_KEYS.INVENTORY)) {
       const coffees = Storage.get(STORAGE_KEYS.COFFEES) || [];
-      const inventory = coffees.map(coffee => ({
+      const inventory = coffees.map((coffee) => ({
         id: Storage.generateId(),
         coffeeId: coffee.id,
-        greenKg: 50,
+        greenKg: 0,
         roastedKg: 0,
         packagedUnits: {},
-        minStockKg: 10,
+        minStockKg: 0,
         lastUpdated: new Date().toISOString()
       }));
       Storage.set(STORAGE_KEYS.INVENTORY, inventory);

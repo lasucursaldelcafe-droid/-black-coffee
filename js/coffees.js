@@ -26,7 +26,7 @@ const CoffeeManager = {
         greenKg: 0,
         roastedKg: 0,
         packagedUnits: {},
-        minStockKg: 10,
+        minStockKg: 0,
         lastUpdated: new Date().toISOString()
       });
       Storage.set(STORAGE_KEYS.INVENTORY, inventory);
@@ -261,7 +261,7 @@ const CoffeeManager = {
       notes: document.getElementById('coffee-notes').value
     };
 
-    if (!coffee.name || !coffee.pricePerKg) {
+    if (!coffee.name || Number.isNaN(coffee.pricePerKg)) {
       Toast.show('Complete los campos obligatorios', 'danger');
       return;
     }

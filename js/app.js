@@ -213,7 +213,7 @@ const App = {
     const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
 
     const totalGreenKg = inventory.reduce((sum, i) => sum + i.greenKg, 0);
-    const lowStockCount = inventory.filter(i => i.greenKg <= (i.minStockKg || 10)).length;
+    const lowStockCount = inventory.filter(i => i.greenKg <= (i.minStockKg ?? settings.lowStockThreshold ?? 0)).length;
     const pendingQuotations = quotations.filter((q) => q.status === 'pending').length;
     const salesSummary = SalesManager.getReportSummary(sales);
 
@@ -432,7 +432,7 @@ const App = {
       logo: document.getElementById('settings-logo')?.value || null,
       heroTitle: document.getElementById('settings-hero-title')?.value || DEFAULT_SETTINGS.heroTitle,
       heroSubtitle: document.getElementById('settings-hero-subtitle')?.value || DEFAULT_SETTINGS.heroSubtitle,
-      lowStockThreshold: parseFloat(document.getElementById('settings-low-stock')?.value) || 10
+      lowStockThreshold: parseFloat(document.getElementById('settings-low-stock')?.value) || 0
     };
 
     Storage.set(STORAGE_KEYS.SETTINGS, settings);

@@ -262,6 +262,7 @@ const InventoryManager = {
   renderDashboard(container) {
     const inventory = this.getAll();
     const coffees = CoffeeManager.getAll();
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
 
     if (inventory.length === 0) {
       container.innerHTML = `
@@ -277,7 +278,7 @@ const InventoryManager = {
       const coffee = coffees.find((c) => c.id === item.coffeeId);
       if (!coffee) return '';
 
-      const isLow = item.greenKg <= (item.minStockKg || 10);
+      const isLow = item.greenKg <= (item.minStockKg ?? settings.lowStockThreshold ?? 0);
       const mermaInfo = ProductionCosts.getMermaDetails(1, coffee.state);
 
       return `
