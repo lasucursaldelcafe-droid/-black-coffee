@@ -1,8 +1,9 @@
-const DATA_VERSION = 5;
+const DATA_VERSION = 6;
 const DATA_VERSION_KEY = 'bca_data_version';
 
 const DataSeed = {
   init() {
+    this.repairStorage();
     const storedVersion = Storage.get(DATA_VERSION_KEY);
     if (storedVersion !== DATA_VERSION) {
       this.migrate(storedVersion);
@@ -20,26 +21,30 @@ const DataSeed = {
   },
 
   linkCoffeeSuppliers() {
-    const coffees = Storage.get(STORAGE_KEYS.COFFEES) || [];
-    if (!coffees.length) return;
+    try {
+      const coffees = Storage.get(STORAGE_KEYS.COFFEES) || [];
+      if (!coffees.length) return;
 
-    let changed = false;
-    const linked = coffees.map((coffee) => {
-      if (coffee.supplierId && SupplierManager.getById(coffee.supplierId)) {
-        return coffee;
+      let changed = false;
+      const linked = coffees.map((coffee) => {
+        if (coffee.supplierId && SupplierManager.getById(coffee.supplierId)) {
+          return coffee;
+        }
+        const supplier = CoffeeManager.findSupplierForCoffee(coffee);
+        if (!supplier) return coffee;
+        changed = true;
+        return {
+          ...coffee,
+          supplierId: supplier.id,
+          farmer: coffee.farmer || supplier.name
+        };
+      });
+
+      if (changed) {
+        Storage.set(STORAGE_KEYS.COFFEES, linked);
       }
-      const supplier = CoffeeManager.findSupplierForCoffee(coffee);
-      if (!supplier) return coffee;
-      changed = true;
-      return {
-        ...coffee,
-        supplierId: supplier.id,
-        farmer: coffee.farmer || supplier.name
-      };
-    });
-
-    if (changed) {
-      Storage.set(STORAGE_KEYS.COFFEES, linked);
+    } catch (error) {
+      console.warn('No se pudo vincular proveedores de café:', error.message);
     }
   },
 
@@ -61,6 +66,10 @@ const DataSeed = {
     }
     if (fromVersion === 4) {
       this.migrateV4ToV5();
+      return;
+    }
+    if (fromVersion === 5) {
+      this.migrateV5ToV6();
       return;
     }
     if (fromVersion !== DATA_VERSION) {
@@ -94,6 +103,36 @@ const DataSeed = {
     }
     if (typeof EmailService !== 'undefined') {
       EmailService.email = 'ghostspecialtycoffee@gmail.com';
+    }
+  },
+
+  migrateV5ToV6() {
+    this.repairStorage();
+  },
+
+  repairStorage() {
+    const listKeys = [
+      STORAGE_KEYS.COFFEES,
+      STORAGE_KEYS.CLIENTS,
+      STORAGE_KEYS.SUPPLIERS,
+      STORAGE_KEYS.INVENTORY,
+      STORAGE_KEYS.QUOTATIONS,
+      STORAGE_KEYS.PURCHASES,
+      STORAGE_KEYS.SALES,
+      STORAGE_KEYS.NOTIFICATIONS,
+      STORAGE_KEYS.AUDIT_LOG,
+      STORAGE_KEYS.PRODUCTION_BATCHES
+    ];
+
+    listKeys.forEach((key) => {
+      const value = Storage.get(key);
+      if (value !== null && value !== undefined && !Array.isArray(value)) {
+        Storage.remove(key);
+      }
+    });
+
+    if (typeof Auth !== 'undefined') {
+      Auth.init();
     }
   },
 

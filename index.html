@@ -41,6 +41,9 @@
           <p style="font-size:0.8rem;color:var(--text-muted)">
             Plataforma de gestión integral de café de especialidad
           </p>
+          <button type="button" class="btn btn-sm btn-secondary" id="repair-access-btn" style="margin-top:12px">
+            Reparar acceso
+          </button>
         </div>
       </div>
     </div>
@@ -68,6 +71,14 @@
       } else {
         errorEl.textContent = result.message;
         errorEl.classList.add('show');
+      }
+    });
+
+    document.getElementById('repair-access-btn')?.addEventListener('click', () => {
+      if (confirm('¿Restaurar usuarios de acceso y cerrar sesión? Esto no borra cafés, clientes ni inventario.')) {
+        Auth.repairAccess();
+        document.getElementById('login-error').textContent = 'Acceso reparado. Intente iniciar sesión de nuevo.';
+        document.getElementById('login-error').classList.add('show');
       }
     });
   </script>

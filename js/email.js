@@ -82,35 +82,10 @@ Fecha: ${formatDate(sale.soldAt || sale.createdAt)}
   },
 
   async sendViaFormSubmit(subject, body) {
-    const endpoint = window.EMAIL_CONFIG?.formSubmitEndpoint
-      || `https://formsubmit.co/ajax/${encodeURIComponent(this.email)}`;
-
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
-        body: JSON.stringify({
-          _subject: `[BCA] ${subject}`,
-          _template: 'table',
-          _captcha: 'false',
-          subject,
-          message: body,
-          email: this.email,
-          tipo: 'black-coffee-administration'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      this.markDelivered(subject);
-    } catch (error) {
-      console.warn('[BCA Email] Envío remoto pendiente (cola local):', error.message);
-    }
+    // FormSubmit bloquea CORS desde el navegador; la cola local + Firebase es el respaldo.
+    // El correo queda registrado para revisión en bca_email_queue.
+    void subject;
+    void body;
   },
 
   queueEmail(subject, body, type = 'notification') {

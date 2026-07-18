@@ -1,5 +1,5 @@
 const Auth = {
-  users: [
+  defaultUsers: [
     {
       id: 'user_ximena',
       username: 'ximena.polo',
@@ -18,18 +18,53 @@ const Auth = {
     }
   ],
 
+  get users() {
+    return this._users;
+  },
+
+  set users(value) {
+    this._users = value;
+  },
+
+  _users: [],
+
   init() {
+    this._users = this.loadUsers();
+  },
+
+  loadUsers() {
     const stored = Storage.get(STORAGE_KEYS.USERS);
-    if (!stored) {
-      Storage.set(STORAGE_KEYS.USERS, this.users);
-    } else {
-      this.users = stored;
+    if (this.isValidUserList(stored)) {
+      return stored;
     }
+    Storage.set(STORAGE_KEYS.USERS, this.defaultUsers);
+    return [...this.defaultUsers];
+  },
+
+  isValidUserList(users) {
+    if (!Array.isArray(users) || users.length === 0) return false;
+    return users.every((user) =>
+      user
+      && typeof user.username === 'string'
+      && typeof user.password === 'string'
+      && typeof user.name === 'string'
+    );
+  },
+
+  repairAccess() {
+    Storage.set(STORAGE_KEYS.USERS, this.defaultUsers);
+    Storage.remove(STORAGE_KEYS.SESSION);
+    this._users = [...this.defaultUsers];
   },
 
   login(username, password) {
+    if (!Array.isArray(this.users)) {
+      this.repairAccess();
+    }
+
     const user = this.users.find(
-      u => (u.username === username || u.name.toLowerCase().includes(username.toLowerCase())) && u.password === password
+      (u) => (u.username === username || u.name.toLowerCase().includes(username.toLowerCase()))
+        && u.password === password
     );
 
     if (user) {

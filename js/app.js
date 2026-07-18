@@ -3,28 +3,40 @@ const App = {
 
   init() {
     Auth.init();
-    if (!Auth.requireAuth()) return;
+    if (!Auth.requireAuth()) {
+      return Promise.resolve(false);
+    }
 
-    return this.bootstrap();
+    return this.bootstrap().catch((error) => {
+      console.error('Error al iniciar la aplicación:', error);
+      Toast?.show('Error al cargar la plataforma. Recargue la página.', 'danger');
+      throw error;
+    });
   },
 
   async bootstrap() {
-    DataSeed.init();
-    EmailService.init();
+    try {
+      DataSeed.init();
+      EmailService.init();
 
-    this.bindNavigation();
-    this.bindModals();
-    this.bindSyncEvents();
-    this.renderUserInfo();
-    this.applySettings();
-    this.checkProductionCostsModal();
-    Notifications.updateBadge();
+      this.bindNavigation();
+      this.bindModals();
+      this.bindSyncEvents();
+      this.renderUserInfo();
+      this.applySettings();
+      this.checkProductionCostsModal();
+      Notifications.updateBadge();
 
-    this.navigateTo('dashboard');
+      this.navigateTo('dashboard');
 
-    FirebaseSync.startInBackground().finally(() => {
-      InventoryManager.checkAllLowStock();
-    });
+      FirebaseSync.startInBackground().finally(() => {
+        InventoryManager.checkAllLowStock();
+      });
+    } catch (error) {
+      console.error('Bootstrap falló:', error);
+      Toast?.show('No se pudo cargar los datos. Use Configuración o repare el acceso.', 'danger');
+      throw error;
+    }
   },
 
   handleNotificationLink(link) {
@@ -542,5 +554,7 @@ const App = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-  App.init().catch((error) => console.error('Error al iniciar la aplicación:', error));
+  App.init().catch((error) => {
+    console.error('Error al iniciar la aplicación:', error);
+  });
 });
