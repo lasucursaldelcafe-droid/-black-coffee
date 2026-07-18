@@ -77,6 +77,8 @@ const SalesManager = {
       { section: 'sales', entityId: sale.id }
     );
 
+    EmailService.sendSaleNotification(sale);
+
     return sale;
   },
 

@@ -297,7 +297,15 @@ const SupplierManager = {
     const supplier = this.getById(id);
     const suppliers = this.getAll().filter((s) => s.id !== id);
     Storage.set(STORAGE_KEYS.SUPPLIERS, suppliers);
+
     if (supplier) {
+      const coffees = CoffeeManager.getAll().map((coffee) => (
+        coffee.supplierId === id
+          ? { ...coffee, supplierId: null, updatedAt: new Date().toISOString() }
+          : coffee
+      ));
+      Storage.set(STORAGE_KEYS.COFFEES, coffees);
+
       AuditLog.log('delete_supplier', supplier.name, { supplierId: id, name: supplier.name });
     }
     Notifications.add('Proveedor eliminado', 'warning', { section: 'suppliers' });

@@ -226,16 +226,18 @@ const QuotationManager = {
       return;
     }
 
+    const coffee = CoffeeManager.getById(coffeeId);
     const options = this.getQuoteOptions();
     const steps = this.getActiveQuoteSteps();
     const defaults = ProductionCosts.get().defaultSuppliers || {};
+    const compraDefault = coffee?.supplierId || CoffeeManager.resolveSupplierId(coffee) || defaults.compra || '';
     const fields = [];
 
     if (options.productionMode === 'full_pack' || !options.clientProvidesCoffee) {
       fields.push(`
         <div class="form-group">
           <label>${getProcessSupplierLabel('compra')}</label>
-          ${SupplierManager.renderSelect('compra', { id: 'quot-supplier-compra', selectedId: defaults.compra || '' })}
+          ${SupplierManager.renderSelect('compra', { id: 'quot-supplier-compra', selectedId: compraDefault })}
         </div>
         <div class="form-group">
           <label>${getProcessSupplierLabel('transporte')}</label>

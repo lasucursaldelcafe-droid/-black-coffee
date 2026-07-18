@@ -47,6 +47,14 @@ const CoffeeManager = {
   },
 
   save(coffee, options = {}) {
+    const linkedSupplier = this.findSupplierForCoffee(coffee);
+    if (!coffee.supplierId && linkedSupplier) {
+      coffee.supplierId = linkedSupplier.id;
+    }
+    if (!coffee.farmer && linkedSupplier) {
+      coffee.farmer = linkedSupplier.name;
+    }
+
     const coffees = this.getAll();
     const index = coffees.findIndex(c => c.id === coffee.id);
 

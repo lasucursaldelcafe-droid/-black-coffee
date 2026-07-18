@@ -47,7 +47,7 @@ const InventoryManager = {
     return this.getAll().find((i) => i.coffeeId === coffeeId);
   },
 
-  update(coffeeId, changes, auditMeta = null) {
+  update(coffeeId, changes, auditMeta = null, options = {}) {
     const inventory = this.getAll();
     const index = inventory.findIndex((i) => i.coffeeId === coffeeId);
 
@@ -61,7 +61,9 @@ const InventoryManager = {
       AuditLog.log(auditMeta.action, auditMeta.entity, auditMeta.details);
     }
 
-    this.checkLowStock(coffeeId);
+    if (!options.skipStockCheck) {
+      this.checkLowStock(coffeeId);
+    }
     return inventory[index];
   },
 
@@ -243,15 +245,29 @@ const InventoryManager = {
     const coffee = CoffeeManager.getById(coffeeId);
     const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
 
-    if (item && coffee && item.greenKg <= (item.minStockKg || settings.lowStockThreshold)) {
-      Notifications.add(
-        `⚠️ Stock bajo: ${coffee.name} (${formatNumber(item.greenKg)}kg restantes)`,
-        'warning',
-        { section: 'inventory', entityId: coffeeId, action: 'purchase' }
-      );
-      EmailService.sendNotification('Alerta de Stock Bajo',
-        `El café "${coffee.name}" tiene solo ${formatNumber(item.greenKg)}kg en inventario. Se recomienda realizar una nueva compra.`);
+    if (!item || !coffee) return;
+
+    const threshold = item.minStockKg || settings.lowStockThreshold;
+    if (item.greenKg > threshold) {
+      if (item.lastLowStockAlertAt) {
+        this.update(coffeeId, { lastLowStockAlertAt: null }, null, { skipStockCheck: true });
+      }
+      return;
     }
+
+    const now = Date.now();
+    const lastAlert = item.lastLowStockAlertAt ? Date.parse(item.lastLowStockAlertAt) : 0;
+    if (lastAlert && now - lastAlert < 24 * 60 * 60 * 1000) return;
+
+    this.update(coffeeId, { lastLowStockAlertAt: new Date().toISOString() }, null, { skipStockCheck: true });
+
+    Notifications.add(
+      `⚠️ Stock bajo: ${coffee.name} (${formatNumber(item.greenKg)}kg restantes)`,
+      'warning',
+      { section: 'inventory', entityId: coffeeId, action: 'purchase' }
+    );
+    EmailService.sendNotification('Alerta de Stock Bajo',
+      `El café "${coffee.name}" tiene solo ${formatNumber(item.greenKg)}kg en inventario. Se recomienda realizar una nueva compra.`);
   },
 
   checkAllLowStock() {

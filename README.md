@@ -17,8 +17,8 @@ Cada push a `main` actualiza automáticamente la rama `gh-pages` vía GitHub Act
 
 ## 📧 Notificaciones
 
-Todas las notificaciones (cotizaciones, compras, alertas de stock) se envían a:
-**ghostspecialtycoffee@gmail.com**
+Todas las notificaciones (cotizaciones, compras, ventas, alertas de stock) se envían automáticamente a:
+**lasucursaldelcafe@gmail.com**
 
 ## ✨ Funcionalidades
 

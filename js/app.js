@@ -18,6 +18,14 @@ const App = {
     DataSeed.init();
     EmailService.init();
 
+    if (FirebaseSync.isEnabled()) {
+      try {
+        await FirebaseSync.pushAllLocal();
+      } catch (error) {
+        console.warn('No se pudo subir datos iniciales a Firebase:', error.message);
+      }
+    }
+
     this.bindNavigation();
     this.bindModals();
     this.bindSyncEvents();
@@ -452,9 +460,9 @@ const App = {
         </p>
         <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
         <p class="form-hint" style="margin-bottom:12px">
-          Los datos se comparten entre dispositivos en tiempo real. La sesión de login no se sincroniza.
+          Los datos se sincronizan automáticamente en tiempo real entre dispositivos. No necesita pulsar ningún botón.
         </p>
-        <button type="button" class="btn btn-secondary" id="sync-all-btn">Sincronizar todo</button>
+        <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn" title="Solo si nota datos desactualizados">Forzar sincronización</button>
       </div>
       <div class="card">
         <div class="card-header"><span class="card-title">Alertas de Inventario</span></div>

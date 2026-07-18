@@ -1,5 +1,5 @@
 const FIREBASE_COLLECTION = 'bca_data';
-const FIREBASE_SYNC_EXCLUDED = new Set([STORAGE_KEYS.SESSION]);
+const FIREBASE_SYNC_EXCLUDED = new Set([STORAGE_KEYS.SESSION, STORAGE_KEYS.USERS]);
 const FIREBASE_SYNC_KEYS = Object.values(STORAGE_KEYS).filter((key) => !FIREBASE_SYNC_EXCLUDED.has(key));
 const FIREBASE_META_KEYS = ['bca_data_version', 'bca_email_queue'];
 
@@ -35,10 +35,11 @@ const FirebaseSync = {
       this.auth = firebase.auth();
       this.db = firebase.firestore();
       await this.auth.signInAnonymously();
-      await this.syncAll({ silent: true });
-      this.setupRealtimeListener();
       this.enabled = true;
       this.ready = true;
+      await this.syncAll({ silent: true });
+      this.setupRealtimeListener();
+      this.setupConnectivityListeners();
       return true;
     } catch (error) {
       console.error('Firebase sync no disponible:', error);
@@ -184,6 +185,25 @@ const FirebaseSync = {
     return this.pushKeys(keys);
   },
 
+  setupConnectivityListeners() {
+    if (this._connectivityBound) return;
+    this._connectivityBound = true;
+
+    window.addEventListener('online', () => {
+      if (!this.isEnabled()) return;
+      this.syncAll({ silent: true }).catch((error) => {
+        console.warn('Re-sincronización al volver en línea:', error.message);
+      });
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !this.isEnabled()) return;
+      this.syncAll({ silent: true }).catch((error) => {
+        console.warn('Re-sincronización al volver a la pestaña:', error.message);
+      });
+    });
+  },
+
   setupRealtimeListener() {
     if (!this.db || this._unsubscribe) return;
 
@@ -231,7 +251,7 @@ const FirebaseSync = {
   },
 
   queuePush(key, value) {
-    if (!this.db || this._pulling || this._suppressRemote) return;
+    if (!this.isEnabled() || this._pulling || this._suppressRemote) return;
     if (!this.getAllSyncKeys().includes(key)) return;
 
     clearTimeout(this._writeTimers[key]);
@@ -252,7 +272,7 @@ const FirebaseSync = {
   },
 
   queueDelete(key) {
-    if (!this.db || this._pulling) return;
+    if (!this.isEnabled() || this._pulling) return;
     if (!this.getAllSyncKeys().includes(key)) return;
 
     clearTimeout(this._writeTimers[key]);
