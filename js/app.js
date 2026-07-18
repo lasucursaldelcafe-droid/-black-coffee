@@ -9,22 +9,8 @@ const App = {
   },
 
   async bootstrap() {
-    try {
-      await FirebaseSync.init();
-    } catch (error) {
-      console.error('No se pudo iniciar Firebase:', error);
-    }
-
     DataSeed.init();
     EmailService.init();
-
-    if (FirebaseSync.isEnabled()) {
-      try {
-        await FirebaseSync.pushAllLocal();
-      } catch (error) {
-        console.warn('No se pudo subir datos iniciales a Firebase:', error.message);
-      }
-    }
 
     this.bindNavigation();
     this.bindModals();
@@ -32,10 +18,13 @@ const App = {
     this.renderUserInfo();
     this.applySettings();
     this.checkProductionCostsModal();
-    InventoryManager.checkAllLowStock();
     Notifications.updateBadge();
 
     this.navigateTo('dashboard');
+
+    FirebaseSync.startInBackground().finally(() => {
+      InventoryManager.checkAllLowStock();
+    });
   },
 
   handleNotificationLink(link) {

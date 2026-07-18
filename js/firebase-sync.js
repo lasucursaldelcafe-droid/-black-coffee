@@ -21,33 +21,83 @@ const FirebaseSync = {
     return this.enabled && this.ready;
   },
 
+  _withTimeout(promise, ms, label = 'operación') {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Tiempo de espera agotado (${label})`)), ms);
+      })
+    ]);
+  },
+
+  startInBackground() {
+    const config = window.FIREBASE_CONFIG;
+    if (!config?.projectId) {
+      return Promise.resolve(false);
+    }
+    if (this._initPromise) {
+      return this._initPromise;
+    }
+
+    this._initPromise = this._connect()
+      .then((connected) => {
+        if (!connected) return false;
+        this._runBackgroundSync();
+        return true;
+      })
+      .catch((error) => {
+        console.error('Firebase sync no disponible:', error);
+        this.lastError = error.message || 'Error de conexión';
+        this.enabled = false;
+        this.ready = false;
+        this.updateStatusElement();
+        return false;
+      });
+
+    return this._initPromise;
+  },
+
   async init() {
+    return this.startInBackground();
+  },
+
+  async _connect() {
     const config = window.FIREBASE_CONFIG;
     if (!config?.projectId) {
       return false;
     }
 
-    try {
-      await this.loadSdk();
-      if (!firebase.apps.length) {
-        firebase.initializeApp(config);
-      }
-      this.auth = firebase.auth();
-      this.db = firebase.firestore();
-      await this.auth.signInAnonymously();
-      this.enabled = true;
-      this.ready = true;
-      await this.syncAll({ silent: true });
-      this.setupRealtimeListener();
-      this.setupConnectivityListeners();
-      return true;
-    } catch (error) {
-      console.error('Firebase sync no disponible:', error);
-      this.lastError = error.message || 'Error de conexión';
-      this.enabled = false;
-      this.ready = false;
-      return false;
+    await this._withTimeout(this.loadSdk(), 15000, 'carga de Firebase SDK');
+    if (!firebase.apps.length) {
+      firebase.initializeApp(config);
     }
+    this.auth = firebase.auth();
+    this.db = firebase.firestore();
+    await this._withTimeout(this.auth.signInAnonymously(), 10000, 'autenticación Firebase');
+    this.enabled = true;
+    this.ready = true;
+    this.lastError = null;
+    this.setupRealtimeListener();
+    this.setupConnectivityListeners();
+    this.updateStatusElement();
+    return true;
+  },
+
+  _runBackgroundSync() {
+    this.syncAll({ silent: true })
+      .then(() => this.pushAllLocal())
+      .then(() => {
+        window.dispatchEvent(new CustomEvent('bca-data-changed', {
+          detail: { source: 'firebase-bootstrap' }
+        }));
+      })
+      .catch((error) => {
+        console.warn('Sincronización inicial en segundo plano:', error.message);
+        this.lastError = error.message || 'Error al sincronizar';
+      })
+      .finally(() => {
+        this.updateStatusElement();
+      });
   },
 
   getAllSyncKeys() {
@@ -89,7 +139,11 @@ const FirebaseSync = {
     let pulled = 0;
 
     try {
-      const snapshot = await this.db.collection(FIREBASE_COLLECTION).get();
+      const snapshot = await this._withTimeout(
+        this.db.collection(FIREBASE_COLLECTION).get(),
+        20000,
+        'lectura de Firebase'
+      );
       const remoteByKey = new Map();
 
       snapshot.forEach((doc) => {
