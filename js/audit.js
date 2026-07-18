@@ -4,7 +4,9 @@ const AUDIT_ACTIONS = {
   adjust: 'Ajuste manual',
   delete_coffee: 'Eliminación de café',
   delete_quotation: 'Eliminación de cotización',
-  update_inventory: 'Actualización de inventario'
+  update_inventory: 'Actualización de inventario',
+  sale: 'Venta registrada',
+  delete_sale: 'Eliminación de venta'
 };
 
 const AuditLog = {
@@ -75,7 +77,9 @@ const AuditLog = {
       adjust: '✏️',
       delete_coffee: '🗑️',
       delete_quotation: '🗑️',
-      update_inventory: '📦'
+      update_inventory: '📦',
+      sale: '💰',
+      delete_sale: '🗑️'
     };
     return icons[action] || '📝';
   },
@@ -93,6 +97,10 @@ const AuditLog = {
         return `Café eliminado: ${d.coffeeName || entry.entity}`;
       case 'delete_quotation':
         return `Cotización eliminada: ${d.number || entry.entity}`;
+      case 'sale':
+        return `${d.coffeeName || entry.entity}: ${d.quantity} × ${d.packaging || ''} · ${formatCurrency(d.totalRevenue || 0)} · Margen ${formatNumber(d.profitMargin || 0, 1)}% · Vendió: ${d.soldBy || entry.userName}`;
+      case 'delete_sale':
+        return `Venta eliminada: ${d.coffeeName || entry.entity} (${d.quantity} uds)`;
       default:
         return d.message || entry.entity || '';
     }

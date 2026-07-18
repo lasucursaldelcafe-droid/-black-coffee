@@ -64,6 +64,9 @@
           <button class="nav-item" data-section="quotations">
             <span class="icon">📋</span> Cotizaciones
           </button>
+          <button class="nav-item" data-section="sales">
+            <span class="icon">💰</span> Ventas
+          </button>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">Gestión</div>
@@ -187,6 +190,15 @@
             <button class="btn btn-primary" onclick="QuotationManager.create()">+ Nueva Cotización</button>
           </div>
           <div id="quotations-table"></div>
+        </section>
+
+        <!-- Sales -->
+        <section class="page-section" id="section-sales">
+          <div class="section-header">
+            <h3 class="section-title">Ventas y Rentabilidad</h3>
+            <button class="btn btn-primary" onclick="SalesManager.create()">+ Registrar Venta</button>
+          </div>
+          <div id="sales-dashboard"></div>
         </section>
 
         <!-- Production Costs -->
@@ -320,6 +332,21 @@
     </div>
   </div>
 
+  <!-- Modal: Sales -->
+  <div class="modal-overlay" id="sales-modal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="sales-modal-title">Registrar Venta</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="sales-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-sale-btn">Registrar Venta</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Inventory -->
   <div class="modal-overlay" id="inventory-modal">
     <div class="modal">
@@ -344,6 +371,7 @@
   <script src="js/clients.js"></script>
   <script src="js/suppliers.js"></script>
   <script src="js/inventory.js"></script>
+  <script src="js/sales.js"></script>
   <script src="js/quotations.js"></script>
   <script src="js/pdf.js"></script>
   <script src="js/notifications.js"></script>

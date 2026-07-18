@@ -67,6 +67,7 @@ const App = {
     document.getElementById('save-supplier-btn')?.addEventListener('click', () => SupplierManager.saveFromForm());
     document.getElementById('save-quotation-btn')?.addEventListener('click', () => QuotationManager.saveFromForm());
     document.getElementById('save-inventory-btn')?.addEventListener('click', () => InventoryManager.saveFromForm());
+    document.getElementById('save-sale-btn')?.addEventListener('click', () => SalesManager.saveFromForm());
     document.getElementById('save-costs-btn')?.addEventListener('click', () => {
       ProductionCosts.saveFromForm();
       document.getElementById('costs-modal')?.classList.remove('active');
@@ -104,6 +105,7 @@ const App = {
       suppliers: 'Proveedores',
       inventory: 'Inventario',
       quotations: 'Cotizaciones',
+      sales: 'Ventas',
       costs: 'Costos de Producción',
       settings: 'Configuración'
     };
@@ -134,6 +136,9 @@ const App = {
       case 'quotations':
         QuotationManager.renderTable(document.getElementById('quotations-table'));
         break;
+      case 'sales':
+        SalesManager.renderDashboard(document.getElementById('sales-dashboard'));
+        break;
       case 'costs':
         ProductionCosts.renderCostForm(document.getElementById('costs-form-container'));
         break;
@@ -147,13 +152,14 @@ const App = {
     const coffees = CoffeeManager.getAll();
     const clients = ClientManager.getAll();
     const quotations = QuotationManager.getAll();
+    const sales = SalesManager.getAll();
     const inventory = InventoryManager.getAll();
     const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
 
     const totalGreenKg = inventory.reduce((sum, i) => sum + i.greenKg, 0);
     const lowStockCount = inventory.filter(i => i.greenKg <= (i.minStockKg || 10)).length;
-    const pendingQuotations = quotations.filter(q => q.status === 'pending').length;
-    const totalQuotationValue = quotations.reduce((sum, q) => sum + q.totalPrice, 0);
+    const pendingQuotations = quotations.filter((q) => q.status === 'pending').length;
+    const salesSummary = SalesManager.getReportSummary(sales);
 
     document.getElementById('dashboard-stats').innerHTML = `
       <div class="stat-card">
@@ -169,8 +175,8 @@ const App = {
         <div class="stat-label">Inventario Verde</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">${quotations.length}</div>
-        <div class="stat-label">Cotizaciones</div>
+        <div class="stat-value">${formatCurrency(salesSummary.totalRevenue)}</div>
+        <div class="stat-label">Ventas (${salesSummary.count})</div>
       </div>
     `;
 
@@ -188,8 +194,44 @@ const App = {
 
     document.getElementById('dashboard-alerts').innerHTML = alerts.join('');
 
+    const recentSales = sales.slice(0, 5);
+    document.getElementById('dashboard-recent').innerHTML = recentSales.length > 0 ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-title">Ventas Recientes</span>
+          <button class="btn btn-sm btn-secondary" onclick="App.navigateTo('sales')">Ver informe</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Café</th>
+                <th>Cant.</th>
+                <th>Total</th>
+                <th>Margen</th>
+                <th>Vendió</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${recentSales.map((s) => `
+                <tr>
+                  <td>${formatDate(s.soldAt)}</td>
+                  <td>${s.coffeeName}</td>
+                  <td>${s.quantity} × ${PACKAGING_SIZES[s.packaging]?.label || s.packaging}</td>
+                  <td>${formatCurrency(s.totalRevenue)}</td>
+                  <td><span class="badge badge-neutral">${formatNumber(s.profitMargin, 1)}%</span></td>
+                  <td>${s.userName}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : '';
+
     const recentQuotations = quotations.slice(0, 5);
-    document.getElementById('dashboard-recent').innerHTML = recentQuotations.length > 0 ? `
+    document.getElementById('dashboard-recent').innerHTML += recentQuotations.length > 0 ? `
       <div class="card">
         <div class="card-header">
           <span class="card-title">Cotizaciones Recientes</span>
@@ -211,10 +253,11 @@ const App = {
           </table>
         </div>
       </div>
-    ` : '<p style="color:var(--text-muted)">No hay cotizaciones recientes</p>';
+    ` : '';
 
     document.getElementById('dashboard-quick-actions').innerHTML = `
-      <button class="btn btn-primary" onclick="QuotationManager.create()">Nueva Cotización</button>
+      <button class="btn btn-primary" onclick="SalesManager.create()">Registrar Venta</button>
+      <button class="btn btn-secondary" onclick="QuotationManager.create()">Nueva Cotización</button>
       <button class="btn btn-secondary" onclick="CoffeeManager.create()">Agregar Café</button>
       <button class="btn btn-secondary" onclick="ClientManager.create()">Agregar Cliente</button>
     `;

@@ -482,7 +482,17 @@
   }
 }
 
+@media (max-width: 768px) {
+  .sales-summary.grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 480px) {
+  .sales-summary.grid-4 {
+    grid-template-columns: 1fr;
+  }
+
   .action-buttons .btn {
     flex: 1 1 calc(50% - 4px);
     min-width: 0;
