@@ -7,6 +7,45 @@ const CoffeeManager = {
     return this.getAll().find(c => c.id === id);
   },
 
+  findSupplierForCoffee(coffee) {
+    if (!coffee) return null;
+    const suppliers = SupplierManager.getByCategory('coffee');
+    if (coffee.supplierId) {
+      const linked = suppliers.find((s) => s.id === coffee.supplierId);
+      if (linked) return linked;
+    }
+    const farmer = (coffee.farmer || '').trim().toLowerCase();
+    const name = (coffee.name || '').trim().toLowerCase();
+    return suppliers.find((s) => {
+      const supplierName = (s.name || '').trim().toLowerCase();
+      return supplierName && (supplierName === farmer || supplierName === name);
+    }) || null;
+  },
+
+  resolveSupplierId(coffee) {
+    return this.findSupplierForCoffee(coffee)?.id || coffee?.supplierId || '';
+  },
+
+  applySupplierToForm(supplierId) {
+    const supplier = supplierId ? SupplierManager.getById(supplierId) : null;
+    const farmerInput = document.getElementById('coffee-farmer');
+    const regionHidden = document.getElementById('coffee-region');
+    if (!supplier) return;
+
+    if (farmerInput && !farmerInput.value.trim()) {
+      farmerInput.value = supplier.name;
+    }
+
+    const region = supplier.region || supplier.department || '';
+    if (region && regionHidden && !regionHidden.value) {
+      regionHidden.value = region;
+      const regionContainer = document.getElementById('region-selection');
+      regionContainer?.querySelectorAll('.selection-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.value === region);
+      });
+    }
+  },
+
   save(coffee, options = {}) {
     const coffees = this.getAll();
     const index = coffees.findIndex(c => c.id === coffee.id);
@@ -76,7 +115,13 @@ const CoffeeManager = {
       return;
     }
 
-    container.innerHTML = coffees.map(coffee => `
+    container.innerHTML = coffees.map(coffee => {
+      const supplier = this.findSupplierForCoffee(coffee);
+      const supplierLabel = supplier
+        ? `<br><span class="form-hint">Proveedor: ${supplier.name}${supplier.region ? ` · ${supplier.region}` : ''}</span>`
+        : '';
+
+      return `
       <div class="coffee-card" data-id="${coffee.id}">
         <div class="coffee-card-image">
           ${coffee.image 
@@ -88,6 +133,7 @@ const CoffeeManager = {
           <div class="coffee-card-meta">
             ${coffee.variety} · ${coffee.region} · ${coffee.process}
             ${coffee.fermentation ? `<br>${coffee.fermentation}` : ''}
+            ${supplierLabel}
           </div>
           <div class="coffee-card-price">${formatCurrency(coffee.pricePerKg)}/kg</div>
           <div class="action-buttons" style="margin-top:12px">
@@ -97,7 +143,8 @@ const CoffeeManager = {
           </div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   },
 
   showForm(coffee = null) {
@@ -105,10 +152,20 @@ const CoffeeManager = {
     const modal = document.getElementById('coffee-modal');
     const title = document.getElementById('coffee-modal-title');
     title.textContent = isEdit ? 'Editar Café' : 'Nuevo Café';
+    const selectedSupplierId = this.resolveSupplierId(coffee || {});
 
     const form = document.getElementById('coffee-form');
     form.innerHTML = `
       <input type="hidden" id="coffee-id" value="${coffee?.id || ''}">
+      <div class="form-group">
+        <label>Proveedor de café</label>
+        ${SupplierManager.renderSelect('compra', {
+          id: 'coffee-supplier',
+          selectedId: selectedSupplierId,
+          placeholder: 'Seleccionar proveedor de café...'
+        })}
+        <p class="form-hint" style="margin-top:4px">Registre caficultores en <strong>Proveedores</strong> para vincularlos aquí.</p>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label>Nombre del Café / Productor</label>
@@ -116,7 +173,7 @@ const CoffeeManager = {
         </div>
         <div class="form-group">
           <label>Caficultor</label>
-          <input type="text" class="form-control" id="coffee-farmer" value="${coffee?.farmer || ''}">
+          <input type="text" class="form-control" id="coffee-farmer" value="${coffee?.farmer || ''}" placeholder="Se completa al elegir proveedor">
         </div>
       </div>
       <div class="form-group">
@@ -241,13 +298,30 @@ const CoffeeManager = {
         }
       });
     }
+
+    const supplierSelect = document.getElementById('coffee-supplier');
+    if (supplierSelect) {
+      supplierSelect.addEventListener('change', (e) => {
+        const supplier = SupplierManager.getById(e.target.value);
+        if (!supplier) return;
+        const farmerInput = document.getElementById('coffee-farmer');
+        if (farmerInput) farmerInput.value = supplier.name;
+        this.applySupplierToForm(supplier.id);
+      });
+    }
   },
 
   saveFromForm() {
+    const supplierId = document.getElementById('coffee-supplier')?.value || null;
+    const supplier = supplierId ? SupplierManager.getById(supplierId) : null;
+    let farmer = document.getElementById('coffee-farmer').value.trim();
+    if (!farmer && supplier) farmer = supplier.name;
+
     const coffee = {
       id: document.getElementById('coffee-id').value || undefined,
       name: document.getElementById('coffee-name').value,
-      farmer: document.getElementById('coffee-farmer').value,
+      supplierId: supplierId || null,
+      farmer,
       variety: document.getElementById('coffee-variety').value,
       region: document.getElementById('coffee-region').value,
       process: document.getElementById('coffee-process').value,

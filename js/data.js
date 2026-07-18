@@ -1,4 +1,4 @@
-const DATA_VERSION = 2;
+const DATA_VERSION = 3;
 const DATA_VERSION_KEY = 'bca_data_version';
 
 const DataSeed = {
@@ -16,6 +16,31 @@ const DataSeed = {
     this.seedSuppliers();
     this.seedInventory();
     this.ensureTransformationSuppliers();
+    this.linkCoffeeSuppliers();
+  },
+
+  linkCoffeeSuppliers() {
+    const coffees = Storage.get(STORAGE_KEYS.COFFEES) || [];
+    if (!coffees.length) return;
+
+    let changed = false;
+    const linked = coffees.map((coffee) => {
+      if (coffee.supplierId && SupplierManager.getById(coffee.supplierId)) {
+        return coffee;
+      }
+      const supplier = CoffeeManager.findSupplierForCoffee(coffee);
+      if (!supplier) return coffee;
+      changed = true;
+      return {
+        ...coffee,
+        supplierId: supplier.id,
+        farmer: coffee.farmer || supplier.name
+      };
+    });
+
+    if (changed) {
+      Storage.set(STORAGE_KEYS.COFFEES, linked);
+    }
   },
 
   migrate(fromVersion) {
@@ -24,6 +49,10 @@ const DataSeed = {
     }
     if (fromVersion === 1) {
       this.migrateV1ToV2();
+      return;
+    }
+    if (fromVersion === 2) {
+      this.migrateV2ToV3();
       return;
     }
     if (fromVersion !== DATA_VERSION) {
@@ -37,6 +66,10 @@ const DataSeed = {
     if (enriched.length > 0) {
       Storage.set(STORAGE_KEYS.QUOTATIONS, enriched);
     }
+  },
+
+  migrateV2ToV3() {
+    this.linkCoffeeSuppliers();
   },
 
   enrichQuotationMetrics(quotation) {

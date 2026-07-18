@@ -456,6 +456,7 @@ const InventoryManager = {
     this._setSaveButtonVisible(true);
     const coffee = CoffeeManager.getById(coffeeId);
     const defaults = ProductionCosts.get().defaultSuppliers || {};
+    const coffeeSupplierId = coffee?.supplierId || CoffeeManager.resolveSupplierId(coffee) || defaults.compra || '';
     const modal = document.getElementById('inventory-modal');
     document.getElementById('inventory-modal-title').textContent = `Compra - ${coffee.name}`;
 
@@ -474,7 +475,7 @@ const InventoryManager = {
       </div>
       <div class="form-group">
         <label>Proveedor de Café</label>
-        ${SupplierManager.renderSelect('compra', { id: 'inv-supplier-coffee', selectedId: defaults.compra || '' })}
+        ${SupplierManager.renderSelect('compra', { id: 'inv-supplier-coffee', selectedId: coffeeSupplierId })}
       </div>
       <div class="form-group">
         <label>Proveedor Logístico (opcional)</label>
