@@ -692,9 +692,125 @@ tr:last-child td {
   flex-shrink: 0;
 }
 
+/* Production batch history */
+.batch-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.batch-history-item {
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition), transform var(--transition);
+}
+
+.batch-history-item:hover {
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+}
+
+.batch-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.batch-history-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.batch-history-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.batch-history-yield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.batch-yield-in { color: var(--text-secondary); }
+.batch-yield-arrow { color: var(--text-muted); }
+.batch-yield-out { color: var(--success); }
+
+.batch-supplier-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.batch-supplier-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.batch-supplier-chip strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.batch-supplier-chip--empty {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+.batch-detail-step {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.batch-detail-step-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.batch-detail-step-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
 @media (max-width: 768px) {
   .workflow-arrow { display: none; }
   .workflow-step { flex: 1 1 calc(50% - 4px); }
+
+  .batch-history-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .batch-history-yield {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 768px) {

@@ -1,4 +1,44 @@
 const InventoryManager = {
+  _batchFilter: 'all',
+
+  _setSaveButtonVisible(visible = true) {
+    const btn = document.getElementById('save-inventory-btn');
+    if (btn) btn.style.display = visible ? '' : 'none';
+  },
+
+  getProductionBatches(coffeeId = null) {
+    const batches = Storage.get(STORAGE_KEYS.PRODUCTION_BATCHES) || [];
+    if (!coffeeId || coffeeId === 'all') return batches;
+    return batches.filter((b) => b.coffeeId === coffeeId);
+  },
+
+  setBatchFilter(coffeeId) {
+    this._batchFilter = coffeeId || 'all';
+    App.renderSection('inventory');
+  },
+
+  formatBatchSteps(batch) {
+    if (!batch.steps?.length) return 'Sin proveedores registrados';
+    return batch.steps
+      .map((s) => `${s.label}: ${s.supplierName || '—'}`)
+      .join(' · ');
+  },
+
+  getSupplierSnapshot(supplierId) {
+    const supplier = supplierId ? SupplierManager.getById(supplierId) : null;
+    if (!supplier) {
+      return { supplierId: null, supplierName: '—', invima: '', kimba: '', address: '', city: '' };
+    }
+    return {
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      invima: supplier.invima || '',
+      kimba: supplier.kimba || '',
+      address: supplier.address || '',
+      city: supplier.city || '',
+      department: supplier.department || supplier.region || ''
+    };
+  },
   getAll() {
     return Storage.get(STORAGE_KEYS.INVENTORY) || [];
   },
@@ -124,8 +164,7 @@ const InventoryManager = {
     const steps = activeSteps.map((stepKey) => ({
       step: stepKey,
       label: getProcessSupplierLabel(stepKey),
-      supplierId: processSuppliers[stepKey] || null,
-      supplierName: SupplierManager.getName(processSuppliers[stepKey])
+      ...this.getSupplierSnapshot(processSuppliers[stepKey])
     }));
 
     const batches = Storage.get(STORAGE_KEYS.PRODUCTION_BATCHES) || [];
@@ -277,6 +316,7 @@ const InventoryManager = {
             <button class="btn btn-sm btn-primary" onclick="InventoryManager.showPurchaseForm('${coffee.id}')">Registrar Compra</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showRoastForm('${coffee.id}')">Registrar Tostión</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote con Proveedores</button>
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.setBatchFilter('${coffee.id}')">Ver Lotes</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showAdjustForm('${coffee.id}')">Ajustar Stock</button>
           </div>
         </div>
@@ -285,6 +325,15 @@ const InventoryManager = {
 
     container.innerHTML = `
       <div class="grid-auto inventory-grid">${cardsHtml}</div>
+      <div class="section" style="margin-top:32px">
+        <div class="section-header">
+          <h3 class="section-title">Historial de Lotes de Producción</h3>
+          <span class="form-hint">Proveedores por proceso en cada lote</span>
+        </div>
+        <div class="card">
+          <div id="production-batch-history"></div>
+        </div>
+      </div>
       <div class="section" style="margin-top:32px">
         <div class="section-header">
           <h3 class="section-title">Historial de Movimientos</h3>
@@ -296,10 +345,114 @@ const InventoryManager = {
       </div>
     `;
 
+    this.renderProductionHistory(document.getElementById('production-batch-history'));
     AuditLog.renderLog(document.getElementById('inventory-audit-log'), { limit: 30 });
   },
 
+  renderProductionHistory(container) {
+    if (!container) return;
+
+    const coffees = CoffeeManager.getAll();
+    const batches = this.getProductionBatches(this._batchFilter === 'all' ? null : this._batchFilter);
+
+    const filterButtons = [
+      ['all', 'Todos los cafés'],
+      ...coffees.map((c) => [c.id, c.name])
+    ];
+
+    if (batches.length === 0) {
+      container.innerHTML = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          ${filterButtons.map(([key, label]) => `
+            <button type="button" class="btn btn-sm ${this._batchFilter === key ? 'btn-primary' : 'btn-secondary'}"
+              onclick="InventoryManager.setBatchFilter('${key}')">${label}</button>
+          `).join('')}
+        </div>
+        <div class="empty-state" style="padding:24px">
+          <div class="empty-state-icon">⚙️</div>
+          <h3>Sin lotes registrados</h3>
+          <p>Use <strong>Lote con Proveedores</strong> en un café para registrar tostión y proveedores por proceso</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        ${filterButtons.map(([key, label]) => `
+          <button type="button" class="btn btn-sm ${this._batchFilter === key ? 'btn-primary' : 'btn-secondary'}"
+            onclick="InventoryManager.setBatchFilter('${key}')">${label}</button>
+        `).join('')}
+      </div>
+      <div class="batch-history-list">
+        ${batches.map((batch) => `
+          <div class="batch-history-item" onclick="InventoryManager.showBatchDetail('${batch.id}')">
+            <div class="batch-history-header">
+              <div>
+                <div class="batch-history-title">${batch.coffeeName}</div>
+                <div class="batch-history-meta">
+                  ${formatDateTime(batch.createdAt)} · ${batch.userName || 'Usuario'}
+                </div>
+              </div>
+              <div class="batch-history-yield">
+                <span class="batch-yield-in">${formatNumber(batch.greenKg)} kg verde</span>
+                <span class="batch-yield-arrow">→</span>
+                <span class="batch-yield-out">${formatNumber(batch.roastedKg)} kg tostado</span>
+              </div>
+            </div>
+            <div class="batch-supplier-chips">
+              ${(batch.steps || []).map((step) => `
+                <span class="batch-supplier-chip ${step.supplierId ? '' : 'batch-supplier-chip--empty'}">
+                  <strong>${step.label}</strong>
+                  ${step.supplierName || 'Sin asignar'}
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  },
+
+  showBatchDetail(batchId) {
+    const batches = Storage.get(STORAGE_KEYS.PRODUCTION_BATCHES) || [];
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch) return;
+
+    const modal = document.getElementById('inventory-modal');
+    document.getElementById('inventory-modal-title').textContent = `Lote — ${batch.coffeeName}`;
+    this._setSaveButtonVisible(false);
+
+    const mermaPct = batch.greenKg > 0
+      ? formatNumber(((batch.greenKg - batch.roastedKg) / batch.greenKg) * 100, 1)
+      : '0';
+
+    document.getElementById('inventory-form').innerHTML = `
+      <div class="cost-breakdown" style="margin-bottom:16px">
+        <div class="cost-row"><span class="cost-label">Fecha</span><span>${formatDateTime(batch.createdAt)}</span></div>
+        <div class="cost-row"><span class="cost-label">Registrado por</span><span>${batch.userName || '—'}</span></div>
+        <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(batch.greenKg)} kg verde</span></div>
+        <div class="cost-row"><span class="cost-label">Salida</span><span>${formatNumber(batch.roastedKg)} kg tostado</span></div>
+        <div class="cost-row"><span class="cost-label">Merma</span><span>${formatNumber(batch.greenKg - batch.roastedKg)} kg (${mermaPct}%)</span></div>
+      </div>
+      <h4 style="margin-bottom:12px;font-size:0.95rem">Proveedores por proceso</h4>
+      ${(batch.steps || []).length ? (batch.steps || []).map((step) => `
+        <div class="batch-detail-step">
+          <div class="batch-detail-step-title">${step.label}</div>
+          <div class="batch-detail-step-name">${step.supplierName || 'Sin proveedor asignado'}</div>
+          ${step.address ? `<div class="form-hint" style="margin-top:4px">📍 ${step.address}${step.city ? `, ${step.city}` : ''}${step.department ? ` (${step.department})` : ''}</div>` : ''}
+          <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
+            ${step.invima ? `<span class="badge badge-success">INVIMA ${step.invima}</span>` : ''}
+            ${step.kimba ? `<span class="badge badge-neutral">KIMBA ${step.kimba}</span>` : ''}
+          </div>
+        </div>
+      `).join('') : '<p class="form-hint">No hay proveedores registrados en este lote</p>'}
+    `;
+
+    modal.classList.add('active');
+  },
+
   showPurchaseForm(coffeeId) {
+    this._setSaveButtonVisible(true);
     const coffee = CoffeeManager.getById(coffeeId);
     const defaults = ProductionCosts.get().defaultSuppliers || {};
     const modal = document.getElementById('inventory-modal');
@@ -332,6 +485,7 @@ const InventoryManager = {
   },
 
   showRoastForm(coffeeId) {
+    this._setSaveButtonVisible(true);
     const coffee = CoffeeManager.getById(coffeeId);
     const item = this.getByCoffeeId(coffeeId);
     const defaults = ProductionCosts.get().defaultSuppliers || {};
@@ -370,6 +524,7 @@ const InventoryManager = {
   },
 
   showProductionBatchForm(coffeeId) {
+    this._setSaveButtonVisible(true);
     const coffee = CoffeeManager.getById(coffeeId);
     const item = this.getByCoffeeId(coffeeId);
     const defaults = ProductionCosts.get().defaultSuppliers || {};
@@ -421,6 +576,7 @@ const InventoryManager = {
   },
 
   showAdjustForm(coffeeId) {
+    this._setSaveButtonVisible(true);
     const coffee = CoffeeManager.getById(coffeeId);
     const item = this.getByCoffeeId(coffeeId);
     const modal = document.getElementById('inventory-modal');

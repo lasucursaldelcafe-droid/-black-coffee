@@ -64,28 +64,30 @@ const PDFGenerator = {
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text('Producto', 20, 90);
-    doc.text('Presentación', 80, 90);
-    doc.text('Cant.', 130, 90);
-    doc.text('P. Unit.', 150, 90);
-    doc.text('Total', 175, 90);
+    const tableY = quotation.processSuppliers ? 98 : 90;
+    doc.text('Producto', 20, tableY);
+    doc.text('Presentación', 80, tableY);
+    doc.text('Cant.', 130, tableY);
+    doc.text('P. Unit.', 150, tableY);
+    doc.text('Total', 175, tableY);
 
-    doc.line(20, 94, 190, 94);
+    doc.line(20, tableY + 4, 190, tableY + 4);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(quotation.coffeeName, 20, 102);
+    const rowY = tableY + 12;
+    doc.text(quotation.coffeeName, 20, rowY);
     doc.setFontSize(8);
     doc.setTextColor(100);
-    doc.text(quotation.coffeeDetails, 20, 108);
+    doc.text(quotation.coffeeDetails, 20, rowY + 6);
     doc.setTextColor(0);
     doc.setFontSize(10);
-    doc.text(PACKAGING_SIZES[quotation.packaging]?.label || quotation.packaging, 80, 102);
-    doc.text(String(quotation.quantity), 130, 102);
-    doc.text(formatCurrency(quotation.unitPrice), 150, 102);
-    doc.text(formatCurrency(quotation.totalPrice), 175, 102);
+    doc.text(PACKAGING_SIZES[quotation.packaging]?.label || quotation.packaging, 80, rowY);
+    doc.text(String(quotation.quantity), 130, rowY);
+    doc.text(formatCurrency(quotation.unitPrice), 150, rowY);
+    doc.text(formatCurrency(quotation.totalPrice), 175, rowY);
 
-    let yPos = 120;
+    let yPos = rowY + 18;
 
     if (quotation.costBreakdown?.breakdown) {
       const b = quotation.costBreakdown.breakdown;

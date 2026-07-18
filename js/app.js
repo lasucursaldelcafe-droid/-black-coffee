@@ -95,15 +95,25 @@ const App = {
   },
 
   bindModals() {
+    const closeInventoryModal = () => {
+      const btn = document.getElementById('save-inventory-btn');
+      if (btn) btn.style.display = '';
+    };
+
     document.querySelectorAll('.modal-close, [data-modal-close]').forEach(btn => {
       btn.addEventListener('click', () => {
-        btn.closest('.modal-overlay')?.classList.remove('active');
+        const overlay = btn.closest('.modal-overlay');
+        overlay?.classList.remove('active');
+        if (overlay?.id === 'inventory-modal') closeInventoryModal();
       });
     });
 
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
       overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.classList.remove('active');
+        if (e.target === overlay) {
+          overlay.classList.remove('active');
+          if (overlay.id === 'inventory-modal') closeInventoryModal();
+        }
       });
     });
 
