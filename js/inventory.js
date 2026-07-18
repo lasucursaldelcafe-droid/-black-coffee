@@ -363,7 +363,7 @@ const InventoryManager = {
 
     if (batches.length === 0) {
       container.innerHTML = `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="filter-bar">
           ${filterButtons.map(([key, label]) => `
             <button type="button" class="btn btn-sm ${this._batchFilter === key ? 'btn-primary' : 'btn-secondary'}"
               onclick="InventoryManager.setBatchFilter('${key}')">${label}</button>
@@ -378,7 +378,7 @@ const InventoryManager = {
     }
 
     container.innerHTML = `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="filter-bar">
         ${filterButtons.map(([key, label]) => `
           <button type="button" class="btn btn-sm ${this._batchFilter === key ? 'btn-primary' : 'btn-secondary'}"
             onclick="InventoryManager.setBatchFilter('${key}')">${label}</button>

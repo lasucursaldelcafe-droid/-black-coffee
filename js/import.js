@@ -208,7 +208,7 @@ const ImportManager = {
     const modal = document.getElementById('import-modal');
     document.getElementById('import-modal-title').textContent = 'Importar Cafés';
     document.getElementById('import-form').innerHTML = `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="filter-bar">
         <button type="button" class="btn btn-secondary btn-sm" id="import-tab-excel">Excel / CSV</button>
         <button type="button" class="btn btn-secondary btn-sm" id="import-tab-pdf">PDF Ghost</button>
         <button type="button" class="btn btn-primary btn-sm" id="import-tab-ghost">Catálogo Ghost (15 cafés)</button>

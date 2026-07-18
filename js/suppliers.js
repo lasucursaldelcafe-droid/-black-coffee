@@ -371,17 +371,17 @@ const SupplierManager = {
           }).join('')}
         </div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <span class="form-hint" style="align-self:center;margin-right:4px">Agregar:</span>
+      <div class="filter-bar" style="margin-bottom:12px">
+        <span class="form-hint filter-bar-label">Agregar:</span>
         ${quickAddButtons}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="filter-bar" style="margin-bottom:8px">
         ${serviceFilterButtons.map(([key, label]) => `
           <button type="button" class="btn btn-sm ${this._serviceFilter === key ? 'btn-primary' : 'btn-secondary'}"
             onclick="SupplierManager.setServiceFilter('${key}')">${label}</button>
         `).join('')}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="filter-bar">
         ${filterButtons.map(([key, label]) => `
           <button type="button" class="btn btn-sm ${this._filter === key ? 'btn-primary' : 'btn-secondary'}"
             onclick="SupplierManager.setFilter('${key}')">${label}</button>

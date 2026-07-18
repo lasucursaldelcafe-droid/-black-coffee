@@ -75,6 +75,10 @@
 .app-layout {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 /* Sidebar */
@@ -225,30 +229,52 @@
   flex: 1;
   margin-left: var(--sidebar-width);
   min-height: 100vh;
+  min-height: 100dvh;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .top-header {
   height: var(--header-height);
+  min-height: var(--header-height);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 0 24px;
+  padding-top: env(safe-area-inset-top);
   position: sticky;
   top: 0;
   z-index: 50;
+  min-width: 0;
 }
 
 .page-title {
   font-size: 1.25rem;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 
 .notification-btn {
@@ -279,6 +305,8 @@
 
 .page-content {
   padding: 24px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Hero Section */
@@ -335,7 +363,7 @@
 
 .grid-auto {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 20px;
 }
 
@@ -388,6 +416,21 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  width: 100%;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.filter-bar-label {
+  align-self: center;
+  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .inventory-stats {
@@ -412,6 +455,7 @@
   .sidebar {
     transform: translateX(-100%);
     box-shadow: var(--shadow-lg);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .sidebar.open {
@@ -426,11 +470,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
   }
 
   .grid-2,
   .grid-3,
   .grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-auto {
     grid-template-columns: 1fr;
   }
 
@@ -447,7 +496,11 @@
   }
 
   .top-header {
-    padding: 0 16px;
+    padding: 8px 16px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    height: auto;
+    min-height: var(--header-height);
+    flex-wrap: wrap;
   }
 
   .page-title {
@@ -460,8 +513,13 @@
     gap: 12px;
   }
 
-  .section-header .btn {
+  .section-header .btn,
+  .section-header .action-buttons {
     width: 100%;
+  }
+
+  .section-header .action-buttons .btn {
+    flex: 1 1 auto;
   }
 
   .inventory-stats {
@@ -475,10 +533,32 @@
   .quotation-preview {
     padding: 20px;
     font-size: 0.85rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .login-card {
     padding: 28px 20px;
+  }
+
+  .filter-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 4px;
+  }
+
+  .filter-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-bar .btn {
+    flex-shrink: 0;
   }
 }
 
@@ -498,6 +578,22 @@
     min-width: 0;
   }
 
+  .hero {
+    padding: 20px 16px;
+  }
+
+  .hero h2 {
+    font-size: 1.35rem;
+  }
+
+  .quotation-preview {
+    padding: 16px;
+  }
+
+  .login-container {
+    padding: 16px;
+  }
+
   th, td {
     padding: 10px 12px;
     font-size: 0.85rem;
@@ -510,6 +606,7 @@
   .modal-footer {
     flex-direction: column-reverse;
     padding: 12px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 
   .modal-footer .btn {
@@ -543,6 +640,9 @@
 .cost-row {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 8px 0;
   border-bottom: 1px solid var(--border-color);
 }
@@ -558,10 +658,15 @@
 
 .cost-label {
   color: var(--text-secondary);
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .cost-value {
   font-weight: 500;
+  flex-shrink: 0;
+  text-align: right;
 }
 
 /* Coffee card */
