@@ -38,8 +38,21 @@ const Storage = {
 };
 
 const DEFAULT_PRODUCTION_COSTS = {
-  roasting: 3700,
-  selection: 1900,
+  transformation: {
+    trilla: 1200,
+    greenSelection: 1500,
+    roasting: 3700,
+    selection: 1900,
+    grinding: 200,
+    packagingLabor: {
+      '250g': 800,
+      '500g': 1000,
+      '5lb': 1500
+    }
+  },
+  administrative: {
+    negotiation: 0
+  },
   packaging: {
     '250g': 1500,
     '500g': 1900,
@@ -55,11 +68,76 @@ const DEFAULT_PRODUCTION_COSTS = {
   },
   mermas: {
     trilla: 20,
+    greenSelection: 2,
     tostion: 16,
     seleccion: 3
   },
   lastUpdated: new Date().toISOString()
 };
+
+const PRODUCTION_MODES = {
+  full_pack: {
+    label: 'Producción Full Pack',
+    description: 'Café, logística, transformación completa y empaque con materiales'
+  },
+  maquila: {
+    label: 'Maquila',
+    description: 'Transformación y empacada. El cliente aporta empaque; solo se cobra mano de obra'
+  }
+};
+
+const TRANSFORMATION_STEPS = {
+  trilla: { label: 'Trilla', group: 'transformacion', mermaKey: 'trilla', costKey: 'trilla', perUnit: 'kg' },
+  greenSelection: { label: 'Selección en Verde', group: 'transformacion', mermaKey: 'greenSelection', costKey: 'greenSelection', perUnit: 'kg' },
+  tostion: { label: 'Tostión', group: 'transformacion', mermaKey: 'tostion', costKey: 'roasting', perUnit: 'kg' },
+  seleccion: { label: 'Selección Post-Tostión', group: 'transformacion', mermaKey: 'seleccion', costKey: 'selection', perUnit: 'kg' },
+  molienda: { label: 'Molienda', group: 'transformacion', costKey: 'grinding', perUnit: 'lb' },
+  empacada: { label: 'Empacada (mano de obra)', group: 'transformacion', costKey: 'packagingLabor', perUnit: 'unit' }
+};
+
+const ADMINISTRATIVE_STEPS = {
+  negociacion: { label: 'Negociación', costKey: 'negotiation' },
+  compra: { label: 'Compra de Café', dynamic: 'coffee' },
+  transporte: { label: 'Transporte', dynamic: 'transport' }
+};
+
+const GRIND_TYPES = {
+  grano: { label: 'En Grano', requiresMolienda: false },
+  molido: { label: 'Molido', requiresMolienda: true }
+};
+
+function getFullPackSteps(coffeeState) {
+  const steps = ['tostion', 'seleccion', 'empacada'];
+  if (coffeeState === 'pergamino') steps.unshift('trilla');
+  return steps;
+}
+
+function migrateProductionCosts(stored) {
+  if (!stored) return { ...DEFAULT_PRODUCTION_COSTS };
+  if (stored.transformation) {
+    return {
+      ...DEFAULT_PRODUCTION_COSTS,
+      ...stored,
+      transformation: { ...DEFAULT_PRODUCTION_COSTS.transformation, ...stored.transformation },
+      administrative: { ...DEFAULT_PRODUCTION_COSTS.administrative, ...stored.administrative },
+      packaging: { ...DEFAULT_PRODUCTION_COSTS.packaging, ...stored.packaging },
+      labels: { ...DEFAULT_PRODUCTION_COSTS.labels, ...stored.labels },
+      mermas: { ...DEFAULT_PRODUCTION_COSTS.mermas, ...stored.mermas }
+    };
+  }
+  return {
+    ...DEFAULT_PRODUCTION_COSTS,
+    transformation: {
+      ...DEFAULT_PRODUCTION_COSTS.transformation,
+      roasting: stored.roasting ?? DEFAULT_PRODUCTION_COSTS.transformation.roasting,
+      selection: stored.selection ?? DEFAULT_PRODUCTION_COSTS.transformation.selection
+    },
+    packaging: stored.packaging || DEFAULT_PRODUCTION_COSTS.packaging,
+    labels: stored.labels || DEFAULT_PRODUCTION_COSTS.labels,
+    costIncrease: stored.costIncrease || DEFAULT_PRODUCTION_COSTS.costIncrease,
+    mermas: stored.mermas || DEFAULT_PRODUCTION_COSTS.mermas
+  };
+}
 
 const DEFAULT_SETTINGS = {
   companyName: 'Black Coffee Administration',

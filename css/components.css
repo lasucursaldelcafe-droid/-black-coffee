@@ -381,6 +381,17 @@ tr:last-child td {
   background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-hover) 100%);
 }
 
+#quot-production-mode .selection-btn {
+  padding: 16px 12px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+#quot-production-mode .selection-btn strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
 /* Stats */
 .stat-card {
   background: var(--bg-card);
