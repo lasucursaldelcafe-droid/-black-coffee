@@ -20,6 +20,11 @@ const App = {
       DataSeed.init();
       EmailService.init();
 
+      if (typeof AuditLog === 'undefined') {
+        Toast?.show('Error crítico: módulo de auditoría no cargó. Use Ctrl+Shift+R para actualizar.', 'danger');
+        console.error('AuditLog no está definido — revise js/audit.js y la caché del navegador.');
+      }
+
       if (typeof SetupWizard !== 'undefined') {
         SetupWizard.init();
       }

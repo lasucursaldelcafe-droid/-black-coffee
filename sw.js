@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_VERSION = 'bca-v23';
+const CACHE_VERSION = 'bca-v24';
 
 const PRECACHE_URLS = [
   './',
@@ -87,6 +87,25 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin === self.location.origin) {
+    const isVersionedAsset = url.pathname.endsWith('.js')
+      || url.pathname.endsWith('.css')
+      || url.search.includes('v=');
+
+    if (isVersionedAsset) {
+      event.respondWith(
+        fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const copy = response.clone();
+              caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
+            }
+            return response;
+          })
+          .catch(() => caches.match(request))
+      );
+      return;
+    }
+
     event.respondWith(
       caches.match(request).then((cached) => {
         const networkFetch = fetch(request).then((response) => {

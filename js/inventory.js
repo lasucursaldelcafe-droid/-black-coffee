@@ -191,7 +191,7 @@ const InventoryManager = {
 
     Storage.set(STORAGE_KEYS.INVENTORY, inventory);
 
-    if (auditMeta) {
+    if (auditMeta && typeof AuditLog !== 'undefined') {
       AuditLog.log(auditMeta.action, auditMeta.entity, auditMeta.details);
     }
 
@@ -414,17 +414,17 @@ const InventoryManager = {
 
   registerProductionBatch(coffeeId, greenKg, processSuppliers = {}) {
     const coffee = CoffeeManager.getById(coffeeId);
-    if (!coffee) return;
+    if (!coffee) return false;
 
     if (!isGreenCoffeeState(coffee.state)) {
       Toast.show('Este café ya está en estado procesado. Use "Entrada por etapa".', 'warning');
-      return;
+      return false;
     }
 
     const item = this.getByCoffeeId(coffeeId);
     if (!item || item.greenKg < greenKg) {
       Toast.show('Stock insuficiente de café verde', 'danger');
-      return;
+      return false;
     }
 
     const roastSteps = getRoastMermaSteps(coffee.state);
@@ -434,7 +434,7 @@ const InventoryManager = {
       supplierId: processSuppliers.tostion || null,
       notes: 'Lote de tostión con proveedores'
     });
-    if (!ok) return;
+    if (!ok) return false;
 
     const steps = roastSteps.map((stepKey) => ({
       step: stepKey,
@@ -472,6 +472,7 @@ const InventoryManager = {
     Notifications.add(`Lote de tostión registrado: ${coffee.name}`, 'success', {
       section: 'inventory', entityId: coffeeId
     });
+    return true;
   },
 
   adjustStock(coffeeId, field, newValue, reason = '') {
@@ -1368,6 +1369,7 @@ const InventoryManager = {
     const action = document.getElementById('inv-action').value;
     const coffeeIdEl = document.getElementById('inv-coffee-id');
     const coffeeId = coffeeIdEl?.value;
+    let saved = false;
 
     if (action === 'stage_entry') {
       if (!coffeeId) {
@@ -1409,6 +1411,7 @@ const InventoryManager = {
 
       const ok = this.addStageEntry(coffeeId, stageKey, payload);
       if (!ok) return;
+      saved = true;
     } else if (action === 'stage_transfer') {
       const transferKey = document.getElementById('inv-transfer-key')?.value;
       const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
@@ -1431,6 +1434,7 @@ const InventoryManager = {
 
       const ok = this.processStageTransfer(coffeeId, transferKey, qty, options);
       if (!ok) return;
+      saved = true;
     } else if (action === 'purchase') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       const cost = parseFloat(document.getElementById('inv-cost').value);
@@ -1442,6 +1446,7 @@ const InventoryManager = {
         compra: document.getElementById('inv-supplier-coffee')?.value || null,
         transporte: document.getElementById('inv-supplier-transport')?.value || null
       });
+      saved = true;
     } else if (action === 'roast') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       if (!kg || kg <= 0) {
@@ -1449,7 +1454,8 @@ const InventoryManager = {
         return;
       }
       const supplierId = document.getElementById('inv-supplier-roast')?.value || null;
-      this.processStageTransfer(coffeeId, 'green_to_roasted', kg, { supplierId });
+      saved = this.processStageTransfer(coffeeId, 'green_to_roasted', kg, { supplierId }) === true;
+      if (!saved) return;
     } else if (action === 'production_batch') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       if (!kg || kg <= 0) {
@@ -1463,7 +1469,8 @@ const InventoryManager = {
         const el = document.getElementById(`inv-supplier-${stepKey}`);
         if (el?.value) processSuppliers[stepKey] = el.value;
       });
-      this.registerProductionBatch(coffeeId, kg, processSuppliers);
+      saved = this.registerProductionBatch(coffeeId, kg, processSuppliers) === true;
+      if (!saved) return;
     } else if (action === 'adjust') {
       const field = document.getElementById('inv-field').value;
       const newValue = document.getElementById('inv-new-value').value;
@@ -1477,7 +1484,10 @@ const InventoryManager = {
         return;
       }
       this.adjustStock(coffeeId, field, newValue, reason);
+      saved = true;
     }
+
+    if (!saved) return;
 
     Toast.show('Inventario actualizado', 'success');
     document.getElementById('inventory-modal').classList.remove('active');
