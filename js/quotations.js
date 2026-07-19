@@ -113,8 +113,18 @@ const QuotationManager = {
           </div>
         </div>
         <div class="form-group">
+          <label>¿El cliente aporta el empaque?</label>
+          <div class="toggle-group" style="margin-top:8px">
+            <label class="toggle">
+              <input type="checkbox" id="quot-client-packaging" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <span id="client-packaging-status">Sí, el cliente aporta el empaque (solo mano de obra)</span>
+          </div>
+        </div>
+        <div class="form-group">
           <label>Servicios de Maquila</label>
-          <p class="form-hint" style="margin-bottom:8px">Seleccione los procesos a realizar. No incluye materiales de empaque.</p>
+          <p class="form-hint" style="margin-bottom:8px">Seleccione los procesos a realizar. Si el cliente aporta empaque, no se cobra material — solo mano de obra de empacada.</p>
           <div class="selection-grid selection-grid-multi" id="quot-maquila-steps">
             ${Object.entries(TRANSFORMATION_STEPS).map(([key, val]) => `
               <button type="button" class="selection-btn ${['tostion', 'seleccion', 'empacada'].includes(key) ? 'active' : ''}" data-value="${key}">${val.label}</button>
@@ -138,7 +148,8 @@ const QuotationManager = {
         <div class="form-group">
           <label>Presentaciones y cantidades (Maquila)</label>
           <p class="form-hint" style="margin-bottom:12px">
-            Indique cuántas unidades de cada tamaño. El costo de empacada se calcula por presentación según las tarifas de Producción.
+            Indique cuántas unidades de cada tamaño. El costo de empacada (mano de obra) se calcula por presentación.
+            <span id="quot-packaging-mix-hint"> Material de empaque: aportado por el cliente.</span>
           </p>
           <div class="form-row packaging-mix-grid">
             ${Object.entries(PACKAGING_SIZES).map(([key, val]) => `
@@ -237,17 +248,29 @@ const QuotationManager = {
       || costs.defaultSuppliers?.empacada
       || null;
     const hasEmpacada = options.maquilaSteps.includes('empacada');
+    const clientProvidesPackaging = options.clientProvidesPackaging;
+
+    const mixHint = document.getElementById('quot-packaging-mix-hint');
+    if (mixHint) {
+      mixHint.textContent = clientProvidesPackaging
+        ? ' Material de empaque: aportado por el cliente.'
+        : ' Material de empaque: lo aportamos nosotros (se suma al costo).';
+    }
 
     document.querySelectorAll('.quot-pack-mix-rate').forEach((el) => {
       const size = el.dataset.packaging;
-      if (!hasEmpacada) {
-        el.textContent = 'Sin empacada en maquila';
-        return;
+      const parts = [];
+      if (!clientProvidesPackaging) {
+        const material = costs.packaging[size] || 0;
+        parts.push(material > 0 ? `Material: ${formatCurrency(material)}/ud` : 'Material: sin costo configurado');
       }
-      const rate = SupplierManager.getEffectiveServiceRate('empacada', supplierId, size);
-      el.textContent = rate > 0
-        ? `Empacada: ${formatCurrency(rate)}/ud`
-        : 'Empacada: tarifa global';
+      if (hasEmpacada) {
+        const rate = SupplierManager.getEffectiveServiceRate('empacada', supplierId, size);
+        parts.push(rate > 0 ? `Mano de obra: ${formatCurrency(rate)}/ud` : 'Mano de obra: tarifa global');
+      } else if (parts.length === 0) {
+        parts.push('Sin empacada en maquila');
+      }
+      el.textContent = parts.join(' · ');
     });
   },
 
@@ -363,6 +386,14 @@ const QuotationManager = {
       this.updatePreview();
     });
 
+    document.getElementById('quot-client-packaging')?.addEventListener('change', (e) => {
+      document.getElementById('client-packaging-status').textContent = e.target.checked
+        ? 'Sí, el cliente aporta el empaque (solo mano de obra)'
+        : 'No, nosotros aportamos el empaque (material + mano de obra)';
+      this.updatePackagingMixRates();
+      this.updatePreview();
+    });
+
     document.querySelectorAll('.quot-pack-mix-qty').forEach((input) => {
       input.addEventListener('input', () => this.updatePreview());
       input.addEventListener('change', () => this.updatePreview());
@@ -458,6 +489,7 @@ const QuotationManager = {
       productionMode: mode,
       maquilaSteps,
       clientProvidesCoffee: document.getElementById('quot-client-coffee')?.checked ?? false,
+      clientProvidesPackaging: document.getElementById('quot-client-packaging')?.checked ?? true,
       grindType: document.getElementById('quot-grind-value')?.value || 'grano'
     };
   },
@@ -503,6 +535,17 @@ const QuotationManager = {
         </div>
       `).join('');
 
+      const materialRows = (pricing.breakdown?.materials || []).map((item) => `
+        <div class="cost-row">
+          <span class="cost-label">${item.label}</span>
+          <span>${formatCurrency(item.cost)}</span>
+        </div>
+      `).join('');
+
+      const packagingNote = pricing.clientProvidesPackaging !== false
+        ? 'Empaque aportado por el cliente (solo mano de obra)'
+        : 'Empaque aportado por nosotros (material incluido)';
+
       return `
         <div class="cost-breakdown">
           <h4 style="margin-bottom:4px">Desglose Maquila — Varias Presentaciones</h4>
@@ -510,11 +553,13 @@ const QuotationManager = {
             ${PRODUCTION_MODES[pricing.productionMode]?.label || pricing.productionMode}
             · ${GRIND_TYPES[pricing.grindType]?.label || pricing.grindType}
             · Total: ${pricing.totalQuantity} unidades
+            · ${packagingNote}
           </p>
           <h5 style="margin:12px 0 8px;color:var(--text-secondary)">Por presentación</h5>
           ${lineRows}
           ${adminRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Administrativa / Logística</h5>${adminRows}` : ''}
           ${transformRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Transformación (otros procesos)</h5>${transformRows}` : ''}
+          ${materialRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Materiales</h5>${materialRows}` : ''}
           <div class="cost-row" style="margin-top:8px"><span class="cost-label">Costo Total Pedido</span><span>${formatCurrency(pricing.totalCost)}</span></div>
           <div class="cost-row"><span class="cost-label">Margen (${margin}%)</span><span>+${formatCurrency(pricing.totalPrice - pricing.totalCost)}</span></div>
           <div class="cost-row"><span class="cost-label">Precio Total Cliente</span><span>${formatCurrency(total)}</span></div>
@@ -683,6 +728,7 @@ const QuotationManager = {
       productionMode: options.productionMode,
       maquilaSteps: options.maquilaSteps,
       clientProvidesCoffee: options.clientProvidesCoffee,
+      clientProvidesPackaging: options.clientProvidesPackaging,
       grindType: options.grindType,
       processSuppliers,
       unitPrice: finalUnitPrice,
@@ -889,6 +935,7 @@ const QuotationManager = {
           <p><strong>Presentación:</strong> ${presentationText}</p>
           <p><strong>Preparación:</strong> ${grindLabel}</p>
           ${q.productionMode === 'full_pack' ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : ''}
+          ${q.productionMode === 'maquila' ? `<p><strong>Empaque:</strong> ${q.clientProvidesPackaging !== false ? 'Aportado por el cliente' : 'Aportado por nosotros (material incluido)'}</p>` : ''}
         </div>
         <table style="width:100%;margin-bottom:24px">
           <thead>

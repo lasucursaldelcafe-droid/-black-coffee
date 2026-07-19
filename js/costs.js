@@ -112,6 +112,7 @@ const ProductionCosts = {
       productionMode = 'full_pack',
       maquilaSteps = [],
       clientProvidesCoffee = false,
+      clientProvidesPackaging = true,
       grindType = 'grano',
       processSuppliers = {}
     } = options;
@@ -259,6 +260,22 @@ const ProductionCosts = {
       breakdown.labelDetails = labelDetails;
       breakdown.labelCost = labelCost;
       totalCost += labelCost;
+    } else if (productionMode === 'maquila') {
+      if (!clientProvidesPackaging) {
+        const packagingCost = costs.packaging[packagingSize] || 0;
+        breakdown.materials.push({
+          key: 'empaque',
+          label: `Material de Empaque (${PACKAGING_SIZES[packagingSize]?.label || packagingSize})`,
+          cost: packagingCost
+        });
+        totalCost += packagingCost;
+      } else {
+        breakdown.materials.push({
+          key: 'empaque_cliente',
+          label: 'Empaque aportado por el cliente',
+          cost: 0
+        });
+      }
     }
 
     const increaseCost = costs.costIncrease.enabled ? costs.costIncrease.amount : 0;
@@ -274,13 +291,16 @@ const ProductionCosts = {
       activeSteps,
       grindType,
       clientProvidesCoffee,
+      clientProvidesPackaging,
       greenKgNeeded,
       roastedKgNeeded,
       mermaDetails,
       breakdown,
       labelDetails: breakdown.labelDetails || [],
       labelCost: breakdown.labelCost || 0,
-      packagingCost: productionMode === 'full_pack' ? (costs.packaging[packagingSize] || 0) : 0,
+      packagingCost: productionMode === 'full_pack' || (productionMode === 'maquila' && !clientProvidesPackaging)
+        ? (costs.packaging[packagingSize] || 0)
+        : 0,
       packagingLaborCost: activeSteps.includes('empacada')
         ? this.getTransformationCost('empacada', 0, packagingSize, costs)
         : 0,
@@ -345,6 +365,7 @@ const ProductionCosts = {
       productionMode: options.productionMode || 'maquila',
       grindType: options.grindType || 'grano',
       clientProvidesCoffee: options.clientProvidesCoffee ?? false,
+      clientProvidesPackaging: options.clientProvidesPackaging !== false,
       profitMargin,
       clientType,
       lines,
@@ -399,8 +420,14 @@ const ProductionCosts = {
       });
 
       bd.materials.forEach((item) => {
-        const key = `${item.key || item.label}-${line.packaging}`;
+        const key = item.key === 'empaque_cliente'
+          ? 'empaque_cliente'
+          : `${item.key || item.label}-${line.packaging}`;
         const existing = materialMap.get(key) || { ...item, cost: 0 };
+        if (item.key === 'empaque_cliente') {
+          materialMap.set(key, existing);
+          return;
+        }
         existing.cost += item.cost * line.quantity;
         materialMap.set(key, existing);
       });
