@@ -1,0 +1,120 @@
+name: CD — Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_verify_gh_pages:
+        description: 'Omitir verificación post-deploy de gh-pages'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cd-gh-pages
+  cancel-in-progress: false
+
+env:
+  APP_URL: https://lasucursaldelcafe-droid.github.io/-black-coffee/
+
+jobs:
+  verify:
+    name: Verificar build y persistencia
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verificar versión DATA_VERSION = BCA_BUILD
+        run: node scripts/verify-build-version.mjs
+
+      - name: Instalar Playwright
+        run: npm install playwright@1.49.1 --no-save
+
+      - name: Instalar Chromium
+        run: npx playwright install chromium
+
+      - name: Test de persistencia (borrados no reaparecen)
+        run: node scripts/test-persistence.mjs
+
+  deploy:
+    name: Publicar en gh-pages
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generar Firebase config desde secrets
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        run: |
+          GENERATED=$(node scripts/generate-firebase-config.js)
+          if echo "$GENERATED" | grep -q '"projectId"'; then
+            echo "$GENERATED" > js/firebase-config.js
+            echo "Firebase config generada desde GitHub Secrets"
+          else
+            echo "Secrets no configurados; se mantiene js/firebase-config.js del repositorio"
+          fi
+
+      - name: Leer versión desplegada
+        id: version
+        run: |
+          VERSION=$(grep -oP 'const DATA_VERSION = \K\d+' js/data.js)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Desplegando BCA v${VERSION}"
+
+      - name: Deploy a gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: .
+          branch: gh-pages
+          clean: true
+          single-commit: true
+          commit-message: 'deploy: BCA v${{ steps.version.outputs.version }} → GitHub Pages'
+          ignoreFiles: |
+            node_modules/**
+            scripts/**
+            .git/**
+            .github/**
+
+      - name: Verificar gh-pages publicado
+        if: github.event.inputs.skip_verify_gh_pages != 'true'
+        run: |
+          git fetch origin gh-pages --depth=1
+          node scripts/verify-gh-pages.mjs
+
+      - name: Resumen de despliegue
+        run: |
+          VERSION=$(grep -oP 'const DATA_VERSION = \K\d+' js/data.js)
+          echo "## CD completado" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Campo | Valor |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Versión | **v${VERSION}** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| URL | ${{ env.APP_URL }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Rama | \`gh-pages\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tras el deploy, el usuario debe **Ctrl+Shift+R** y verificar \`window.BCA_BUILD === '${VERSION}'\`." >> "$GITHUB_STEP_SUMMARY"

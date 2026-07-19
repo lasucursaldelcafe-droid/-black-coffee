@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  verify-and-test:
+    name: Versión + persistencia
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,11 +18,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Playwright
+      - name: Verificar DATA_VERSION = BCA_BUILD
+        run: node scripts/verify-build-version.mjs
+
+      - name: Instalar Playwright
         run: npm install playwright@1.49.1 --no-save
 
-      - name: Install Chromium
+      - name: Instalar Chromium
         run: npx playwright install chromium
 
-      - name: Persistence test
+      - name: Test de persistencia
         run: node scripts/test-persistence.mjs

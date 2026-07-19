@@ -1,9 +1,9 @@
 name: Auto merge cursor branches to main
 
 on:
-  push:
-    branches:
-      - 'cursor/**'
+  workflow_run:
+    workflows: ['CI Tests']
+    types: [completed]
 
 permissions:
   contents: write
@@ -14,6 +14,9 @@ concurrency:
 
 jobs:
   merge-to-main:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'cursor/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -23,11 +26,13 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Merge branch into main
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          BRANCH="${GITHUB_REF_NAME}"
-          git fetch origin main
+          git fetch origin main "$BRANCH"
           git checkout main
           git merge "origin/${BRANCH}" --no-edit -m "chore: auto-merge ${BRANCH} into main"
           git push origin main
+          echo "Merge completado: ${BRANCH} → main. CD desplegará gh-pages automáticamente."

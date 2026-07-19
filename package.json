@@ -7,8 +7,10 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "node scripts/test-persistence.mjs",
-    "test:persistence": "node scripts/test-persistence.mjs"
+    "verify:build": "node scripts/verify-build-version.mjs",
+    "test": "node scripts/verify-build-version.mjs && node scripts/test-persistence.mjs",
+    "test:persistence": "node scripts/test-persistence.mjs",
+    "verify:gh-pages": "node scripts/verify-gh-pages.mjs"
   },
   "repository": {
     "type": "git",
