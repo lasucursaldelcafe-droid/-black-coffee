@@ -404,7 +404,7 @@ function Deploy-BCAFirebase {
     try {
         $env:RESEND_API_KEY | npx firebase functions:secrets:set RESEND_API_KEY --project $project --data-file - 2>$null
         'Black Coffee <onboarding@resend.dev>' | npx firebase functions:secrets:set BCA_FROM_EMAIL --project $project --data-file - 2>$null
-        npx firebase deploy --only functions,firestore:rules --project $project --token $env:FIREBASE_TOKEN
+        $null = npx firebase deploy --only functions,firestore:rules --project $project --token $env:FIREBASE_TOKEN 2>&1
     } finally {
         Pop-Location
     }
