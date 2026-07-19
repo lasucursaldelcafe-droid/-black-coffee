@@ -59,6 +59,19 @@ const ProductionCosts = {
 
   calculateGreenToRoasted(greenKg, coffeeState = 'verde', activeSteps = []) {
     const costs = this.get();
+    if (coffeeState === 'tostado') {
+      return {
+        roastedKg: greenKg,
+        mermaDetails: {
+          details: [],
+          inputKg: greenKg,
+          outputKg: greenKg,
+          totalLossKg: 0,
+          totalLossPercent: '0'
+        }
+      };
+    }
+
     let remaining = greenKg;
     const details = [];
 
@@ -148,7 +161,9 @@ const ProductionCosts = {
     const roastedKgNeeded = pkg.grams / 1000;
 
     let greenKgNeeded = roastedKgNeeded;
-    if (activeSteps.some((s) => ['tostion', 'seleccion', 'trilla', 'greenSelection'].includes(s))) {
+    if (coffee.state === 'tostado') {
+      greenKgNeeded = roastedKgNeeded;
+    } else if (activeSteps.some((s) => ['tostion', 'seleccion', 'trilla', 'greenSelection'].includes(s))) {
       const { roastedKg } = this.calculateGreenToRoasted(1, coffee.state, activeSteps);
       greenKgNeeded = roastedKg > 0 ? roastedKgNeeded / roastedKg : roastedKgNeeded;
     }
@@ -179,7 +194,7 @@ const ProductionCosts = {
 
         breakdown.administrative.push({
           key: 'compra',
-          label: 'Compra de Café',
+          label: coffee.state === 'tostado' ? 'Compra de Café Tostado' : 'Compra de Café',
           cost: coffeeCost,
           detail: `${formatNumber(greenKgNeeded, 3)} kg × ${formatCurrency(coffee.pricePerKg)}`
         });

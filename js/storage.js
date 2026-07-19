@@ -355,6 +355,9 @@ function getServiceRateUnitLabel(serviceKey) {
 }
 
 function getFullPackSteps(coffeeState) {
+  if (coffeeState === 'tostado') {
+    return ['seleccion', 'empacada'];
+  }
   const steps = ['greenSelection', 'tostion', 'seleccion', 'empacada'];
   if (coffeeState === 'pergamino') steps.unshift('trilla');
   return steps;
@@ -538,8 +541,21 @@ function getQuotationLineItems(quotation) {
 
 const COFFEE_STATES = {
   verde: { label: 'Café Verde', mermas: ['greenSelection', 'tostion', 'seleccion'] },
-  pergamino: { label: 'Café Pergamino', mermas: ['trilla', 'greenSelection', 'tostion', 'seleccion'] }
+  pergamino: { label: 'Café Pergamino', mermas: ['trilla', 'greenSelection', 'tostion', 'seleccion'] },
+  tostado: {
+    label: 'Café Tostado',
+    description: 'Ya transformado — las entradas van directo al inventario tostado',
+    mermas: ['seleccion']
+  }
 };
+
+function isRoastedCoffeeState(state) {
+  return state === 'tostado';
+}
+
+function isGreenCoffeeState(state) {
+  return state === 'verde' || state === 'pergamino';
+}
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('es-CO', {

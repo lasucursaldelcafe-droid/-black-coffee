@@ -93,6 +93,8 @@ const AuditLog = {
     switch (entry.action) {
       case 'purchase':
         return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg)} kg verde${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_roasted':
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg)} kg tostado${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'roast':
         return `${d.coffeeName || entry.entity}: ${formatNumber(d.greenKg)} kg verde → ${formatNumber(d.roastedKg)} kg tostado${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'production_batch':

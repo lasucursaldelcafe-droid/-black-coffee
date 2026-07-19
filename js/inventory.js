@@ -68,6 +68,11 @@ const InventoryManager = {
   },
 
   addPurchase(coffeeId, kg, cost, supplierIds = {}) {
+    const coffee = CoffeeManager.getById(coffeeId);
+    if (coffee?.state === 'tostado') {
+      return this.addRoastedPurchase(coffeeId, kg, cost, supplierIds);
+    }
+
     const item = this.getByCoffeeId(coffeeId);
     const coffee = CoffeeManager.getById(coffeeId);
     if (!item || !coffee) return;
@@ -116,9 +121,64 @@ const InventoryManager = {
       `Se registró una compra de ${kg}kg de café por ${session?.name || 'usuario'}. Costo: ${formatCurrency(kg * cost)}`);
   },
 
+  addRoastedPurchase(coffeeId, kg, cost, supplierIds = {}) {
+    const item = this.getByCoffeeId(coffeeId);
+    const coffee = CoffeeManager.getById(coffeeId);
+    if (!item || !coffee) return;
+
+    const coffeeSupplierId = typeof supplierIds === 'string'
+      ? supplierIds
+      : (supplierIds.compra || supplierIds.coffee || null);
+    const transportSupplierId = typeof supplierIds === 'object' ? (supplierIds.transporte || null) : null;
+
+    this.update(coffeeId, { roastedKg: item.roastedKg + kg }, {
+      action: 'purchase_roasted',
+      entity: coffee.name,
+      details: {
+        coffeeName: coffee.name,
+        coffeeId,
+        kg,
+        costPerKg: cost,
+        stockType: 'roasted',
+        supplierId: coffeeSupplierId,
+        supplierName: SupplierManager.getName(coffeeSupplierId),
+        transportSupplierId,
+        transportSupplierName: SupplierManager.getName(transportSupplierId)
+      }
+    });
+
+    const purchases = Storage.get(STORAGE_KEYS.PURCHASES) || [];
+    const session = Auth.getSession();
+    purchases.push({
+      id: Storage.generateId(),
+      coffeeId,
+      kg,
+      costPerKg: cost,
+      totalCost: kg * cost,
+      stockType: 'roasted',
+      supplierId: coffeeSupplierId,
+      transportSupplierId,
+      userId: session?.userId,
+      userName: session?.name,
+      date: new Date().toISOString()
+    });
+    Storage.set(STORAGE_KEYS.PURCHASES, purchases);
+
+    Notifications.add(`Café tostado agregado: ${kg}kg por ${session?.name || 'usuario'}`, 'success', {
+      section: 'inventory', entityId: coffeeId, action: 'purchase'
+    });
+    EmailService.sendNotification('Entrada de Café Tostado',
+      `Se registraron ${kg}kg de café tostado (${coffee.name}) por ${session?.name || 'usuario'}. Costo: ${formatCurrency(kg * cost)}`);
+  },
+
   processRoasting(coffeeId, greenKg, supplierId = null, activeSteps = ['tostion']) {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
+
+    if (coffee.state === 'tostado') {
+      Toast.show('Este café está registrado como tostado. Use "Agregar Café Tostado" para sumar inventario.', 'warning');
+      return;
+    }
 
     const item = this.getByCoffeeId(coffeeId);
     if (!item || item.greenKg < greenKg) {
@@ -153,6 +213,11 @@ const InventoryManager = {
   registerProductionBatch(coffeeId, greenKg, processSuppliers = {}) {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
+
+    if (coffee.state === 'tostado') {
+      Toast.show('Este café ya está en estado tostado. No requiere lote de transformación.', 'warning');
+      return;
+    }
 
     const activeSteps = ProductionCosts.getActiveSteps({
       productionMode: 'full_pack',
@@ -253,7 +318,8 @@ const InventoryManager = {
     if (!item || !coffee) return;
 
     const threshold = item.minStockKg || settings.lowStockThreshold;
-    if (item.greenKg > threshold) {
+    const stockKg = coffee.state === 'tostado' ? item.roastedKg : item.greenKg;
+    if (stockKg > threshold) {
       if (item.lastLowStockAlertAt) {
         this.update(coffeeId, { lastLowStockAlertAt: null }, null, { skipStockCheck: true });
       }
@@ -267,12 +333,12 @@ const InventoryManager = {
     this.update(coffeeId, { lastLowStockAlertAt: new Date().toISOString() }, null, { skipStockCheck: true });
 
     Notifications.add(
-      `⚠️ Stock bajo: ${coffee.name} (${formatNumber(item.greenKg)}kg restantes)`,
+      `⚠️ Stock bajo: ${coffee.name} (${formatNumber(stockKg)}kg ${coffee.state === 'tostado' ? 'tostado' : 'verde'} restantes)`,
       'warning',
       { section: 'inventory', entityId: coffeeId, action: 'purchase' }
     );
     EmailService.sendNotification('Alerta de Stock Bajo',
-      `El café "${coffee.name}" tiene solo ${formatNumber(item.greenKg)}kg en inventario. Se recomienda realizar una nueva compra.`);
+      `El café "${coffee.name}" tiene solo ${formatNumber(stockKg)}kg ${coffee.state === 'tostado' ? 'tostado' : 'verde'} en inventario. Se recomienda realizar una nueva entrada.`);
   },
 
   checkAllLowStock() {
@@ -299,20 +365,25 @@ const InventoryManager = {
       const coffee = coffees.find((c) => c.id === item.coffeeId);
       if (!coffee) return '';
 
-      const isLow = item.greenKg <= (item.minStockKg ?? settings.lowStockThreshold ?? 0);
-      const mermaInfo = ProductionCosts.getMermaDetails(1, coffee.state);
+      const isLow = (coffee.state === 'tostado' ? item.roastedKg : item.greenKg)
+        <= (item.minStockKg ?? settings.lowStockThreshold ?? 0);
+      const stateLabel = COFFEE_STATES[coffee.state]?.label || coffee.state;
+      const mermaInfo = isRoastedCoffeeState(coffee.state)
+        ? { totalLossPercent: '0', details: [] }
+        : ProductionCosts.getMermaDetails(1, coffee.state);
+      const isRoasted = isRoastedCoffeeState(coffee.state);
 
       return `
         <div class="card inventory-card">
           <div class="card-header">
             <div>
               <div class="card-title">${coffee.name}</div>
-              <span style="font-size:0.85rem;color:var(--text-muted)">${coffee.variety} · ${coffee.region}</span>
+              <span style="font-size:0.85rem;color:var(--text-muted)">${coffee.variety} · ${coffee.region} · <span class="badge badge-neutral">${stateLabel}</span></span>
             </div>
             ${isLow ? '<span class="badge badge-danger">Stock Bajo</span>' : '<span class="badge badge-success">OK</span>'}
           </div>
           <div class="inventory-stats">
-            <div>
+            <div style="${isRoasted ? 'opacity:0.45' : ''}">
               <div class="stat-label">Café Verde</div>
               <div class="stat-value inventory-stat">${formatNumber(item.greenKg)} kg</div>
             </div>
@@ -321,10 +392,11 @@ const InventoryManager = {
               <div class="stat-value inventory-stat">${formatNumber(item.roastedKg)} kg</div>
             </div>
             <div>
-              <div class="stat-label">Merma Total</div>
-              <div class="stat-value inventory-stat">${mermaInfo.totalLossPercent}%</div>
+              <div class="stat-label">${isRoasted ? 'Estado' : 'Merma Total'}</div>
+              <div class="stat-value inventory-stat">${isRoasted ? 'Tostado' : `${mermaInfo.totalLossPercent}%`}</div>
             </div>
           </div>
+          ${isRoasted ? '' : `
           <div class="cost-breakdown" style="margin-bottom:16px">
             <h4 style="margin-bottom:8px;font-size:0.9rem">Mermas de Producción</h4>
             ${mermaInfo.details.map((d) => `
@@ -333,11 +405,12 @@ const InventoryManager = {
                 <span class="cost-value">-${formatNumber(d.lossKg * 100)}g por kg</span>
               </div>
             `).join('')}
-          </div>
+          </div>`}
           <div class="action-buttons">
-            <button class="btn btn-sm btn-primary" onclick="InventoryManager.showPurchaseForm('${coffee.id}')">Registrar Compra</button>
+            <button class="btn btn-sm btn-primary" onclick="InventoryManager.showPurchaseForm('${coffee.id}')">${isRoasted ? 'Agregar Café Tostado' : 'Registrar Compra'}</button>
+            ${isRoasted ? '' : `
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showRoastForm('${coffee.id}')">Registrar Tostión</button>
-            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote con Proveedores</button>
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote con Proveedores</button>`}
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.setBatchFilter('${coffee.id}')">Ver Lotes</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showAdjustForm('${coffee.id}')">Ajustar Stock</button>
           </div>
@@ -478,19 +551,27 @@ const InventoryManager = {
     const coffee = CoffeeManager.getById(coffeeId);
     const defaults = ProductionCosts.get().defaultSuppliers || {};
     const coffeeSupplierId = coffee?.supplierId || CoffeeManager.resolveSupplierId(coffee) || defaults.compra || '';
+    const isRoasted = isRoastedCoffeeState(coffee?.state);
     const modal = document.getElementById('inventory-modal');
-    document.getElementById('inventory-modal-title').textContent = `Compra - ${coffee.name}`;
+    document.getElementById('inventory-modal-title').textContent = isRoasted
+      ? `Agregar Café Tostado — ${coffee.name}`
+      : `Compra — ${coffee.name}`;
 
     document.getElementById('inventory-form').innerHTML = `
       <input type="hidden" id="inv-coffee-id" value="${coffeeId}">
       <input type="hidden" id="inv-action" value="purchase">
+      ${isRoasted ? `
+        <p class="form-hint" style="margin-bottom:16px">
+          Este café está en estado <strong>Café Tostado</strong>. La entrada se suma directamente al inventario tostado (sin transformación).
+        </p>
+      ` : ''}
       <div class="form-row">
         <div class="form-group">
-          <label>Cantidad (kg)</label>
+          <label>Cantidad (kg${isRoasted ? ' tostado' : ''})</label>
           <input type="number" class="form-control" id="inv-kg" step="0.1" required>
         </div>
         <div class="form-group">
-          <label>Costo por Kg</label>
+          <label>Costo por Kg${isRoasted ? ' (tostado)' : ''}</label>
           <input type="number" class="form-control" id="inv-cost" value="${coffee.pricePerKg}">
         </div>
       </div>

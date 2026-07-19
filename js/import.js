@@ -44,7 +44,8 @@ const ImportManager = {
 
     let state = get('state').toLowerCase();
     if (state.includes('perga')) state = 'pergamino';
-    else state = 'verde';
+    else if (state.includes('tost')) state = 'tostado';
+    else if (!['verde', 'pergamino', 'tostado'].includes(state)) state = 'verde';
 
     let variety = get('variety');
     if (variety && !COFFEE_VARIETIES.includes(variety)) {

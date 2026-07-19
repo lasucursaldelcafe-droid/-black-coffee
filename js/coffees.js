@@ -224,10 +224,15 @@ const CoffeeManager = {
         <label>Estado del Café</label>
         <div class="selection-grid" id="state-selection">
           ${Object.entries(COFFEE_STATES).map(([key, val]) => `
-            <button type="button" class="selection-btn ${coffee?.state === key ? 'active' : ''}" data-value="${key}">${val.label}</button>
+            <button type="button" class="selection-btn ${coffee?.state === key ? 'active' : ''}" data-value="${key}" title="${val.description || ''}">
+              ${val.label}${val.description ? `<br><small style="opacity:0.7">${val.description}</small>` : ''}
+            </button>
           `).join('')}
         </div>
         <input type="hidden" id="coffee-state" value="${coffee?.state || 'verde'}">
+        <p class="form-hint" id="coffee-state-hint" style="margin-top:8px;display:${coffee?.state === 'tostado' ? 'block' : 'none'}">
+          Estado tostado: las compras/entradas se registran directo en inventario tostado (sin paso de transformación).
+        </p>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -277,6 +282,10 @@ const CoffeeManager = {
           container.querySelectorAll('.selection-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           document.getElementById(`coffee-${hiddenId}`).value = btn.dataset.value;
+          if (id === 'state-selection') {
+            const hint = document.getElementById('coffee-state-hint');
+            if (hint) hint.style.display = btn.dataset.value === 'tostado' ? 'block' : 'none';
+          }
         });
       });
     });
