@@ -432,7 +432,18 @@ const COLOMBIAN_REGIONS = [
   'Sierra Nevada', 'Valle del Cauca', 'Magdalena', 'Casanare'
 ];
 
-const PROFIT_MARGINS = [25, 35, 40, 50];
+const PROFIT_MARGIN_MIN = 1;
+const PROFIT_MARGIN_MAX = 100;
+const PROFIT_MARGIN_DEFAULT = 35;
+const PROFIT_MARGIN_QUICK = [10, 25, 35, 40, 50, 75, 100];
+/** @deprecated Use PROFIT_MARGIN_QUICK — mantiene compatibilidad */
+const PROFIT_MARGINS = PROFIT_MARGIN_QUICK;
+
+function clampProfitMargin(value, fallback = PROFIT_MARGIN_DEFAULT) {
+  const parsed = parseInt(String(value), 10);
+  if (Number.isNaN(parsed)) return fallback;
+  return Math.min(PROFIT_MARGIN_MAX, Math.max(PROFIT_MARGIN_MIN, parsed));
+}
 
 const CLIENT_TYPES = {
   final: { label: 'Cliente Final', multiplier: 1.0 },

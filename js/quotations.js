@@ -187,13 +187,19 @@ const QuotationManager = {
       </div>
 
       <div class="form-group">
-        <label>Margen de Ganancia</label>
-        <div class="selection-grid" id="quot-margin">
-          ${PROFIT_MARGINS.map((m) => `
-            <button type="button" class="selection-btn ${m === 35 ? 'active' : ''}" data-value="${m}">${m}%</button>
+        <label>Margen de Ganancia (%)</label>
+        <div class="form-row" style="align-items:center;gap:12px;flex-wrap:wrap">
+          <input type="number" class="form-control" id="quot-margin-value"
+            value="${PROFIT_MARGIN_DEFAULT}" min="${PROFIT_MARGIN_MIN}" max="${PROFIT_MARGIN_MAX}" step="1"
+            inputmode="numeric" style="max-width:120px">
+          <span class="form-hint" style="margin:0">Del ${PROFIT_MARGIN_MIN}% al ${PROFIT_MARGIN_MAX}%</span>
+        </div>
+        <p class="form-hint" style="margin:8px 0">Accesos rápidos:</p>
+        <div class="selection-grid selection-grid-compact" id="quot-margin-quick">
+          ${PROFIT_MARGIN_QUICK.map((m) => `
+            <button type="button" class="selection-btn ${m === PROFIT_MARGIN_DEFAULT ? 'active' : ''}" data-value="${m}">${m}%</button>
           `).join('')}
         </div>
-        <input type="hidden" id="quot-margin-value" value="35">
       </div>
 
       <div class="form-row" id="quot-quantity-row">
@@ -402,7 +408,7 @@ const QuotationManager = {
     this.bindMultiSelect('quot-maquila-steps', 'quot-maquila-steps-value', true);
     this.bindSingleSelect('quot-packaging', 'quot-packaging-value');
     this.bindSingleSelect('quot-grind', 'quot-grind-value');
-    this.bindSingleSelect('quot-margin', 'quot-margin-value');
+    this.bindMarginControl();
     document.getElementById('quot-grind')?.querySelectorAll('.selection-btn').forEach((btn) => {
       btn.addEventListener('click', () => setTimeout(() => this.updateSupplierFields(), 0));
     });
@@ -419,6 +425,35 @@ const QuotationManager = {
     document.getElementById('quot-suppliers-fields')?.addEventListener('change', () => {
       this.updatePackagingMixRates();
       this.updatePreview();
+    });
+  },
+
+  bindMarginControl() {
+    const input = document.getElementById('quot-margin-value');
+    const quick = document.getElementById('quot-margin-quick');
+    if (!input) return;
+
+    const syncQuickButtons = () => {
+      const value = clampProfitMargin(input.value);
+      quick?.querySelectorAll('.selection-btn').forEach((btn) => {
+        btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === value);
+      });
+    };
+
+    const applyMargin = () => {
+      input.value = String(clampProfitMargin(input.value));
+      syncQuickButtons();
+      this.updatePreview();
+    };
+
+    input.addEventListener('input', applyMargin);
+    input.addEventListener('change', applyMargin);
+
+    quick?.querySelectorAll('.selection-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        input.value = btn.dataset.value;
+        applyMargin();
+      });
     });
   },
 
@@ -643,7 +678,7 @@ const QuotationManager = {
     const clientId = document.getElementById('quot-client')?.value;
     const packaging = document.getElementById('quot-packaging-value')?.value || '250g';
     const labels = this.getSelectedLabels();
-    const margin = parseInt(document.getElementById('quot-margin-value')?.value || '35', 10);
+    const margin = clampProfitMargin(document.getElementById('quot-margin-value')?.value || PROFIT_MARGIN_DEFAULT);
     const quantity = parseInt(document.getElementById('quot-quantity')?.value || '1', 10);
     const preview = document.getElementById('quotation-preview-area');
     const options = this.getQuoteOptions();
@@ -678,7 +713,7 @@ const QuotationManager = {
     const coffeeId = document.getElementById('quot-coffee').value;
     const packaging = document.getElementById('quot-packaging-value').value;
     const labels = this.getSelectedLabels();
-    const margin = parseInt(document.getElementById('quot-margin-value').value, 10);
+    const margin = clampProfitMargin(document.getElementById('quot-margin-value').value);
     const quantity = parseInt(document.getElementById('quot-quantity').value, 10);
     const validity = parseInt(document.getElementById('quot-validity').value, 10);
     const notes = document.getElementById('quot-notes').value;

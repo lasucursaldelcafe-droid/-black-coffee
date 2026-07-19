@@ -355,6 +355,16 @@ tr:last-child td {
   gap: 10px;
 }
 
+.selection-grid-compact {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.selection-grid-compact .selection-btn {
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 480px) {
   .selection-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
