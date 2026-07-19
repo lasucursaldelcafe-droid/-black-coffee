@@ -1,5 +1,11 @@
 const FIREBASE_COLLECTION = 'bca_data';
-const FIREBASE_SYNC_EXCLUDED = new Set([STORAGE_KEYS.SESSION, STORAGE_KEYS.USERS, DEVICE_ID_KEY, LOCAL_SYNC_META_KEY]);
+const FIREBASE_SYNC_EXCLUDED = new Set([
+  STORAGE_KEYS.SESSION,
+  STORAGE_KEYS.USERS,
+  STORAGE_KEYS.BIOMETRIC_CREDENTIALS,
+  DEVICE_ID_KEY,
+  LOCAL_SYNC_META_KEY
+]);
 const FIREBASE_SYNC_KEYS = Object.values(STORAGE_KEYS).filter((key) => !FIREBASE_SYNC_EXCLUDED.has(key));
 const FIREBASE_META_KEYS = [
   'bca_data_version',
@@ -8,6 +14,22 @@ const FIREBASE_META_KEYS = [
   'bca_dismissed_supplier_services',
   'bca_supplier_templates_initialized'
 ];
+const FIREBASE_LIST_MERGE_KEYS = new Set([
+  STORAGE_KEYS.COFFEES,
+  STORAGE_KEYS.CLIENTS,
+  STORAGE_KEYS.SUPPLIERS,
+  STORAGE_KEYS.INVENTORY,
+  STORAGE_KEYS.QUOTATIONS,
+  STORAGE_KEYS.PURCHASES,
+  STORAGE_KEYS.SALES,
+  STORAGE_KEYS.NOTIFICATIONS,
+  STORAGE_KEYS.PRODUCTION_BATCHES,
+  STORAGE_KEYS.AUDIT_LOG,
+  STORAGE_KEYS.COST_SCENARIOS,
+  STORAGE_KEYS.PROCESS_TEMPLATES,
+  STORAGE_KEYS.DISMISSED_SUPPLIER_SERVICES,
+  'bca_email_queue'
+]);
 
 const FirebaseSync = {
   enabled: false,
@@ -116,6 +138,7 @@ const FirebaseSync = {
     this.updateStatusElement();
     await this._flushOfflinePushes();
     this._listenerReady = true;
+    this._startPeriodicSync();
     return true;
   },
 
@@ -142,7 +165,17 @@ const FirebaseSync = {
       })
       .finally(() => {
         this.updateStatusElement();
+        this._startPeriodicSync();
       });
+  },
+
+  _startPeriodicSync() {
+    if (this._periodicTimer || !this._isPullEnabled()) return;
+    this._periodicTimer = setInterval(() => {
+      if (!this.isEnabled() || !navigator.onLine || document.visibilityState === 'hidden') return;
+      if (this.syncing) return;
+      this.syncAll({ silent: true }).catch(() => {});
+    }, 45000);
   },
 
   getAllSyncKeys() {
@@ -150,9 +183,7 @@ const FirebaseSync = {
   },
 
   _isPullEnabled() {
-    if (typeof Storage === 'undefined') return false;
-    const settings = Storage.get(STORAGE_KEYS.SETTINGS);
-    return settings?.syncPullEnabled === true;
+    return Boolean(window.FIREBASE_CONFIG?.projectId);
   },
 
   loadSdk() {
@@ -262,25 +293,12 @@ const FirebaseSync = {
           ? this._sanitizeRemotePayload(key, JSON.parse(localRaw))
           : null;
 
-        if (!localPayload && remote?.payload !== undefined) {
-          if (!this._isEmptyPayload(remote.payload)) {
-            Storage.setRemote(key, this._sanitizeRemotePayload(key, remote.payload));
-            pulled += 1;
-          }
-          return;
-        }
-
-        if (!localPayload) return;
-
-        if (!remote) {
-          keysToPush.push(key);
-          return;
-        }
-
-        if (this._shouldApplyRemote(key, localPayload, remote)) {
-          Storage.setRemote(key, this._sanitizeRemotePayload(key, remote.payload));
+        const result = this._reconcilePayload(key, localPayload, remote);
+        if (result.changed && result.merged !== null) {
+          this._applyMergedLocal(key, result.merged);
           pulled += 1;
-        } else {
+        }
+        if (result.push && result.merged !== null) {
           keysToPush.push(key);
         }
       });
@@ -396,23 +414,12 @@ const FirebaseSync = {
       return;
     }
 
-    if (this._isPullEnabled()) {
-      this.ensureRealtimeListener();
-      this.syncAll({ silent: true })
-        .catch((error) => {
-          console.warn('Reconfiguración de sync compartida:', error.message);
-          this.lastError = error.message || 'Error al sincronizar';
-        })
-        .finally(() => {
-          this.updateStatusElement();
-        });
-      return;
-    }
-
-    this.stopRealtimeListener();
-    this.pushAllLocal()
+    this.ensureRealtimeListener();
+    this._startPeriodicSync();
+    this.syncAll({ silent: true })
       .catch((error) => {
-        console.warn('Modo solo envío:', error.message);
+        console.warn('Re-sincronización completa:', error.message);
+        this.lastError = error.message || 'Error al sincronizar';
       })
       .finally(() => {
         this.updateStatusElement();
@@ -444,11 +451,14 @@ const FirebaseSync = {
 
           if (!remote?.payload && remote?.payload !== null) return;
 
-          if (!localPayload || this._shouldApplyRemote(key, localPayload, remote)) {
-            this._suppressRemote = true;
-            Storage.setRemote(key, this._sanitizeRemotePayload(key, remote.payload));
-            this._suppressRemote = false;
+          const result = this._reconcilePayload(key, localPayload, remote);
+
+          if (result.changed && result.merged !== null) {
+            this._applyMergedLocal(key, result.merged);
             changed = true;
+            if (result.push) {
+              this._scheduleMergedPush(key);
+            }
           }
         });
 
@@ -583,6 +593,146 @@ const FirebaseSync = {
     return payload;
   },
 
+  _stableStringify(value) {
+    return JSON.stringify(value);
+  },
+
+  _itemTimestamp(item) {
+    if (item === null || item === undefined) return 0;
+    if (typeof item === 'string') return 0;
+    return Date.parse(
+      item.updatedAt || item.createdAt || item.soldAt || item.lastUpdated || item.sentAt || 0
+    ) || 0;
+  },
+
+  _mergeDeletedRecords(local, remote) {
+    const merged = { ...(local && typeof local === 'object' ? local : {}) };
+    Object.entries(remote && typeof remote === 'object' ? remote : {}).forEach(([listKey, ids]) => {
+      merged[listKey] = [...new Set([...(merged[listKey] || []), ...(ids || [])])].slice(-500);
+    });
+    return merged;
+  },
+
+  _mergeObjects(local, remote) {
+    if (!local) return remote;
+    if (!remote) return local;
+    const localTs = this._extractUpdatedAt(local);
+    const remoteTs = this._extractUpdatedAt(remote);
+    if (remoteTs >= localTs) {
+      return { ...local, ...remote };
+    }
+    return { ...remote, ...local };
+  },
+
+  _mergeLists(key, localArr, remoteArr) {
+    const local = Array.isArray(localArr) ? localArr : [];
+    const remote = Array.isArray(remoteArr) ? remoteArr : [];
+
+    if (key === STORAGE_KEYS.DISMISSED_SUPPLIER_SERVICES) {
+      return [...new Set([...local, ...remote])];
+    }
+
+    if (key === 'bca_email_queue') {
+      const byKey = new Map();
+      [...local, ...remote].forEach((item) => {
+        if (!item) return;
+        const composite = `${item.sentAt || ''}|${item.subject || ''}|${item.type || ''}`;
+        const existing = byKey.get(composite);
+        if (!existing || this._itemTimestamp(item) >= this._itemTimestamp(existing)) {
+          byKey.set(composite, item);
+        }
+      });
+      return [...byKey.values()].sort((a, b) => this._itemTimestamp(b) - this._itemTimestamp(a));
+    }
+
+    const deleted = typeof Storage !== 'undefined' ? Storage.getDeletedIds(key) : new Set();
+    const byId = new Map();
+    [...local, ...remote].forEach((item) => {
+      if (!item?.id) return;
+      if (deleted.has(item.id)) return;
+      const existing = byId.get(item.id);
+      if (!existing || this._itemTimestamp(item) >= this._itemTimestamp(existing)) {
+        byId.set(item.id, item);
+      }
+    });
+    return [...byId.values()];
+  },
+
+  _mergePayloads(key, local, remote) {
+    const localPayload = this._sanitizeRemotePayload(key, local);
+    const remotePayload = this._sanitizeRemotePayload(key, remote);
+
+    if (localPayload === null || localPayload === undefined) {
+      return remotePayload ?? null;
+    }
+    if (remotePayload === null || remotePayload === undefined) {
+      return localPayload;
+    }
+
+    if (key === STORAGE_KEYS.DELETED_RECORDS || key === DELETED_RECORDS_KEY) {
+      return this._mergeDeletedRecords(localPayload, remotePayload);
+    }
+
+    if (FIREBASE_LIST_MERGE_KEYS.has(key)) {
+      return this._mergeLists(key, localPayload, remotePayload);
+    }
+
+    if (typeof localPayload === 'object' && typeof remotePayload === 'object'
+      && !Array.isArray(localPayload) && !Array.isArray(remotePayload)) {
+      return this._mergeObjects(localPayload, remotePayload);
+    }
+
+    const localTs = this._extractUpdatedAt(localPayload);
+    const remoteTs = this._extractUpdatedAt(remotePayload);
+    return remoteTs >= localTs ? remotePayload : localPayload;
+  },
+
+  _reconcilePayload(key, localPayload, remoteDoc) {
+    const remotePayload = remoteDoc?.payload;
+
+    if ((localPayload === null || localPayload === undefined)
+      && (remotePayload === null || remotePayload === undefined)) {
+      return { merged: null, changed: false, push: false };
+    }
+
+    if (localPayload === null || localPayload === undefined) {
+      if (this._isEmptyPayload(remotePayload)) {
+        return { merged: null, changed: false, push: false };
+      }
+      const merged = this._sanitizeRemotePayload(key, remotePayload);
+      return { merged, changed: true, push: false };
+    }
+
+    if (remotePayload === null || remotePayload === undefined || !remoteDoc) {
+      return { merged: localPayload, changed: false, push: true };
+    }
+
+    const merged = this._mergePayloads(key, localPayload, remotePayload);
+    const sanitizedRemote = this._sanitizeRemotePayload(key, remotePayload);
+    const changed = this._stableStringify(merged) !== this._stableStringify(localPayload);
+    const push = this._stableStringify(merged) !== this._stableStringify(sanitizedRemote);
+
+    return { merged, changed, push: changed || push };
+  },
+
+  _applyMergedLocal(key, merged) {
+    this._suppressRemote = true;
+    Storage.setRemote(key, merged);
+    if (typeof Storage !== 'undefined') {
+      Storage.markLocalWrite(key);
+    }
+    this._suppressRemote = false;
+  },
+
+  _scheduleMergedPush(key) {
+    clearTimeout(this._writeTimers[key]);
+    this._writeTimers[key] = setTimeout(() => {
+      this._pushKeyNow(key).catch((error) => {
+        console.warn(`Error publicando fusión ${key}:`, error.message);
+      });
+    }, 250);
+  },
+
   _shouldApplyRemote(key, localPayload, remote) {
     const localRaw = localStorage.getItem(key);
     if (localRaw && !this._localBootstrapped) {
@@ -646,36 +796,30 @@ const FirebaseSync = {
       return 'Guardado en este navegador';
     }
     if (this.syncing) {
-      return 'Sincronizando...';
+      return 'Sincronizando toda la información...';
     }
     if (!navigator.onLine) {
-      return 'Sin internet — los cambios se guardan aquí y se compartirán al reconectar';
+      return 'Sin internet — todo se guarda aquí y se sincroniza al reconectar';
     }
     if (!this.ready) {
-      return this.lastError ? `Error: ${this.lastError}` : 'Conectando con la nube...';
+      return this.lastError ? `Error: ${this.lastError}` : 'Conectando y uniendo datos...';
     }
     if (this.lastError) {
       return `Error de sync: ${this.lastError}`;
     }
 
-    const pull = this._isPullEnabled();
     const when = this.lastSyncAt
       ? new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' }).format(new Date(this.lastSyncAt))
       : null;
 
-    if (pull && this._unsubscribe) {
+    if (this._unsubscribe) {
       return when
-        ? `Conectados — datos compartidos en tiempo real · ${when}`
-        : 'Conectados — los cambios se ven en todos los usuarios';
-    }
-    if (pull) {
-      return when
-        ? `Sync compartida activa · última unión ${when}`
-        : 'Sync compartida activa — uniendo datos...';
+        ? `Todo sincronizado en tiempo real · ${when}`
+        : 'Todo sincronizado — cafés, clientes, ventas, inventario...';
     }
     return when
-      ? `Solo envío — este dispositivo no recibe cambios · ${when}`
-      : 'Solo envío — activar sync compartida en Configuración';
+      ? `Uniendo toda la información · ${when}`
+      : 'Sincronizando toda la plataforma...';
   },
 
   updateStatusElement() {

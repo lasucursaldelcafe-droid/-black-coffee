@@ -1,4 +1,4 @@
-const DATA_VERSION = 18;
+const DATA_VERSION = 19;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 const FACTORY_RESET_V16_FLAG = 'bca_factory_reset_v16_done';
@@ -212,12 +212,21 @@ const DataSeed = {
       this.migrateV17ToV18();
       return;
     }
+    if (fromVersion === 18) {
+      this.migrateV18ToV19();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
   },
 
   migrateV17ToV18() {
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
+    Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, syncPullEnabled: true });
+  },
+
+  migrateV18ToV19() {
     const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
     Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, syncPullEnabled: true });
   },

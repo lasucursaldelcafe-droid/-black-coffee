@@ -615,20 +615,13 @@ const App = {
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Base de Datos y Nube</span></div>
         <p class="form-hint" style="margin-bottom:12px">
-          Ximena y Pablo comparten la misma información cuando ambos están en línea.
-          Los cambios se guardan en este navegador y se sincronizan automáticamente con Firebase
-          para que aparezcan en el otro usuario sin exportar respaldos.
+          <strong>Toda la información</strong> (cafés, clientes, proveedores, inventario, cotizaciones, ventas,
+          costos, reportes y configuración) se sincroniza automáticamente entre Ximena y Pablo cuando hay internet.
+          Los cambios de ambos se <strong>unen</strong> sin borrar los del otro.
         </p>
-        <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;cursor:pointer">
-          <input type="checkbox" id="settings-sync-shared" ${settings.syncPullEnabled !== false ? 'checked' : ''} style="margin-top:4px">
-          <span>
-            <strong>Sincronización compartida</strong> (recomendado)<br>
-            <span class="form-hint">Recibe cambios de otros usuarios en tiempo real. Desactívela solo si este equipo debe trabajar aislado.</span>
-          </span>
-        </label>
         <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
         <p id="online-status" class="form-hint" style="margin-bottom:12px"></p>
-        <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización</button>
+        <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización completa</button>
       </div>
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Correos de Notificación</span></div>
@@ -725,7 +718,7 @@ const App = {
     const refreshOnlineStatus = () => {
       if (!onlineEl) return;
       onlineEl.textContent = navigator.onLine
-        ? '🟢 En línea — compartiendo datos con otros usuarios'
+        ? '🟢 En línea — toda la información se sincroniza automáticamente'
         : '🔴 Sin conexión — los cambios se guardan aquí y se enviarán al reconectar';
       FirebaseSync.updateStatusElement();
     };
@@ -736,7 +729,6 @@ const App = {
 
   saveSettings() {
     const existing = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
-    const syncPullEnabled = document.getElementById('settings-sync-shared')?.checked ?? true;
     const settings = {
       ...existing,
       companyName: document.getElementById('settings-company')?.value || DEFAULT_SETTINGS.companyName,
@@ -746,7 +738,7 @@ const App = {
       heroTitle: document.getElementById('settings-hero-title')?.value || DEFAULT_SETTINGS.heroTitle,
       heroSubtitle: document.getElementById('settings-hero-subtitle')?.value || DEFAULT_SETTINGS.heroSubtitle,
       lowStockThreshold: parseFloat(document.getElementById('settings-low-stock')?.value) || 0,
-      syncPullEnabled
+      syncPullEnabled: true
     };
 
     Storage.set(STORAGE_KEYS.SETTINGS, settings);
