@@ -124,7 +124,7 @@ const QuotationManager = {
         </div>
       </div>
 
-      <div class="form-group">
+      <div id="quot-packaging-single" class="form-group">
         <label>Presentación de Empaque</label>
         <div class="selection-grid" id="quot-packaging">
           ${Object.entries(PACKAGING_SIZES).map(([key, val]) => `
@@ -132,6 +132,25 @@ const QuotationManager = {
           `).join('')}
         </div>
         <input type="hidden" id="quot-packaging-value" value="250g">
+      </div>
+
+      <div id="quot-packaging-maquila" style="display:none">
+        <div class="form-group">
+          <label>Presentaciones y cantidades (Maquila)</label>
+          <p class="form-hint" style="margin-bottom:12px">
+            Indique cuántas unidades de cada tamaño. El costo de empacada se calcula por presentación según las tarifas de Producción.
+          </p>
+          <div class="form-row packaging-mix-grid">
+            ${Object.entries(PACKAGING_SIZES).map(([key, val]) => `
+              <div class="form-group">
+                <label>${val.label}</label>
+                <input type="number" class="form-control quot-pack-mix-qty" data-packaging="${key}"
+                  value="${key === '250g' ? '1' : '0'}" min="0" step="1" inputmode="numeric">
+                <small class="form-hint quot-pack-mix-rate" data-packaging="${key}"></small>
+              </div>
+            `).join('')}
+          </div>
+        </div>
       </div>
 
       <div class="form-group">
@@ -166,7 +185,7 @@ const QuotationManager = {
         <input type="hidden" id="quot-margin-value" value="35">
       </div>
 
-      <div class="form-row">
+      <div class="form-row" id="quot-quantity-row">
         <div class="form-group">
           <label>Cantidad (unidades)</label>
           <input type="number" class="form-control" id="quot-quantity" value="1" min="1">
@@ -195,9 +214,41 @@ const QuotationManager = {
 
     this.bindQuotationEvents();
     this.updateModeVisibility();
+    this.updatePackagingMixRates();
     this.updateSupplierFields();
     this.updatePreview();
     modal.classList.add('active');
+  },
+
+  getPackagingMixFromForm() {
+    const mix = {};
+    document.querySelectorAll('.quot-pack-mix-qty').forEach((input) => {
+      const size = input.dataset.packaging;
+      const qty = Math.max(0, parseInt(input.value, 10) || 0);
+      if (qty > 0) mix[size] = qty;
+    });
+    return mix;
+  },
+
+  updatePackagingMixRates() {
+    const options = this.getQuoteOptions();
+    const costs = ProductionCosts.get();
+    const supplierId = document.getElementById('quot-supplier-empacada')?.value
+      || costs.defaultSuppliers?.empacada
+      || null;
+    const hasEmpacada = options.maquilaSteps.includes('empacada');
+
+    document.querySelectorAll('.quot-pack-mix-rate').forEach((el) => {
+      const size = el.dataset.packaging;
+      if (!hasEmpacada) {
+        el.textContent = 'Sin empacada en maquila';
+        return;
+      }
+      const rate = SupplierManager.getEffectiveServiceRate('empacada', supplierId, size);
+      el.textContent = rate > 0
+        ? `Empacada: ${formatCurrency(rate)}/ud`
+        : 'Empacada: tarifa global';
+    });
   },
 
   getActiveQuoteSteps() {
@@ -259,6 +310,7 @@ const QuotationManager = {
 
     section.style.display = fields.length ? 'block' : 'none';
     container.innerHTML = fields.join('');
+    this.updatePackagingMixRates();
     this.updatePreview();
   },
 
@@ -311,6 +363,11 @@ const QuotationManager = {
       this.updatePreview();
     });
 
+    document.querySelectorAll('.quot-pack-mix-qty').forEach((input) => {
+      input.addEventListener('input', () => this.updatePreview());
+      input.addEventListener('change', () => this.updatePreview());
+    });
+
     this.bindMultiSelect('quot-maquila-steps', 'quot-maquila-steps-value', true);
     this.bindSingleSelect('quot-packaging', 'quot-packaging-value');
     this.bindSingleSelect('quot-grind', 'quot-grind-value');
@@ -328,7 +385,10 @@ const QuotationManager = {
       document.getElementById(id)?.addEventListener('input', () => this.updatePreview());
     });
 
-    document.getElementById('quot-suppliers-fields')?.addEventListener('change', () => this.updatePreview());
+    document.getElementById('quot-suppliers-fields')?.addEventListener('change', () => {
+      this.updatePackagingMixRates();
+      this.updatePreview();
+    });
   },
 
   bindSingleSelect(containerId, hiddenId) {
@@ -362,6 +422,7 @@ const QuotationManager = {
         hidden.value = JSON.stringify(selected);
         if (containerId === 'quot-maquila-steps') {
           QuotationManager.updateSupplierFields();
+          QuotationManager.updatePackagingMixRates();
         }
         this.updatePreview();
       });
@@ -373,6 +434,15 @@ const QuotationManager = {
     const isMaquila = mode === 'maquila';
     document.getElementById('maquila-options').style.display = isMaquila ? 'block' : 'none';
     document.getElementById('full-pack-labels').style.display = isMaquila ? 'none' : 'block';
+    document.getElementById('quot-packaging-single').style.display = isMaquila ? 'none' : 'block';
+    document.getElementById('quot-packaging-maquila').style.display = isMaquila ? 'block' : 'none';
+    const qtyRow = document.getElementById('quot-quantity-row');
+    if (qtyRow) {
+      qtyRow.style.display = isMaquila ? 'none' : 'flex';
+    }
+    if (isMaquila) {
+      this.updatePackagingMixRates();
+    }
   },
 
   getQuoteOptions() {
@@ -399,7 +469,60 @@ const QuotationManager = {
   },
 
   renderBreakdownHTML(pricing, labels, margin, quantity) {
-    const total = pricing.finalPrice * quantity;
+    const isMix = Array.isArray(pricing.lines) && pricing.lines.length > 0;
+    const total = isMix ? pricing.totalPrice : pricing.finalPrice * quantity;
+
+    if (isMix) {
+      const lineRows = pricing.lines.map((line) => {
+        const sizeLabel = PACKAGING_SIZES[line.packaging]?.label || line.packaging;
+        const empacada = line.costBreakdown?.breakdown?.transformation?.find((t) => t.key === 'empacada');
+        return `
+          <div class="cost-row">
+            <span class="cost-label">
+              ${sizeLabel} · ${line.quantity} uds
+              ${empacada ? `<small> (empacada ${formatCurrency(empacada.cost)}/ud)</small>` : ''}
+            </span>
+            <span>${formatCurrency(line.linePrice)}</span>
+          </div>
+        `;
+      }).join('');
+
+      const adminRows = (pricing.breakdown?.administrative || []).map((item) => `
+        <div class="cost-row">
+          <span class="cost-label">${item.label}${item.detail ? ` <small>(${item.detail})</small>` : ''}</span>
+          <span>${formatCurrency(item.cost)}</span>
+        </div>
+      `).join('');
+
+      const transformRows = (pricing.breakdown?.transformation || [])
+        .filter((item) => item.key !== 'empacada' || pricing.lines.length === 1)
+        .map((item) => `
+        <div class="cost-row">
+          <span class="cost-label">${item.label}${item.detail ? ` <small>(${item.detail})</small>` : ''}</span>
+          <span>${formatCurrency(item.cost)}</span>
+        </div>
+      `).join('');
+
+      return `
+        <div class="cost-breakdown">
+          <h4 style="margin-bottom:4px">Desglose Maquila — Varias Presentaciones</h4>
+          <p class="form-hint" style="margin-bottom:12px">
+            ${PRODUCTION_MODES[pricing.productionMode]?.label || pricing.productionMode}
+            · ${GRIND_TYPES[pricing.grindType]?.label || pricing.grindType}
+            · Total: ${pricing.totalQuantity} unidades
+          </p>
+          <h5 style="margin:12px 0 8px;color:var(--text-secondary)">Por presentación</h5>
+          ${lineRows}
+          ${adminRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Administrativa / Logística</h5>${adminRows}` : ''}
+          ${transformRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Transformación (otros procesos)</h5>${transformRows}` : ''}
+          <div class="cost-row" style="margin-top:8px"><span class="cost-label">Costo Total Pedido</span><span>${formatCurrency(pricing.totalCost)}</span></div>
+          <div class="cost-row"><span class="cost-label">Margen (${margin}%)</span><span>+${formatCurrency(pricing.totalPrice - pricing.totalCost)}</span></div>
+          <div class="cost-row"><span class="cost-label">Precio Total Cliente</span><span>${formatCurrency(total)}</span></div>
+        </div>
+      `;
+    }
+
+    const totalSingle = pricing.finalPrice * quantity;
     const adminRows = pricing.breakdown.administrative.map((item) => `
       <div class="cost-row">
         <span class="cost-label">${item.label}${item.detail ? ` <small>(${item.detail})</small>` : ''}</span>
@@ -437,9 +560,37 @@ const QuotationManager = {
         <div class="cost-row" style="margin-top:8px"><span class="cost-label">Costo Total</span><span>${formatCurrency(pricing.totalCost)}</span></div>
         <div class="cost-row"><span class="cost-label">Margen (${margin}%)</span><span>+${formatCurrency(pricing.finalPrice - pricing.totalCost)}</span></div>
         <div class="cost-row"><span class="cost-label">Precio Unitario</span><span>${formatCurrency(pricing.finalPrice)}</span></div>
-        <div class="cost-row"><span class="cost-label">Total (${quantity} uds)</span><span>${formatCurrency(total)}</span></div>
+        <div class="cost-row"><span class="cost-label">Total (${quantity} uds)</span><span>${formatCurrency(totalSingle)}</span></div>
       </div>
     `;
+  },
+
+  buildPricingPreview(coffee, client, options, processSuppliers, packaging, labels, margin, quantity) {
+    const pricingOptions = { ...options, processSuppliers };
+
+    if (options.productionMode === 'maquila') {
+      const packagingMix = this.getPackagingMixFromForm();
+      if (getPackagingMixTotal(packagingMix) === 0) {
+        return null;
+      }
+      return ProductionCosts.calculateMixPricing(
+        coffee,
+        packagingMix,
+        margin,
+        client.type,
+        labels,
+        pricingOptions
+      );
+    }
+
+    return ProductionCosts.calculateSellingPrice(
+      coffee,
+      packaging,
+      margin,
+      client.type,
+      labels,
+      pricingOptions
+    );
   },
 
   updatePreview() {
@@ -464,11 +615,17 @@ const QuotationManager = {
     if (!coffee || !client) return;
 
     const processSuppliers = this.getProcessSuppliersFromForm();
-    const pricing = ProductionCosts.calculateSellingPrice(
-      coffee, packaging, margin, client.type, labels, { ...options, processSuppliers }
+    const pricing = this.buildPricingPreview(
+      coffee, client, options, processSuppliers, packaging, labels, margin, quantity
     );
 
-    preview.innerHTML = this.renderBreakdownHTML(pricing, labels, margin, quantity);
+    if (!pricing) {
+      preview.innerHTML = '<p class="form-hint">Indique al menos una cantidad por tamaño de empaque.</p>';
+      return;
+    }
+
+    const displayQty = options.productionMode === 'maquila' ? pricing.totalQuantity : quantity;
+    preview.innerHTML = this.renderBreakdownHTML(pricing, labels, margin, displayQty);
   },
 
   saveFromForm() {
@@ -495,18 +652,32 @@ const QuotationManager = {
 
     const coffee = CoffeeManager.getById(coffeeId);
     const client = ClientManager.getById(clientId);
-    const pricing = ProductionCosts.calculateSellingPrice(
-      coffee, packaging, margin, client.type, labels, { ...options, processSuppliers }
+    const pricing = this.buildPricingPreview(
+      coffee, client, options, processSuppliers, packaging, labels, margin, quantity
     );
+
+    if (!pricing) {
+      Toast.show('Indique al menos una cantidad por tamaño de empaque', 'danger');
+      return;
+    }
+
+    const isMix = options.productionMode === 'maquila';
+    const packagingMix = isMix ? normalizePackagingMix(this.getPackagingMixFromForm()) : null;
+    const finalQuantity = isMix ? pricing.totalQuantity : quantity;
+    const finalUnitPrice = isMix ? pricing.avgUnitPrice : pricing.finalPrice;
+    const finalTotalPrice = isMix ? pricing.totalPrice : pricing.finalPrice * quantity;
+    const finalTotalCost = isMix ? pricing.totalCost : pricing.totalCost * quantity;
 
     const quotation = {
       clientId,
       coffeeId,
-      packaging,
+      packaging: isMix ? (Object.keys(packagingMix).length === 1 ? Object.keys(packagingMix)[0] : 'mix') : packaging,
+      packagingMix: isMix ? packagingMix : null,
+      packagingLines: isMix ? pricing.lines : null,
       labels,
       label: labels.join(','),
       margin,
-      quantity,
+      quantity: finalQuantity,
       validity,
       notes,
       productionMode: options.productionMode,
@@ -514,14 +685,14 @@ const QuotationManager = {
       clientProvidesCoffee: options.clientProvidesCoffee,
       grindType: options.grindType,
       processSuppliers,
-      unitPrice: pricing.finalPrice,
-      totalPrice: pricing.finalPrice * quantity,
+      unitPrice: finalUnitPrice,
+      totalPrice: finalTotalPrice,
       costBreakdown: pricing,
-      internalUnitCost: pricing.totalCost,
-      internalTotalCost: pricing.totalCost * quantity,
-      internalProfit: (pricing.finalPrice - pricing.totalCost) * quantity,
-      internalProfitMargin: pricing.finalPrice > 0
-        ? ((pricing.finalPrice - pricing.totalCost) / pricing.finalPrice) * 100
+      internalUnitCost: isMix ? (finalQuantity > 0 ? finalTotalCost / finalQuantity : 0) : pricing.totalCost,
+      internalTotalCost: finalTotalCost,
+      internalProfit: finalTotalPrice - finalTotalCost,
+      internalProfitMargin: finalTotalPrice > 0
+        ? ((finalTotalPrice - finalTotalCost) / finalTotalPrice) * 100
         : 0,
       clientName: client.name,
       clientType: client.type,
@@ -617,7 +788,7 @@ const QuotationManager = {
                 <td>${q.clientName}</td>
                 <td><span class="badge badge-neutral">${PRODUCTION_MODES[q.productionMode || 'full_pack']?.label || 'Full Pack'}</span></td>
                 <td>${q.coffeeName}</td>
-                <td>${PACKAGING_SIZES[q.packaging]?.label || q.packaging}</td>
+                <td>${formatPackagingMix(q.packagingMix, q.packaging, q.quantity)}</td>
                 <td>${q.quantity}</td>
                 <td><strong>${formatCurrency(q.totalPrice)}</strong></td>
                 <td>${formatCurrency(metrics.totalCost)}</td>
@@ -693,6 +864,9 @@ const QuotationManager = {
     const mode = PRODUCTION_MODES[q.productionMode || 'full_pack']?.label || 'Full Pack';
     const grindLabel = GRIND_TYPES[q.grindType || 'grano']?.label || 'En Grano';
 
+    const lineItems = getQuotationLineItems(q);
+    const presentationText = formatPackagingMix(q.packagingMix, q.packaging, q.quantity);
+
     return `
       <div class="quotation-preview">
         <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:30px;flex-wrap:wrap;gap:16px">
@@ -712,7 +886,7 @@ const QuotationManager = {
           <p><strong>Cliente:</strong> ${q.clientName}</p>
           <p><strong>Producto:</strong> ${q.coffeeName}</p>
           <p><strong>Detalle:</strong> ${q.coffeeDetails}</p>
-          <p><strong>Presentación:</strong> ${PACKAGING_SIZES[q.packaging]?.label || q.packaging}</p>
+          <p><strong>Presentación:</strong> ${presentationText}</p>
           <p><strong>Preparación:</strong> ${grindLabel}</p>
           ${q.productionMode === 'full_pack' ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : ''}
         </div>
@@ -726,15 +900,17 @@ const QuotationManager = {
             </tr>
           </thead>
           <tbody>
+            ${lineItems.map((line) => `
             <tr>
               <td>
                 <strong>${q.coffeeName}</strong><br>
-                <small style="color:#666">${q.coffeeDetails} · ${PACKAGING_SIZES[q.packaging]?.label || q.packaging} · ${grindLabel}</small>
+                <small style="color:#666">${q.coffeeDetails} · ${PACKAGING_SIZES[line.packaging]?.label || line.packaging} · ${grindLabel}</small>
               </td>
-              <td>${q.quantity}</td>
-              <td>${formatCurrency(q.unitPrice)}</td>
-              <td><strong>${formatCurrency(q.totalPrice)}</strong></td>
+              <td>${line.quantity}</td>
+              <td>${formatCurrency(line.unitPrice)}</td>
+              <td><strong>${formatCurrency(line.lineTotal)}</strong></td>
             </tr>
+            `).join('')}
           </tbody>
         </table>
         ${q.notes ? `<p style="margin-bottom:16px"><strong>Notas:</strong> ${q.notes}</p>` : ''}

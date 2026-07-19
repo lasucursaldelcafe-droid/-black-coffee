@@ -1,4 +1,4 @@
-const DATA_VERSION = 12;
+const DATA_VERSION = 13;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 
@@ -97,6 +97,10 @@ const DataSeed = {
       this.migrateV11ToV12();
       return;
     }
+    if (fromVersion === 12) {
+      this.migrateV12ToV13();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -163,6 +167,10 @@ const DataSeed = {
     Storage.purgeDeletedFromStorage();
     const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
     Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, syncPullEnabled: false });
+  },
+
+  migrateV12ToV13() {
+    // v13: cotizaciones maquila con varias presentaciones (packagingMix)
   },
 
   backfillLocalSyncMeta() {

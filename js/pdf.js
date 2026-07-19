@@ -19,7 +19,8 @@ const PDFGenerator = {
     const validUntil = new Date(quotation.createdAt);
     validUntil.setDate(validUntil.getDate() + (quotation.validity || 15));
     const grindLabel = GRIND_TYPES[quotation.grindType || 'grano']?.label || 'En Grano';
-    const packagingLabel = PACKAGING_SIZES[quotation.packaging]?.label || quotation.packaging;
+    const packagingLabel = formatPackagingMix(quotation.packagingMix, quotation.packaging, quotation.quantity);
+    const lineItems = getQuotationLineItems(quotation);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
@@ -78,13 +79,17 @@ const PDFGenerator = {
     doc.line(20, tableY + 4, 190, tableY + 4);
 
     doc.setFont('helvetica', 'normal');
-    const rowY = tableY + 12;
-    doc.text(quotation.coffeeName, 20, rowY);
-    doc.text(String(quotation.quantity), 120, rowY);
-    doc.text(formatCurrency(quotation.unitPrice), 145, rowY);
-    doc.text(formatCurrency(quotation.totalPrice), 175, rowY);
+    let rowY = tableY + 12;
+    lineItems.forEach((line) => {
+      const sizeLabel = PACKAGING_SIZES[line.packaging]?.label || line.packaging;
+      doc.text(`${quotation.coffeeName} (${sizeLabel})`, 20, rowY);
+      doc.text(String(line.quantity), 120, rowY);
+      doc.text(formatCurrency(line.unitPrice), 145, rowY);
+      doc.text(formatCurrency(line.lineTotal), 175, rowY);
+      rowY += 8;
+    });
 
-    let yPos = rowY + 18;
+    let yPos = rowY + 10;
 
     if (quotation.notes) {
       doc.setFont('helvetica', 'bold');

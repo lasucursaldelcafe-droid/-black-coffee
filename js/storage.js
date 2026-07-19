@@ -446,6 +446,52 @@ const PACKAGING_SIZES = {
   '5lb': { label: '5 libras', grams: 2268 }
 };
 
+function normalizePackagingMix(mix) {
+  if (!mix || typeof mix !== 'object') return {};
+  const normalized = {};
+  Object.entries(mix).forEach(([size, qty]) => {
+    const amount = Math.max(0, parseInt(String(qty), 10) || 0);
+    if (amount > 0 && PACKAGING_SIZES[size]) {
+      normalized[size] = amount;
+    }
+  });
+  return normalized;
+}
+
+function getPackagingMixTotal(mix) {
+  return Object.values(normalizePackagingMix(mix)).reduce((sum, qty) => sum + qty, 0);
+}
+
+function formatPackagingMix(mix, fallbackPackaging = null, fallbackQty = null) {
+  const normalized = normalizePackagingMix(mix);
+  const entries = Object.entries(normalized);
+  if (entries.length > 0) {
+    return entries.map(([size, qty]) => `${qty} × ${PACKAGING_SIZES[size]?.label || size}`).join(' · ');
+  }
+  if (fallbackPackaging) {
+    const label = PACKAGING_SIZES[fallbackPackaging]?.label || fallbackPackaging;
+    return fallbackQty ? `${fallbackQty} × ${label}` : label;
+  }
+  return '—';
+}
+
+function getQuotationLineItems(quotation) {
+  if (Array.isArray(quotation.packagingLines) && quotation.packagingLines.length > 0) {
+    return quotation.packagingLines.map((line) => ({
+      packaging: line.packaging,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      lineTotal: line.linePrice ?? line.unitPrice * line.quantity
+    }));
+  }
+  return [{
+    packaging: quotation.packaging,
+    quantity: quotation.quantity || 1,
+    unitPrice: quotation.unitPrice,
+    lineTotal: quotation.totalPrice
+  }];
+}
+
 const COFFEE_STATES = {
   verde: { label: 'Café Verde', mermas: ['greenSelection', 'tostion', 'seleccion'] },
   pergamino: { label: 'Café Pergamino', mermas: ['trilla', 'greenSelection', 'tostion', 'seleccion'] }

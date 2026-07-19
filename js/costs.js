@@ -307,6 +307,111 @@ const ProductionCosts = {
     };
   },
 
+  calculateMixPricing(coffee, packagingMix, profitMargin, clientType, labelSizes = ['small'], options = {}) {
+    const mix = normalizePackagingMix(packagingMix);
+    const lines = [];
+    let totalCost = 0;
+    let totalPrice = 0;
+    let totalQuantity = 0;
+
+    Object.entries(mix).forEach(([packagingSize, quantity]) => {
+      const pricing = this.calculateSellingPrice(
+        coffee,
+        packagingSize,
+        profitMargin,
+        clientType,
+        labelSizes,
+        options
+      );
+      const lineCost = pricing.totalCost * quantity;
+      const linePrice = pricing.finalPrice * quantity;
+      lines.push({
+        packaging: packagingSize,
+        quantity,
+        unitCost: pricing.totalCost,
+        unitPrice: pricing.finalPrice,
+        lineCost,
+        linePrice,
+        costBreakdown: pricing
+      });
+      totalCost += lineCost;
+      totalPrice += linePrice;
+      totalQuantity += quantity;
+    });
+
+    const breakdown = this.aggregateMixBreakdown(lines);
+
+    return {
+      productionMode: options.productionMode || 'maquila',
+      grindType: options.grindType || 'grano',
+      clientProvidesCoffee: options.clientProvidesCoffee ?? false,
+      profitMargin,
+      clientType,
+      lines,
+      packagingMix: mix,
+      totalCost,
+      totalPrice,
+      totalQuantity,
+      avgUnitPrice: totalQuantity > 0 ? Math.ceil((totalPrice / totalQuantity) / 100) * 100 : 0,
+      breakdown,
+      finalPrice: totalQuantity > 0 ? Math.ceil((totalPrice / totalQuantity) / 100) * 100 : 0,
+      totalCostPerOrder: totalCost
+    };
+  },
+
+  aggregateMixBreakdown(lines) {
+    const breakdown = {
+      administrative: [],
+      transformation: [],
+      materials: []
+    };
+    const adminMap = new Map();
+    const transformMap = new Map();
+    const materialMap = new Map();
+
+    lines.forEach((line) => {
+      const sizeLabel = PACKAGING_SIZES[line.packaging]?.label || line.packaging;
+      const bd = line.costBreakdown?.breakdown;
+      if (!bd) return;
+
+      bd.administrative.forEach((item) => {
+        const key = item.key || item.label;
+        const existing = adminMap.get(key) || { ...item, cost: 0, detail: '' };
+        existing.cost += item.cost * line.quantity;
+        existing.detail = `${line.quantity} × ${sizeLabel}`;
+        adminMap.set(key, existing);
+      });
+
+      bd.transformation.forEach((item) => {
+        const key = `${item.key || item.label}-${line.packaging}`;
+        const unitCost = item.cost;
+        const lineDetail = item.key === 'empacada'
+          ? `${line.quantity} uds × ${formatCurrency(unitCost)} (${sizeLabel})`
+          : `${line.quantity} × ${sizeLabel} · ${item.detail || formatCurrency(unitCost)}`;
+        transformMap.set(key, {
+          ...item,
+          label: item.key === 'empacada'
+            ? `Empacada — ${sizeLabel}`
+            : `${item.label} (${sizeLabel})`,
+          cost: unitCost * line.quantity,
+          detail: lineDetail
+        });
+      });
+
+      bd.materials.forEach((item) => {
+        const key = `${item.key || item.label}-${line.packaging}`;
+        const existing = materialMap.get(key) || { ...item, cost: 0 };
+        existing.cost += item.cost * line.quantity;
+        materialMap.set(key, existing);
+      });
+    });
+
+    breakdown.administrative = [...adminMap.values()];
+    breakdown.transformation = [...transformMap.values()];
+    breakdown.materials = [...materialMap.values()];
+    return breakdown;
+  },
+
   renderCostForm(container) {
     const costs = this.get();
     const t = costs.transformation;
