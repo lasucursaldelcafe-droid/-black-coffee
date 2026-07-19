@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# Instalación 100% automática — Black Coffee Administration
+# Instalacion 100% automatica - Black Coffee Administration
 # Ejecutar: powershell -ExecutionPolicy Bypass -File scripts\INSTALAR-AUTOMATICO.ps1
 
 $ErrorActionPreference = 'Continue'
@@ -44,7 +44,7 @@ if (-not (Test-Path $EnvFile)) {
         Copy-Item $EnvExample $EnvFile
     } else {
         @"
-# Credenciales BCA — NO subir a GitHub
+# Credenciales BCA - NO subir a GitHub
 RESEND_API_KEY=
 BCA_FROM_EMAIL=Black Coffee <onboarding@resend.dev>
 FIREBASE_TOKEN=
