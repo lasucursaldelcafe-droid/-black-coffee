@@ -6,6 +6,16 @@ Plataforma integral de gestión contable y logística para café de especialidad
 
 **URL:** https://lasucursaldelcafe-droid.github.io/-black-coffee/
 
+### Accesos de un clic (Windows)
+
+| Archivo | Acción |
+|---------|--------|
+| `DESCARGAR-PROYECTO.bat` | Clona en `Documentos\BlackCoffeeAdmin` + iconos en Escritorio |
+| `ABRIR-ENLACES.bat` | Abre app, Firebase, GitHub y Resend en el navegador |
+| `INSTALAR-Y-ABRIR.bat` | Instala dependencias + abre todo |
+
+Ver también: [LEEME-ACCESOS.txt](LEEME-ACCESOS.txt) y [docs/RUTAS_ACCESO.md](docs/RUTAS_ACCESO.md)
+
 ## 👤 Acceso
 
 Usuarios: `ximena.polo` y `pablo.colorado`. Las contraseñas las administra el equipo — **no están en este repositorio**. Si hay problemas de acceso, use **Reparar acceso** en la pantalla de login.

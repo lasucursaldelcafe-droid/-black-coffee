@@ -1,0 +1,26 @@
+BLACK COFFEE ADMINISTRATION — ACCESOS DE UN CLIC
+================================================
+
+Si NO tienes la carpeta del proyecto:
+  1. Doble clic en: DESCARGAR-PROYECTO.bat
+     (clona en Documentos\BlackCoffeeAdmin y crea iconos en el Escritorio)
+
+Si YA tienes la carpeta del proyecto:
+
+  ABRIR-ENLACES.bat      → Abre app, Firebase, GitHub, Resend en el navegador
+  INSTALAR-Y-ABRIR.bat   → Instala todo + abre enlaces
+  DESCARGAR-PROYECTO.bat → Clonar/actualizar + accesos en Escritorio
+
+Desde PowerShell (cualquier carpeta):
+  irm https://raw.githubusercontent.com/lasucursaldelcafe-droid/-black-coffee/main/scripts/DESCARGAR-PROYECTO.ps1 | iex
+
+Desde Python (si tienes Python):
+  python scripts\abrir_enlaces.py
+
+App en vivo:
+  https://lasucursaldelcafe-droid.github.io/-black-coffee/
+
+Correo notificaciones:
+  ghostspecialtycoffee@gmail.com
+
+Más detalle: docs\RUTAS_ACCESO.md
