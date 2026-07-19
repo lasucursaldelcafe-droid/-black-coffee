@@ -107,8 +107,16 @@ const AuditLog = {
         return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg seleccionado${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'purchase_ground':
         return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg molido${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
-      case 'purchase_packaged':
-        return `${d.coffeeName || entry.entity}: +${d.quantity || 0} uds ${d.packaging || ''}${d.costPerUnit ? ` · ${formatCurrency(d.costPerUnit)}/ud` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_packaged': {
+        const parts = [
+          `${d.coffeeName || entry.entity}: +${d.quantity || 0} uds ${PACKAGING_SIZES[d.packaging]?.label || d.packaging || ''}`,
+          d.packagingMaterialCost > 0 ? `material ${formatCurrency(d.packagingMaterialCost)}` : (d.clientProvidesPackaging ? 'material cliente' : null),
+          d.packagingLaborCost > 0 ? `MO ${formatCurrency(d.packagingLaborCost)}/ud` : null,
+          d.costPerUnit ? `total ${formatCurrency(d.costPerUnit)}/ud` : null,
+          d.supplierName ? d.supplierName : null
+        ].filter(Boolean);
+        return parts.join(' · ');
+      }
       case 'roast':
         return `${d.coffeeName || entry.entity}: ${formatNumber(d.greenKg)} kg verde → ${formatNumber(d.roastedKg)} kg tostado${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'production_batch':

@@ -130,6 +130,22 @@ const ProductionCosts = {
     return this.calculateGreenToRoasted(inputKg, coffeeState, activeSteps).mermaDetails;
   },
 
+  getPackagingEntryCosts(packagingSize, supplierId, options = {}) {
+    const costs = this.get();
+    const clientProvidesPackaging = options.clientProvidesPackaging === true;
+    const materialCost = clientProvidesPackaging ? 0 : (costs.packaging[packagingSize] || 0);
+    const laborCost = SupplierManager.getEffectiveServiceRate('empacada', supplierId, packagingSize);
+    return {
+      packagingSize,
+      materialCost,
+      laborCost,
+      totalPerUnit: materialCost + laborCost,
+      supplierId: supplierId || null,
+      supplierName: SupplierManager.getName(supplierId),
+      clientProvidesPackaging
+    };
+  },
+
   getTransformationCost(stepKey, amount, packagingSize, costs, supplierId = null) {
     const step = TRANSFORMATION_STEPS[stepKey];
     if (!step) return 0;

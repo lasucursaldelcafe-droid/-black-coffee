@@ -66,7 +66,10 @@ const InventoryManager = {
       quantity,
       cost = 0,
       packaging = '250g',
-      suppliers = {}
+      suppliers = {},
+      packagingMaterialCost = 0,
+      packagingLaborCost = 0,
+      clientProvidesPackaging = false
     } = payload;
 
     const session = Auth.getSession();
@@ -94,6 +97,10 @@ const InventoryManager = {
         packaging,
         quantity: qty,
         unit: 'uds',
+        costPerUnit: cost,
+        packagingMaterialCost,
+        packagingLaborCost,
+        clientProvidesPackaging,
         totalCost: qty * cost,
         supplierId: suppliers.empacada || null,
         supplierName: SupplierManager.getName(suppliers.empacada)
@@ -134,6 +141,9 @@ const InventoryManager = {
       units: stage.isPackaged ? auditDetails.quantity : undefined,
       costPerKg: stage.isPackaged ? undefined : cost,
       costPerUnit: stage.isPackaged ? cost : undefined,
+      packagingMaterialCost: stage.isPackaged ? packagingMaterialCost : undefined,
+      packagingLaborCost: stage.isPackaged ? packagingLaborCost : undefined,
+      clientProvidesPackaging: stage.isPackaged ? clientProvidesPackaging : undefined,
       totalCost: auditDetails.totalCost,
       stockType: stageKey,
       supplierId: auditDetails.supplierId,
@@ -588,6 +598,87 @@ const InventoryManager = {
     modal.classList.add('active');
   },
 
+  getPackagingCostFromForm() {
+    const packaging = document.getElementById('inv-packaging')?.value || '250g';
+    const supplierId = document.getElementById('inv-supplier-empacada')?.value || null;
+    const clientProvidesPackaging = document.getElementById('inv-client-packaging')?.checked === true;
+    const breakdown = ProductionCosts.getPackagingEntryCosts(packaging, supplierId, { clientProvidesPackaging });
+
+    const materialInput = document.getElementById('inv-packaging-material-cost');
+    const laborInput = document.getElementById('inv-packaging-labor-cost');
+    if (materialInput && document.activeElement !== materialInput) {
+      materialInput.value = breakdown.materialCost;
+    }
+    if (laborInput && document.activeElement !== laborInput) {
+      laborInput.value = breakdown.laborCost;
+    }
+
+    const materialCost = parseFloat(materialInput?.value) || 0;
+    const laborCost = parseFloat(laborInput?.value) || 0;
+    const totalPerUnit = materialCost + laborCost;
+
+    const qty = parseInt(document.getElementById('inv-quantity')?.value || '0', 10) || 0;
+    const preview = document.getElementById('inv-packaging-cost-preview');
+    if (preview) {
+      preview.innerHTML = `
+        <div class="cost-row">
+          <span class="cost-label">Material empaque</span>
+          <span class="cost-value">${clientProvidesPackaging ? 'Aportado por cliente' : formatCurrency(materialCost)}/ud</span>
+        </div>
+        <div class="cost-row">
+          <span class="cost-label">Mano de obra · ${breakdown.supplierName || 'Empacadora'}</span>
+          <span class="cost-value">${formatCurrency(laborCost)}/ud</span>
+        </div>
+        <div class="cost-row cost-row-total">
+          <span class="cost-label"><strong>Total por unidad</strong></span>
+          <span class="cost-value"><strong>${formatCurrency(totalPerUnit)}</strong></span>
+        </div>
+        ${qty > 0 ? `
+        <div class="cost-row">
+          <span class="cost-label">Total entrada (${qty} uds)</span>
+          <span class="cost-value">${formatCurrency(totalPerUnit * qty)}</span>
+        </div>` : ''}`;
+    }
+
+    const totalHidden = document.getElementById('inv-cost');
+    if (totalHidden) totalHidden.value = totalPerUnit;
+
+    return {
+      packaging,
+      supplierId,
+      clientProvidesPackaging,
+      materialCost,
+      laborCost,
+      totalPerUnit
+    };
+  },
+
+  bindPackagingCostEvents() {
+    if (this._packagingCostBound) return;
+    this._packagingCostBound = true;
+
+    const refresh = () => {
+      if (document.getElementById('inv-stage-key')?.value === 'packaged') {
+        this.getPackagingCostFromForm();
+      }
+    };
+
+    document.getElementById('inv-client-packaging')?.addEventListener('change', () => {
+      const group = document.getElementById('inv-material-cost-group');
+      const checked = document.getElementById('inv-client-packaging')?.checked;
+      if (group) group.style.display = checked ? 'none' : '';
+      refresh();
+    });
+
+    ['inv-packaging-material-cost', 'inv-packaging-labor-cost', 'inv-quantity'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('input', refresh);
+    });
+
+    document.getElementById('inventory-form')?.addEventListener('change', (event) => {
+      if (event.target?.id === 'inv-supplier-empacada') refresh();
+    });
+  },
+
   showPurchaseForm(coffeeId) {
     const coffee = CoffeeManager.getById(coffeeId);
     const stageKey = coffee ? getInventoryStageForCoffeeState(coffee.state) : 'green';
@@ -612,6 +703,7 @@ const InventoryManager = {
     if (!stage) return;
 
     this._pendingStageEntry = { coffeeId: coffee?.id || null, stageKey: resolvedStage };
+    this._packagingCostBound = false;
 
     document.getElementById('inventory-modal-title').textContent = coffee
       ? `Entrada — ${stage.shortLabel} · ${coffee.name}`
@@ -678,16 +770,39 @@ const InventoryManager = {
         <div class="selection-grid" id="inv-stage-grid">${stageButtons}</div>
       </div>
       <div id="inv-stage-description" class="form-hint" style="margin-bottom:12px">${stage.label}</div>
-      <div class="form-row">
-        <div class="form-group">
-          <label id="inv-quantity-label">Cantidad (${stage.unit})</label>
-          <input type="number" class="form-control" id="inv-quantity" step="${stage.isPackaged ? '1' : '0.1'}" min="0" required>
-        </div>
-        <div class="form-group">
+      <div class="form-group">
+        <label id="inv-quantity-label">Cantidad (${stage.unit})</label>
+        <input type="number" class="form-control" id="inv-quantity" step="${stage.isPackaged ? '1' : '0.1'}" min="0" required>
+      </div>
+      <div id="inv-cost-standard" class="form-row" style="${stage.isPackaged ? 'display:none' : ''}">
+        <div class="form-group" style="flex:1">
           <label id="inv-cost-label">${stage.costLabel}</label>
-          <input type="number" class="form-control" id="inv-cost" value="${coffee?.pricePerKg || ''}" min="0">
+          <input type="number" class="form-control" id="inv-cost-standard-input" value="${coffee?.pricePerKg || ''}" min="0">
         </div>
       </div>
+      <div id="inv-cost-packaged" style="${stage.isPackaged ? '' : 'display:none'}">
+        <div class="form-group">
+          <label class="toggle-group" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="inv-client-packaging">
+            <span>Cliente aporta el empaque (solo se cobra mano de obra del proveedor)</span>
+          </label>
+        </div>
+        <div class="form-row">
+          <div class="form-group" id="inv-material-cost-group">
+            <label>Costo material empaque / ud</label>
+            <input type="number" class="form-control" id="inv-packaging-material-cost" min="0" step="1">
+            <p class="form-hint">Valor de bolsa, valve bag o empaque según Configuración → Costos</p>
+          </div>
+          <div class="form-group">
+            <label>Mano de obra empacada / ud</label>
+            <input type="number" class="form-control" id="inv-packaging-labor-cost" min="0" step="1">
+            <p class="form-hint">Tarifa del proveedor empacador seleccionado abajo</p>
+          </div>
+        </div>
+        <div class="cost-breakdown" id="inv-packaging-cost-preview" style="margin-bottom:12px"></div>
+        <input type="hidden" id="inv-cost" value="0">
+      </div>
+      ${stage.isPackaged ? '' : '<input type="hidden" id="inv-cost" value="">'}
       ${packagedFields}
       <div id="inv-supplier-fields">${supplierFields(resolvedStage)}</div>
     `;
@@ -698,13 +813,34 @@ const InventoryManager = {
       document.getElementById('inv-stage-key').value = sk;
       document.getElementById('inv-stage-description').textContent = st.label;
       document.getElementById('inv-quantity-label').textContent = `Cantidad (${st.unit})`;
-      document.getElementById('inv-cost-label').textContent = st.costLabel;
       const qtyInput = document.getElementById('inv-quantity');
       qtyInput.step = st.isPackaged ? '1' : '0.1';
       qtyInput.value = '';
+
+      const costStandard = document.getElementById('inv-cost-standard');
+      const costPackaged = document.getElementById('inv-cost-packaged');
+      costStandard?.style.setProperty('display', st.isPackaged ? 'none' : '');
+      costPackaged?.style.setProperty('display', st.isPackaged ? '' : 'none');
+
       document.querySelector('.stage-packaged-field')?.style.setProperty('display', st.isPackaged ? '' : 'none');
       document.getElementById('inv-supplier-fields').innerHTML = supplierFields(sk);
       this._pendingStageEntry = { ...this._pendingStageEntry, stageKey: sk };
+
+      if (st.isPackaged) {
+        const defaults = ProductionCosts.get().defaultSuppliers || {};
+        const supplierSelect = document.getElementById('inv-supplier-empacada');
+        const supplierId = supplierSelect?.value || defaults.empacada || '';
+        const packaging = document.getElementById('inv-packaging')?.value || '250g';
+        const breakdown = ProductionCosts.getPackagingEntryCosts(packaging, supplierId, { clientProvidesPackaging: false });
+        const materialInput = document.getElementById('inv-packaging-material-cost');
+        const laborInput = document.getElementById('inv-packaging-labor-cost');
+        if (materialInput) materialInput.value = breakdown.materialCost;
+        if (laborInput) laborInput.value = breakdown.laborCost;
+        this.getPackagingCostFromForm();
+      } else {
+        const costLabel = document.getElementById('inv-cost-label');
+        if (costLabel) costLabel.textContent = st.costLabel;
+      }
     };
 
     document.getElementById('inv-stage-grid')?.querySelectorAll('.stage-pick-btn').forEach((btn) => {
@@ -721,6 +857,9 @@ const InventoryManager = {
         packagingGrid.querySelectorAll('.selection-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById('inv-packaging').value = btn.dataset.value;
+        if (document.getElementById('inv-stage-key')?.value === 'packaged') {
+          this.getPackagingCostFromForm();
+        }
       });
     });
 
@@ -732,12 +871,16 @@ const InventoryManager = {
         b.classList.toggle('active', b.dataset.stage === suggestedStage);
       });
       renderStageUI(suggestedStage);
-      const costInput = document.getElementById('inv-cost');
-      if (costInput && selected.pricePerKg) costInput.value = selected.pricePerKg;
+      if (suggestedStage !== 'packaged') {
+        const costInput = document.getElementById('inv-cost-standard-input');
+        if (costInput && selected.pricePerKg) costInput.value = selected.pricePerKg;
+      }
     });
 
     if (stage.isPackaged) {
       document.querySelector('.stage-packaged-field')?.style.setProperty('display', '');
+      this.bindPackagingCostEvents();
+      this.getPackagingCostFromForm();
     }
 
     modal.classList.add('active');
@@ -904,16 +1047,32 @@ const InventoryManager = {
         return;
       }
       const quantity = document.getElementById('inv-quantity')?.value;
-      const cost = parseFloat(document.getElementById('inv-cost')?.value) || 0;
       const suppliers = {};
       stage.supplierServices.forEach((serviceKey) => {
         const el = document.getElementById(`inv-supplier-${serviceKey}`);
         if (el?.value) suppliers[serviceKey] = el.value;
       });
-      const payload = { quantity, cost, suppliers };
+      const payload = { quantity, suppliers };
+
       if (stage.isPackaged) {
-        payload.packaging = document.getElementById('inv-packaging')?.value || '250g';
+        const packagedCosts = this.getPackagingCostFromForm();
+        payload.packaging = packagedCosts.packaging;
+        payload.cost = packagedCosts.totalPerUnit;
+        payload.packagingMaterialCost = packagedCosts.materialCost;
+        payload.packagingLaborCost = packagedCosts.laborCost;
+        payload.clientProvidesPackaging = packagedCosts.clientProvidesPackaging;
+        if (!suppliers.empacada && packagedCosts.supplierId) {
+          suppliers.empacada = packagedCosts.supplierId;
+        }
+        payload.suppliers = suppliers;
+        if (!suppliers.empacada) {
+          Toast.show('Seleccione el proveedor de empaque', 'danger');
+          return;
+        }
+      } else {
+        payload.cost = parseFloat(document.getElementById('inv-cost-standard-input')?.value) || 0;
       }
+
       const ok = this.addStageEntry(coffeeId, stageKey, payload);
       if (!ok) return;
     } else if (action === 'purchase') {

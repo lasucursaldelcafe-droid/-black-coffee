@@ -622,7 +622,7 @@ const INVENTORY_PIPELINE_STAGES = {
     icon: '📦',
     unit: 'uds',
     isPackaged: true,
-    costLabel: 'Costo por unidad',
+    costLabel: 'Costo total por unidad (material + mano de obra)',
     supplierServices: ['empacada'],
     coffeeStates: [],
     auditAction: 'purchase_packaged'
