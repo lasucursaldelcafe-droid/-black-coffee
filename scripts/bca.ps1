@@ -1,9 +1,9 @@
 #Requires -Version 5.1
-# CLI unificada BCA - uso: .\scripts\bca.ps1 abrir|instalar|setup|config
+# CLI unificada BCA - uso: .\scripts\bca.ps1 abrir|instalar|setup|auto|config|plan
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('abrir', 'instalar', 'setup', 'config', 'help')]
+    [ValidateSet('abrir', 'instalar', 'setup', 'auto', 'config', 'plan', 'help')]
     [string]$Accion = 'help'
 )
 
@@ -18,7 +18,13 @@ switch ($Accion) {
         Install-BCAProject
     }
     'setup' {
-        Start-BCASetup -OpenLinks
+        Start-BCASetup
+    }
+    'auto' {
+        Start-BCAFullAutomation -OpenAppAtEnd
+    }
+    'plan' {
+        Get-BCASetupPlan | Format-Table Orden, Nombre, QueHacer, Auto, Requiere -AutoSize
     }
     'config' {
         Get-BCAConfig | Format-List
@@ -27,18 +33,15 @@ switch ($Accion) {
     }
     default {
         Write-Host ''
-        Write-Host 'BCA PowerShell - Comandos disponibles:' -ForegroundColor Cyan
-        Write-Host '  .\scripts\bca.ps1 abrir     -> Abre todos los enlaces'
-        Write-Host '  .\scripts\bca.ps1 instalar  -> Instala dependencias y despliega'
-        Write-Host '  .\scripts\bca.ps1 setup     -> Clona/actualiza + iconos + abrir'
-        Write-Host '  .\scripts\bca.ps1 config    -> Muestra rutas y URLs'
+        Write-Host 'BCA PowerShell - Comandos:' -ForegroundColor Cyan
+        Write-Host '  .\scripts\bca.ps1 auto      -> TODO automatico sin preguntas (RECOMENDADO)'
+        Write-Host '  .\scripts\bca.ps1 abrir     -> Abre enlaces en navegador'
+        Write-Host '  .\scripts\bca.ps1 instalar  -> Instala dependencias'
+        Write-Host '  .\scripts\bca.ps1 setup     -> Clona + iconos'
+        Write-Host '  .\scripts\bca.ps1 plan      -> Que hace cada paso'
+        Write-Host '  .\scripts\bca.ps1 config    -> Rutas y URLs'
         Write-Host ''
-        Write-Host 'Funciones del modulo (despues de Import-Module):' -ForegroundColor Yellow
-        Write-Host '  Open-BCAEnlaces'
-        Write-Host '  Install-BCAProject'
-        Write-Host '  Start-BCASetup -OpenLinks'
-        Write-Host '  Sync-BCARepository'
-        Write-Host '  Get-BCAConfig'
+        Write-Host 'Doble clic: CONFIGURAR-TODO-AUTO.bat' -ForegroundColor Yellow
         Write-Host ''
     }
 }

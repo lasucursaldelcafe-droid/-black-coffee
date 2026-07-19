@@ -25,7 +25,6 @@
         'New-BCADesktopShortcut',
         'Install-BCADesktopShortcuts',
         'Install-BCAProject',
-        'Start-BCASetup',
-        'Import-BCAModule'
+        'Start-BCASetup'
     )
 }

@@ -1,32 +1,36 @@
-BLACK COFFEE - MODULO POWERSHELL (Windows)
+BLACK COFFEE - CONFIGURACION 100% AUTOMATICA
 ==========================================
 
-Carpeta del proyecto:
-  C:\Users\LENOVO\Documents\BlackCoffeeAdmin
+UN SOLO DOBLE CLIC (recomendado):
+  CONFIGURAR-TODO-AAUTO.bat
 
-CARGAR MODULO (copiar y pegar en PowerShell):
+O en PowerShell (copiar y pegar):
   cd C:\Users\LENOVO\Documents\BlackCoffeeAdmin
-  Import-Module .\scripts\BCA\BCA.psm1 -Force
+  git pull origin main
+  .\CONFIGURAR-TODO-AUTO.bat
 
-COMANDOS DISPONIBLES:
-  Open-BCAEnlaces          -> Abre todas las paginas web
-  Install-BCAProject       -> Instala todo (Node, Firebase, secretos)
-  Start-BCASetup -OpenLinks -> Descarga/actualiza + iconos + abrir
-  Get-BCAConfig            -> Ver rutas y URLs
-  Sync-BCARepository       -> git pull
+O:
+  .\scripts\bca.ps1 auto
 
-CLI RAPIDA:
-  .\scripts\bca.ps1 abrir
-  .\scripts\bca.ps1 instalar
-  .\scripts\bca.ps1 setup
+QUE HACE CADA COSA (automatico vs manual):
+  1. git pull                    -> AUTO
+  2. Node.js + npm + firebase    -> AUTO
+  3. .env.local credenciales     -> AUTO (si existe el archivo)
+  4. Iconos Escritorio           -> AUTO
+  5. Secretos GitHub             -> AUTO (si GH_TOKEN o gh auth)
+  6. Reglas Firestore            -> AUTO (si FIREBASE_TOKEN)
+  7. Functions correo Resend     -> AUTO (si tokens + Blaze)
+  8. Workflow GitHub CI          -> AUTO
+  9. Verificar app online        -> AUTO
 
-DOBLE CLIC (sin PowerShell):
-  ABRIR-ENLACES.bat
-  INSTALAR-Y-ABRIR.bat
+  SOLO MANUAL (1 vez, si falla el paso 7):
+  - Plan Blaze Firebase (consola Google)
+  - RESEND_API_KEY en .env.local
+  - FIREBASE_TOKEN en .env.local (npx firebase login:ci)
+  - Auth anonima ON en Firebase Console
 
-Iconos en Escritorio:
-  BCA - Abrir enlaces
-  BCA - Instalar y abrir
-  BCA - Consola PowerShell
+INFORME AL TERMINAR:
+  BCA-informe-setup.txt (en la carpeta del proyecto)
 
-Documentacion: scripts\BCA\README.md
+Carpeta:
+  C:\Users\LENOVO\Documents\BlackCoffeeAdmin

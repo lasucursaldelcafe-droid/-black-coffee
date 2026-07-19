@@ -255,7 +255,9 @@ function Install-BCADependencies {
 function Set-BCAGitHubSecrets {
     [CmdletBinding()]
     param(
-        [string]$ProjectRoot = (Get-BCAProjectRoot)
+        [string]$ProjectRoot = (Get-BCAProjectRoot),
+
+        [switch]$AllowInteractive
     )
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -263,10 +265,19 @@ function Set-BCAGitHubSecrets {
         return
     }
 
+    if ($env:GH_TOKEN) {
+        $env:GITHUB_TOKEN = $env:GH_TOKEN
+    }
+
     gh auth status 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-BCAStatus -Level Warning -Message 'Iniciando sesion GitHub (se abre el navegador)...'
-        gh auth login -w -p https 2>$null
+        if ($AllowInteractive) {
+            Write-BCAStatus -Level Warning -Message 'Iniciando sesion GitHub (navegador)...'
+            gh auth login -w -p https 2>$null
+        } else {
+            Write-BCAStatus -Level Warning -Message 'GitHub no autenticado - agrega GH_TOKEN en .env.local o ejecuta gh auth login'
+            return
+        }
     }
 
     $secrets = @{
@@ -298,11 +309,18 @@ function Set-BCAGitHubSecrets {
 function Get-BCAFirebaseToken {
     [CmdletBinding()]
     param(
-        [string]$ProjectRoot = (Get-BCAProjectRoot)
+        [string]$ProjectRoot = (Get-BCAProjectRoot),
+
+        [switch]$AllowInteractive
     )
 
     if ($env:FIREBASE_TOKEN) {
         return $env:FIREBASE_TOKEN
+    }
+
+    if (-not $AllowInteractive) {
+        Write-BCAStatus -Level Warning -Message 'Sin FIREBASE_TOKEN en .env.local - omitiendo login Firebase'
+        return $null
     }
 
     Write-BCAStatus -Level Warning -Message 'Obteniendo token Firebase (se abre el navegador)...'
@@ -322,7 +340,7 @@ function Get-BCAFirebaseToken {
         return $token
     }
 
-    Write-BCAStatus -Level Warning -Message 'Token Firebase no obtenido. Ejecuta: npx firebase login:ci'
+    Write-BCAStatus -Level Warning -Message 'Token Firebase no obtenido'
     return $null
 }
 
@@ -502,7 +520,7 @@ function Install-BCAProject {
     }
 
     if (-not $env:FIREBASE_TOKEN) {
-        Get-BCAFirebaseToken -ProjectRoot $ProjectRoot | Out-Null
+        Get-BCAFirebaseToken -ProjectRoot $ProjectRoot -AllowInteractive | Out-Null
     }
 
     if (-not $SkipFirebaseDeploy) {
@@ -552,8 +570,309 @@ function Start-BCASetup {
     }
 
     if ($OpenLinks) {
-        Open-BCAEnlaces -ProjectRoot $root
+        Open-BCAUrl -Url $script:BCAConfig.AppUrl
     }
+}
+
+function Get-BCASetupPlan {
+    [CmdletBinding()]
+    param(
+        [string]$ProjectRoot = (Get-BCAProjectRoot)
+    )
+
+    $cfg = Get-BCAConfig -ProjectRoot $ProjectRoot
+    @(
+        [pscustomobject]@{ Orden=1;  Id='sync';       Nombre='Actualizar codigo';           QueHacer='git pull del repositorio';                    Auto=$true;  Requiere='git' }
+        [pscustomobject]@{ Orden=2;  Id='deps';       Nombre='Instalar herramientas';       QueHacer='Node.js, GitHub CLI, npm, firebase-tools';    Auto=$true;  Requiere='winget/npm' }
+        [pscustomobject]@{ Orden=3;  Id='env';        Nombre='Cargar credenciales';         QueHacer='Leer .env.local (RESEND, FIREBASE, GH_TOKEN)'; Auto=$true; Requiere='.env.local' }
+        [pscustomobject]@{ Orden=4;  Id='shortcuts';  Nombre='Iconos Escritorio';           QueHacer='Accesos directos BCA';                        Auto=$true;  Requiere=$null }
+        [pscustomobject]@{ Orden=5;  Id='gh-secrets'; Nombre='Secretos GitHub';            QueHacer='gh secret set en el repo';                    Auto=$true;  Requiere='GH_TOKEN o gh auth' }
+        [pscustomobject]@{ Orden=6;  Id='fire-rules'; Nombre='Reglas Firestore';           QueHacer='firebase deploy firestore:rules';             Auto=$true;  Requiere='FIREBASE_TOKEN' }
+        [pscustomobject]@{ Orden=7;  Id='fire-func';  Nombre='Functions correo Resend';     QueHacer='firebase deploy functions';                   Auto=$true;  Requiere='FIREBASE_TOKEN + RESEND + Blaze' }
+        [pscustomobject]@{ Orden=8;  Id='gh-deploy';  Nombre='Workflow GitHub Actions';     QueHacer='Desplegar Firebase en la nube CI';            Auto=$true;  Requiere='gh auth' }
+        [pscustomobject]@{ Orden=9;  Id='health';     Nombre='Verificar app en produccion'; QueHacer='HTTP 200 + FormSubmit en email.js';           Auto=$true;  Requiere=$null }
+        [pscustomobject]@{ Orden=10; Id='blaze';      Nombre='Plan Blaze Firebase';         QueHacer='Activar facturacion en consola Google';       Auto=$false; Requiere='Cuenta Google (1 vez)' }
+        [pscustomobject]@{ Orden=11; Id='resend-key'; Nombre='Clave Resend';                QueHacer='Crear re_... en resend.com/api-keys';         Auto=$false; Requiere='RESEND_API_KEY en .env.local' }
+        [pscustomobject]@{ Orden=12; Id='auth-anon';  Nombre='Auth anonima Firebase';     QueHacer='Sign-in method Anonymous ON';                 Auto=$false; Requiere='Consola Firebase' }
+    )
+}
+
+function Test-BCAUrlReachable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+
+        [int]$TimeoutSec = 30
+    )
+
+    try {
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $TimeoutSec
+        return [pscustomobject]@{
+            Url    = $Url
+            Ok     = ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400)
+            Status = $response.StatusCode
+            Error  = $null
+        }
+    } catch {
+        return [pscustomobject]@{
+            Url    = $Url
+            Ok     = $false
+            Status = 0
+            Error  = $_.Exception.Message
+        }
+    }
+}
+
+function Test-BCAAppHealth {
+    [CmdletBinding()]
+    param(
+        [string]$ProjectRoot = (Get-BCAProjectRoot)
+    )
+
+    $cfg = Get-BCAConfig -ProjectRoot $ProjectRoot
+    $login = Test-BCAUrlReachable -Url $cfg.AppLoginUrl
+    $platform = Test-BCAUrlReachable -Url $cfg.AppPlatformUrl
+    $emailJs = Test-BCAUrlReachable -Url ($cfg.AppUrl.TrimEnd('/') + '/js/email.js')
+
+    $formSubmit = $false
+    if ($emailJs.Ok) {
+        try {
+            $body = (Invoke-WebRequest -Uri ($cfg.AppUrl.TrimEnd('/') + '/js/email.js') -UseBasicParsing).Content
+            $formSubmit = ($body -match 'sendViaFormSubmit')
+        } catch { }
+    }
+
+    [pscustomobject]@{
+        LoginOk      = $login.Ok
+        PlatformOk   = $platform.Ok
+        EmailJsOk    = $emailJs.Ok
+        FormSubmitOk = $formSubmit
+        AllOk        = ($login.Ok -and $emailJs.Ok -and $formSubmit)
+    }
+}
+
+function Deploy-BCAFirestoreRules {
+    [CmdletBinding()]
+    param(
+        [string]$ProjectRoot = (Get-BCAProjectRoot)
+    )
+
+    if (-not $env:FIREBASE_TOKEN) {
+        Write-BCAStatus -Level Warning -Message 'Sin FIREBASE_TOKEN - omitiendo reglas Firestore'
+        return $false
+    }
+
+    $project = $script:BCAConfig.FirebaseProject
+    Write-BCAStatus -Level Info -Message 'Desplegando reglas Firestore...'
+    Push-Location $ProjectRoot
+    try {
+        npx firebase deploy --only firestore:rules --project $project --token $env:FIREBASE_TOKEN 2>&1 | Out-Null
+    } finally {
+        Pop-Location
+    }
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-BCAStatus -Level Ok -Message 'Reglas Firestore desplegadas'
+        return $true
+    }
+    Write-BCAStatus -Level Warning -Message 'No se pudieron desplegar reglas Firestore'
+    return $false
+}
+
+function Wait-BCAGitHubWorkflow {
+    [CmdletBinding()]
+    param(
+        [string]$WorkflowName = 'Desplegar Firebase (correo + reglas)',
+
+        [int]$TimeoutMinutes = 8
+    )
+
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { return $false }
+
+    gh auth status 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    Start-Sleep -Seconds 5
+
+    while ((Get-Date) -lt $deadline) {
+        $runJson = gh run list --repo $script:BCAConfig.RepoName --workflow $WorkflowName --limit 1 --json status,conclusion,url 2>$null
+        if ($runJson) {
+            $run = ($runJson | ConvertFrom-Json)[0]
+            if ($run.status -eq 'completed') {
+                if ($run.conclusion -eq 'success') {
+                    Write-BCAStatus -Level Ok -Message "Workflow OK: $($run.url)"
+                    return $true
+                }
+                Write-BCAStatus -Level Warning -Message "Workflow termino con: $($run.conclusion)"
+                return $false
+            }
+        }
+        Write-BCAStatus -Level Info -Message 'Esperando workflow GitHub...'
+        Start-Sleep -Seconds 15
+    }
+
+    Write-BCAStatus -Level Warning -Message 'Timeout esperando workflow GitHub'
+    return $false
+}
+
+function Export-BCASetupReport {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [array]$Results,
+
+        [string]$ProjectRoot = (Get-BCAProjectRoot)
+    )
+
+    $reportPath = Join-Path $ProjectRoot 'BCA-informe-setup.txt'
+    $lines = @(
+        'BLACK COFFEE ADMINISTRATION - INFORME DE CONFIGURACION'
+        "Fecha: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        "Carpeta: $ProjectRoot"
+        ''
+        'RESULTADOS POR PASO:'
+    )
+
+    foreach ($r in $Results) {
+        $lines += ("[{0}] {1} - {2}" -f $r.Estado, $r.Paso, $r.Detalle)
+    }
+
+    $lines += ''
+    $lines += 'APP: https://lasucursaldelcafe-droid.github.io/-black-coffee/'
+    $lines += 'CORREO: ghostspecialtycoffee@gmail.com'
+    $lines += ''
+    $lines += 'PASOS MANUALES (solo si fallaron arriba):'
+    $lines += '  1. Blaze: https://console.firebase.google.com/project/black-coffee-15ccc/usage/details'
+    $lines += '  2. Resend: https://resend.com/api-keys -> pegar en .env.local'
+    $lines += '  3. Firebase token: npx firebase login:ci -> pegar en .env.local'
+    $lines += '  4. Auth anonima: Firebase Console -> Authentication -> Anonymous ON'
+
+    $lines | Set-Content -Path $reportPath -Encoding UTF8
+    Write-BCAStatus -Level Ok -Message "Informe guardado: $reportPath"
+    return $reportPath
+}
+
+function Invoke-BCASetupStep {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Paso,
+
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Accion
+    )
+
+    try {
+        $null = & $Accion
+        return [pscustomobject]@{ Paso = $Paso; Estado = 'OK'; Detalle = 'Completado' }
+    } catch {
+        return [pscustomobject]@{ Paso = $Paso; Estado = 'SKIP'; Detalle = $_.Exception.Message }
+    }
+}
+
+function Start-BCAFullAutomation {
+    [CmdletBinding()]
+    param(
+        [string]$Destination = (Join-Path $env:USERPROFILE "Documents\$($script:BCAConfig.DefaultFolder)"),
+
+        [switch]$OpenAppAtEnd
+    )
+
+    $results = @()
+
+    Write-Host ''
+    Write-Host '##########################################################' -ForegroundColor Cyan
+    Write-Host '  BCA - CONFIGURACION AUTOMATICA COMPLETA (sin preguntas)' -ForegroundColor Cyan
+    Write-Host '##########################################################' -ForegroundColor Cyan
+    Write-Host ''
+
+    $results += Invoke-BCASetupStep -Paso '1. Actualizar codigo' -Accion {
+        $script:ProjectRoot = Sync-BCARepository -Destination $Destination
+        Set-Location $script:ProjectRoot
+    }
+
+    if (-not $script:ProjectRoot) {
+        $script:ProjectRoot = Get-BCAProjectRoot -StartPath $Destination
+    }
+
+    $results += Invoke-BCASetupStep -Paso '2. Instalar dependencias' -Accion {
+        Install-BCADependencies -ProjectRoot $script:ProjectRoot
+    }
+
+    $results += Invoke-BCASetupStep -Paso '3. Credenciales .env.local' -Accion {
+        Import-BCAEnvFile -ProjectRoot $script:ProjectRoot | Out-Null
+        if ($env:GH_TOKEN) { $env:GITHUB_TOKEN = $env:GH_TOKEN }
+    }
+
+    $results += Invoke-BCASetupStep -Paso '4. Iconos Escritorio' -Accion {
+        Install-BCADesktopShortcuts -ProjectRoot $script:ProjectRoot
+        $autoBat = Join-Path $script:ProjectRoot 'CONFIGURAR-TODO-AUTO.bat'
+        if (Test-Path $autoBat) {
+            New-BCADesktopShortcut -Name 'BCA - Configurar todo AUTO' -TargetPath $autoBat -WorkingDirectory $script:ProjectRoot | Out-Null
+        }
+    }
+
+    $results += Invoke-BCASetupStep -Paso '5. Secretos GitHub' -Accion {
+        Set-BCAGitHubSecrets -ProjectRoot $script:ProjectRoot -AllowInteractive:$false
+    }
+
+    $results += Invoke-BCASetupStep -Paso '6. Reglas Firestore' -Accion {
+        if ($env:FIREBASE_TOKEN) {
+            Deploy-BCAFirestoreRules -ProjectRoot $script:ProjectRoot | Out-Null
+        } else {
+            throw 'Sin FIREBASE_TOKEN'
+        }
+    }
+
+    $results += Invoke-BCASetupStep -Paso '7. Functions + correo' -Accion {
+        if ($env:FIREBASE_TOKEN -and $env:RESEND_API_KEY) {
+            if (-not (Deploy-BCAFirebase -ProjectRoot $script:ProjectRoot)) {
+                throw 'Deploy Firebase fallo (verifica plan Blaze)'
+            }
+        } else {
+            throw 'Faltan FIREBASE_TOKEN o RESEND_API_KEY - FormSubmit sigue activo'
+        }
+    }
+
+    $results += Invoke-BCASetupStep -Paso '8. Workflow GitHub CI' -Accion {
+        Start-BCAGitHubWorkflow | Out-Null
+        Wait-BCAGitHubWorkflow -TimeoutMinutes 6 | Out-Null
+    }
+
+    $results += Invoke-BCASetupStep -Paso '9. Verificar app online' -Accion {
+        $health = Test-BCAAppHealth -ProjectRoot $script:ProjectRoot
+        if (-not $health.AllOk) {
+            throw ("Login=$($health.LoginOk) EmailJs=$($health.EmailJsOk) FormSubmit=$($health.FormSubmitOk)")
+        }
+    }
+
+    $report = Export-BCASetupReport -Results $results -ProjectRoot $script:ProjectRoot
+
+    Write-Host ''
+    Write-Host '##########################################################' -ForegroundColor Green
+    Write-Host '  CONFIGURACION AUTOMATICA TERMINADA' -ForegroundColor Green
+    Write-Host '##########################################################' -ForegroundColor Green
+    Write-Host ''
+
+    foreach ($r in $results) {
+        $color = if ($r.Estado -eq 'OK') { 'Green' } else { 'Yellow' }
+        Write-Host ("  [{0}] {1}" -f $r.Estado, $r.Paso) -ForegroundColor $color
+        if ($r.Estado -ne 'OK') { Write-Host ("       -> {0}" -f $r.Detalle) -ForegroundColor DarkGray }
+    }
+
+    Write-Host ''
+    Write-Host "Informe: $report" -ForegroundColor Cyan
+    Write-Host "App: $($script:BCAConfig.AppUrl)" -ForegroundColor White
+    Write-Host "Correo: $($script:BCAConfig.NotificationEmail)" -ForegroundColor White
+    Write-Host ''
+
+    if ($OpenAppAtEnd) {
+        Open-BCAUrl -Url $script:BCAConfig.AppUrl
+    }
+
+    return $results
 }
 
 Export-ModuleMember -Function @(
@@ -576,5 +895,13 @@ Export-ModuleMember -Function @(
     'New-BCADesktopShortcut',
     'Install-BCADesktopShortcuts',
     'Install-BCAProject',
-    'Start-BCASetup'
+    'Start-BCASetup',
+    'Get-BCASetupPlan',
+    'Test-BCAUrlReachable',
+    'Test-BCAAppHealth',
+    'Deploy-BCAFirestoreRules',
+    'Wait-BCAGitHubWorkflow',
+    'Export-BCASetupReport',
+    'Invoke-BCASetupStep',
+    'Start-BCAFullAutomation'
 )
