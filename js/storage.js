@@ -431,7 +431,7 @@ const DEFAULT_SETTINGS = {
   primaryColor: '#f5f5f5',
   accentColor: '#e5e5e5',
   lowStockThreshold: 0,
-  syncPullEnabled: false
+  syncPullEnabled: true
 };
 
 const COFFEE_VARIETY_OTHER = 'Otras variedades';

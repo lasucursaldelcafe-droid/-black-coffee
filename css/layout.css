@@ -308,6 +308,17 @@
   border-top: 1px solid var(--border-color);
 }
 
+.sidebar-sync-status {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted, #888);
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-tertiary, rgba(255,255,255,0.04));
+  border: 1px solid var(--border-color);
+}
+
 .user-info {
   display: flex;
   align-items: center;

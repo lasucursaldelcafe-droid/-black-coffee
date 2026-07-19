@@ -54,6 +54,7 @@ const App = {
       }
 
       FirebaseSync.startInBackground().finally(() => {
+        FirebaseSync.updateStatusElement();
         InventoryManager.checkAllLowStock();
       });
     } catch (error) {
@@ -614,9 +615,17 @@ const App = {
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Base de Datos y Nube</span></div>
         <p class="form-hint" style="margin-bottom:12px">
-          Los datos se guardan <strong>primero en este navegador</strong> y se respaldan en Firebase.
-          Entre dispositivos con la misma URL, use <strong>Forzar sincronización</strong> para unificar cambios.
+          Ximena y Pablo comparten la misma información cuando ambos están en línea.
+          Los cambios se guardan en este navegador y se sincronizan automáticamente con Firebase
+          para que aparezcan en el otro usuario sin exportar respaldos.
         </p>
+        <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;cursor:pointer">
+          <input type="checkbox" id="settings-sync-shared" ${settings.syncPullEnabled !== false ? 'checked' : ''} style="margin-top:4px">
+          <span>
+            <strong>Sincronización compartida</strong> (recomendado)<br>
+            <span class="form-hint">Recibe cambios de otros usuarios en tiempo real. Desactívela solo si este equipo debe trabajar aislado.</span>
+          </span>
+        </label>
         <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
         <p id="online-status" class="form-hint" style="margin-bottom:12px"></p>
         <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización</button>
@@ -713,27 +722,39 @@ const App = {
     });
 
     const onlineEl = document.getElementById('online-status');
-    if (onlineEl) {
-      onlineEl.textContent = navigator.onLine ? '🟢 En línea' : '🔴 Sin conexión — los cambios se guardan localmente';
-      window.addEventListener('online', () => { onlineEl.textContent = '🟢 En línea'; });
-      window.addEventListener('offline', () => { onlineEl.textContent = '🔴 Sin conexión — los cambios se guardan localmente'; });
-    }
+    const refreshOnlineStatus = () => {
+      if (!onlineEl) return;
+      onlineEl.textContent = navigator.onLine
+        ? '🟢 En línea — compartiendo datos con otros usuarios'
+        : '🔴 Sin conexión — los cambios se guardan aquí y se enviarán al reconectar';
+      FirebaseSync.updateStatusElement();
+    };
+    refreshOnlineStatus();
+    window.addEventListener('online', refreshOnlineStatus);
+    window.addEventListener('offline', refreshOnlineStatus);
   },
 
   saveSettings() {
+    const existing = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
+    const syncPullEnabled = document.getElementById('settings-sync-shared')?.checked ?? true;
     const settings = {
+      ...existing,
       companyName: document.getElementById('settings-company')?.value || DEFAULT_SETTINGS.companyName,
       tagline: document.getElementById('settings-tagline')?.value || DEFAULT_SETTINGS.tagline,
       email: document.getElementById('settings-email')?.value || DEFAULT_SETTINGS.email,
       logo: document.getElementById('settings-logo')?.value || null,
       heroTitle: document.getElementById('settings-hero-title')?.value || DEFAULT_SETTINGS.heroTitle,
       heroSubtitle: document.getElementById('settings-hero-subtitle')?.value || DEFAULT_SETTINGS.heroSubtitle,
-      lowStockThreshold: parseFloat(document.getElementById('settings-low-stock')?.value) || 0
+      lowStockThreshold: parseFloat(document.getElementById('settings-low-stock')?.value) || 0,
+      syncPullEnabled
     };
 
     Storage.set(STORAGE_KEYS.SETTINGS, settings);
     EmailService.email = settings.email;
     this.applySettings();
+    if (typeof FirebaseSync !== 'undefined') {
+      FirebaseSync.reconfigurePullMode();
+    }
     Toast.show('Configuración guardada', 'success');
   },
 

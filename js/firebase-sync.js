@@ -120,26 +120,25 @@ const FirebaseSync = {
   },
 
   _runBackgroundSync() {
-    // Modo push-only por defecto: la nube NO puede sobrescribir local al recargar
     this._localBootstrapped = true;
     if (typeof Storage !== 'undefined') {
       Storage.purgeDeletedFromStorage();
     }
 
-    this.pushAllLocal()
+    const pullEnabled = this._isPullEnabled();
+    const syncPromise = pullEnabled
+      ? this.syncAll({ silent: true })
+      : this.pushAllLocal();
+
+    syncPromise
       .then(() => {
-        if (!this._isPullEnabled()) return null;
-        return this.restoreFromCloudIfEmpty();
-      })
-      .then(() => {
-        if (!this._isPullEnabled()) return;
-        if (!this._unsubscribe) {
-          this.setupRealtimeListener();
+        if (pullEnabled) {
+          this.ensureRealtimeListener();
         }
       })
       .catch((error) => {
-        console.warn('Respaldo en segundo plano:', error.message);
-        this.lastError = error.message || 'Error al respaldar';
+        console.warn('Sincronización en segundo plano:', error.message);
+        this.lastError = error.message || 'Error al sincronizar';
       })
       .finally(() => {
         this.updateStatusElement();
@@ -359,10 +358,65 @@ const FirebaseSync = {
 
     window.addEventListener('online', () => {
       if (!this.isEnabled()) return;
-      this.pushAllLocal().catch((error) => {
-        console.warn('Reintento de respaldo en línea:', error.message);
-      });
+      const sync = this._isPullEnabled()
+        ? this.syncAll({ silent: true })
+        : this.pushAllLocal();
+      sync
+        .catch((error) => {
+          console.warn('Reintento de sincronización en línea:', error.message);
+          this.lastError = error.message || 'Error al sincronizar';
+        })
+        .finally(() => {
+          this.updateStatusElement();
+        });
     });
+
+    window.addEventListener('offline', () => {
+      this.updateStatusElement();
+    });
+  },
+
+  ensureRealtimeListener() {
+    if (!this.db || !this._isPullEnabled()) return;
+    if (!this._unsubscribe) {
+      this.setupRealtimeListener();
+    }
+  },
+
+  stopRealtimeListener() {
+    if (this._unsubscribe) {
+      this._unsubscribe();
+      this._unsubscribe = null;
+    }
+  },
+
+  reconfigurePullMode() {
+    if (!this.isEnabled()) {
+      this.updateStatusElement();
+      return;
+    }
+
+    if (this._isPullEnabled()) {
+      this.ensureRealtimeListener();
+      this.syncAll({ silent: true })
+        .catch((error) => {
+          console.warn('Reconfiguración de sync compartida:', error.message);
+          this.lastError = error.message || 'Error al sincronizar';
+        })
+        .finally(() => {
+          this.updateStatusElement();
+        });
+      return;
+    }
+
+    this.stopRealtimeListener();
+    this.pushAllLocal()
+      .catch((error) => {
+        console.warn('Modo solo envío:', error.message);
+      })
+      .finally(() => {
+        this.updateStatusElement();
+      });
   },
 
   setupRealtimeListener() {
@@ -594,18 +648,39 @@ const FirebaseSync = {
     if (this.syncing) {
       return 'Sincronizando...';
     }
-    if (!this.ready) {
-      return this.lastError ? `Error: ${this.lastError}` : 'Conectando respaldo en la nube...';
+    if (!navigator.onLine) {
+      return 'Sin internet — los cambios se guardan aquí y se compartirán al reconectar';
     }
-    const pull = this._isPullEnabled() ? ' · pull ON' : ' · solo envío (local manda)';
+    if (!this.ready) {
+      return this.lastError ? `Error: ${this.lastError}` : 'Conectando con la nube...';
+    }
+    if (this.lastError) {
+      return `Error de sync: ${this.lastError}`;
+    }
+
+    const pull = this._isPullEnabled();
     const when = this.lastSyncAt
-      ? ` · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(this.lastSyncAt))}`
-      : '';
-    return `Guardado local · respaldo en la nube${pull}${when}`;
+      ? new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' }).format(new Date(this.lastSyncAt))
+      : null;
+
+    if (pull && this._unsubscribe) {
+      return when
+        ? `Conectados — datos compartidos en tiempo real · ${when}`
+        : 'Conectados — los cambios se ven en todos los usuarios';
+    }
+    if (pull) {
+      return when
+        ? `Sync compartida activa · última unión ${when}`
+        : 'Sync compartida activa — uniendo datos...';
+    }
+    return when
+      ? `Solo envío — este dispositivo no recibe cambios · ${when}`
+      : 'Solo envío — activar sync compartida en Configuración';
   },
 
   updateStatusElement() {
-    const el = document.getElementById('firebase-sync-status');
-    if (el) el.textContent = this.getStatusLabel();
+    const label = this.getStatusLabel();
+    document.getElementById('firebase-sync-status')?.replaceChildren(document.createTextNode(label));
+    document.getElementById('sidebar-sync-status')?.replaceChildren(document.createTextNode(label));
   }
 };

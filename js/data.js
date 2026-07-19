@@ -1,4 +1,4 @@
-const DATA_VERSION = 17;
+const DATA_VERSION = 18;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 const FACTORY_RESET_V16_FLAG = 'bca_factory_reset_v16_done';
@@ -208,9 +208,18 @@ const DataSeed = {
       this.migrateV16ToV17();
       return;
     }
+    if (fromVersion === 17) {
+      this.migrateV17ToV18();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
+  },
+
+  migrateV17ToV18() {
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
+    Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, syncPullEnabled: true });
   },
 
   migrateV16ToV17() {
@@ -545,8 +554,8 @@ const DataSeed = {
       Storage.set(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
       return;
     }
-    if (existing.syncPullEnabled === undefined) {
-      Storage.set(STORAGE_KEYS.SETTINGS, { ...existing, syncPullEnabled: false });
+    if (existing.syncPullEnabled === undefined || existing.syncPullEnabled === false) {
+      Storage.set(STORAGE_KEYS.SETTINGS, { ...existing, syncPullEnabled: true });
     }
   },
 
