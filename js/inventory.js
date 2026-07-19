@@ -116,7 +116,7 @@ const InventoryManager = {
       `Se registró una compra de ${kg}kg de café por ${session?.name || 'usuario'}. Costo: ${formatCurrency(kg * cost)}`);
   },
 
-  processRoasting(coffeeId, greenKg, supplierId = null) {
+  processRoasting(coffeeId, greenKg, supplierId = null, activeSteps = ['tostion']) {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
 
@@ -126,7 +126,7 @@ const InventoryManager = {
       return;
     }
 
-    const result = ProductionCosts.calculateGreenToRoasted(greenKg, coffee.state);
+    const result = ProductionCosts.calculateGreenToRoasted(greenKg, coffee.state, activeSteps);
     this.update(coffeeId, {
       greenKg: item.greenKg - greenKg,
       roastedKg: item.roastedKg + result.roastedKg
@@ -160,7 +160,12 @@ const InventoryManager = {
       grindType: 'grano'
     });
 
-    const result = this.processRoasting(coffeeId, greenKg, processSuppliers.tostion || null);
+    const result = this.processRoasting(
+      coffeeId,
+      greenKg,
+      processSuppliers.tostion || null,
+      activeSteps.filter((s) => ['trilla', 'greenSelection', 'tostion', 'seleccion'].includes(s))
+    );
     if (!result) return;
 
     const steps = activeSteps.map((stepKey) => ({
@@ -528,7 +533,7 @@ const InventoryManager = {
     document.getElementById('inv-kg')?.addEventListener('input', (e) => {
       const kg = parseFloat(e.target.value);
       if (kg > 0) {
-        const result = ProductionCosts.calculateGreenToRoasted(kg, coffee.state);
+        const result = ProductionCosts.calculateGreenToRoasted(kg, coffee.state, ['tostion']);
         document.getElementById('roast-preview').innerHTML = `
           <div class="cost-breakdown">
             <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(kg)} kg verde</span></div>

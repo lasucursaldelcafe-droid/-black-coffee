@@ -39,6 +39,24 @@ const ProductionCosts = {
     return [...new Set(steps)];
   },
 
+  getKgEnteringStep(greenKg, coffeeState, activeSteps, targetStep) {
+    const costs = this.get();
+    let kg = greenKg;
+    const order = ['trilla', 'greenSelection', 'tostion', 'seleccion'];
+
+    for (const step of order) {
+      if (step === targetStep) return kg;
+      if (!activeSteps.includes(step)) continue;
+      if (step === 'trilla' && coffeeState !== 'pergamino') continue;
+
+      const mermaKey = TRANSFORMATION_STEPS[step]?.mermaKey;
+      const pct = mermaKey ? (costs.mermas[mermaKey] || 0) : 0;
+      kg *= (1 - pct / 100);
+    }
+
+    return kg;
+  },
+
   calculateGreenToRoasted(greenKg, coffeeState = 'verde', activeSteps = []) {
     const costs = this.get();
     let remaining = greenKg;
@@ -198,14 +216,15 @@ const ProductionCosts = {
       if (!activeSteps.includes(stepKey)) return;
       if (stepKey === 'trilla' && coffee.state !== 'pergamino') return;
 
-      const stepCost = this.getTransformationCost(stepKey, greenKgNeeded, packagingSize, costs, supplierMap[stepKey]);
+      const kgBasis = this.getKgEnteringStep(greenKgNeeded, coffee.state, activeSteps, stepKey);
+      const stepCost = this.getTransformationCost(stepKey, kgBasis, packagingSize, costs, supplierMap[stepKey]);
       const rate = SupplierManager.getEffectiveServiceRate(stepKey, supplierMap[stepKey], packagingSize);
       const supplierName = SupplierManager.getName(supplierMap[stepKey]);
       breakdown.transformation.push({
         key: stepKey,
         label: TRANSFORMATION_STEPS[stepKey].label,
         cost: stepCost,
-        detail: `${formatNumber(greenKgNeeded, 3)} kg × ${formatCurrency(rate)}${supplierMap[stepKey] ? ` · ${supplierName}` : ''}`
+        detail: `${formatNumber(kgBasis, 3)} kg × ${formatCurrency(rate)}${supplierMap[stepKey] ? ` · ${supplierName}` : ''}`
       });
       totalCost += stepCost;
     });
