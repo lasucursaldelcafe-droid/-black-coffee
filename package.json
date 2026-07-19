@@ -1,0 +1,24 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "Plataforma integral de gestión contable y logística para café de especialidad. Desarrollada en HTML, CSS y JavaScript puro — lista para compartir por enlace.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "node scripts/test-persistence.mjs",
+    "test:persistence": "node scripts/test-persistence.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lasucursaldelcafe-droid/-black-coffee.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lasucursaldelcafe-droid/-black-coffee/issues"
+  },
+  "homepage": "https://github.com/lasucursaldelcafe-droid/-black-coffee#readme"
+}

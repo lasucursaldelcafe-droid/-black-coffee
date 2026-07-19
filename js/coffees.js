@@ -349,6 +349,7 @@ const CoffeeManager = {
     }
 
     this.save(coffee);
+    Toast.show(`Café "${coffee.name}" guardado`, 'success');
     document.getElementById('coffee-modal').classList.remove('active');
     App.renderSection('coffees');
   },

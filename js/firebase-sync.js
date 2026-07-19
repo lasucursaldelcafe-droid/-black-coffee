@@ -29,7 +29,7 @@ const FirebaseSync = {
   },
 
   getDocId(key) {
-    return `${this.getDeviceId()}__${key}`;
+    return key;
   },
 
   _withTimeout(promise, ms, label = 'operación') {
@@ -198,19 +198,16 @@ const FirebaseSync = {
       await this.flushPendingWrites({ sync: true });
 
       const snapshot = await this._withTimeout(
-        this.db.collection(FIREBASE_COLLECTION)
-          .where('deviceId', '==', this.getDeviceId())
-          .get(),
+        this.db.collection(FIREBASE_COLLECTION).get(),
         20000,
         'lectura de Firebase'
       );
 
       const remoteByKey = new Map();
       snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data?.key) {
-          remoteByKey.set(data.key, data);
-        }
+        const key = doc.data()?.key || doc.id;
+        if (!this.getAllSyncKeys().includes(key)) return;
+        remoteByKey.set(key, doc.data());
       });
 
       const keysToPush = [];
@@ -325,9 +322,39 @@ const FirebaseSync = {
     if (!this.db || this._unsubscribe) return;
 
     this._unsubscribe = this.db.collection(FIREBASE_COLLECTION)
-      .where('deviceId', '==', this.getDeviceId())
-      .onSnapshot(() => {
-        // Solo monitoreo: nunca sobrescribir datos locales automáticamente
+      .onSnapshot((snapshot) => {
+        if (this._pulling || this.syncing) return;
+
+        let changed = false;
+
+        snapshot.docChanges().forEach((change) => {
+          const key = change.doc.data()?.key || change.doc.id;
+          if (!this.getAllSyncKeys().includes(key)) return;
+          if (change.type === 'removed') return;
+
+          const remote = change.doc.data();
+          const lastPush = this._lastPushedAt[key] || 0;
+          if (Date.now() - lastPush < 1500) return;
+
+          const localRaw = localStorage.getItem(key);
+          const localPayload = localRaw ? JSON.parse(localRaw) : null;
+
+          if (!remote?.payload && remote?.payload !== null) return;
+
+          if (!localPayload || this._shouldApplyRemote(key, localPayload, remote)) {
+            this._suppressRemote = true;
+            Storage.setRemote(key, remote.payload);
+            this._suppressRemote = false;
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          window.dispatchEvent(new CustomEvent('bca-data-changed', {
+            detail: { source: 'firebase' }
+          }));
+        }
+
         this.updateStatusElement();
       }, (error) => {
         console.error('Listener Firebase:', error);
@@ -492,7 +519,7 @@ const FirebaseSync = {
     const when = this.lastSyncAt
       ? ` · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(this.lastSyncAt))}`
       : '';
-    return `Guardado local · respaldo activo${when}`;
+    return `Guardado local · respaldo en la nube${when}`;
   },
 
   updateStatusElement() {

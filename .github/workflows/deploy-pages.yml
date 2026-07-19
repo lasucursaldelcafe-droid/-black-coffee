@@ -41,6 +41,12 @@ jobs:
             echo "Secrets no configurados; se mantiene js/firebase-config.js del repositorio"
           fi
 
+      - name: Install Playwright and run tests
+        run: |
+          npm install playwright@1.49.1 --no-save
+          npx playwright install chromium
+          node scripts/test-persistence.mjs
+
       - name: Deploy to gh-pages branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
@@ -48,3 +54,8 @@ jobs:
           branch: gh-pages
           clean: true
           single-commit: true
+          ignoreFiles: |
+            node_modules/**
+            scripts/**
+            .git/**
+            .github/**

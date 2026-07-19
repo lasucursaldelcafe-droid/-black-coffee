@@ -444,6 +444,38 @@ const App = {
         </div>
       </div>
       <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Respaldo de Datos</span></div>
+        <p class="form-hint" style="margin-bottom:12px">
+          Exporte un archivo JSON con cafés, clientes, inventario y cotizaciones. Guárdelo en Google Drive o su PC.
+          Si cambia de navegador o borra caché, importe el respaldo para recuperar todo.
+        </p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <button type="button" class="btn btn-secondary" id="export-backup-btn">⬇ Exportar respaldo</button>
+          <label class="btn btn-secondary" style="cursor:pointer;margin:0">
+            ⬆ Importar respaldo
+            <input type="file" accept="application/json,.json" id="import-backup-input" style="display:none">
+          </label>
+        </div>
+        <p class="form-hint">El import reemplaza los datos actuales. Se le pedirá confirmación antes.</p>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Base de Datos y Nube</span></div>
+        <p class="form-hint" style="margin-bottom:12px">
+          Los datos se guardan <strong>primero en este navegador</strong> y se respaldan en Firebase.
+          Entre dispositivos con la misma URL, use <strong>Forzar sincronización</strong> para unificar cambios.
+        </p>
+        <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
+        <p id="online-status" class="form-hint" style="margin-bottom:12px"></p>
+        <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización</button>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Correos de Notificación</span></div>
+        <div id="email-queue-summary">${typeof EmailService !== 'undefined' ? EmailService.renderQueueSummary() : ''}</div>
+        <p class="form-hint" style="margin-top:8px">
+          Para que lleguen al buzón real, debe configurar Resend + Cloud Functions (ver docs/PASOS_USUARIO.md).
+        </p>
+      </div>
+      <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Hero del Dashboard</span></div>
         <div class="form-group">
           <label>Título</label>
@@ -453,17 +485,6 @@ const App = {
           <label>Subtítulo</label>
           <textarea class="form-control" id="settings-hero-subtitle" rows="2">${settings.heroSubtitle}</textarea>
         </div>
-      </div>
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header"><span class="card-title">Base de Datos</span></div>
-        <p class="form-hint" style="margin-bottom:12px">
-          Estado de sincronización en la nube. Sin Firebase configurado, los datos solo viven en este navegador.
-        </p>
-        <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
-        <p class="form-hint" style="margin-bottom:12px">
-          Los datos se sincronizan automáticamente en tiempo real entre dispositivos. No necesita pulsar ningún botón.
-        </p>
-        <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn" title="Solo si nota datos desactualizados">Forzar sincronización</button>
       </div>
       <div class="card">
         <div class="card-header"><span class="card-title">Alertas de Inventario</span></div>
@@ -497,6 +518,37 @@ const App = {
 
     document.getElementById('save-settings-btn')?.addEventListener('click', () => this.saveSettings());
     document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
+
+    document.getElementById('export-backup-btn')?.addEventListener('click', () => {
+      BackupManager.download();
+      Toast.show('Respaldo descargado', 'success');
+    });
+
+    document.getElementById('import-backup-input')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!confirm('¿Importar respaldo? Esto reemplazará los datos actuales en este navegador.')) {
+        e.target.value = '';
+        return;
+      }
+      try {
+        const count = await BackupManager.importFromFile(file);
+        Toast.show(`Respaldo importado (${count} claves)`, 'success');
+        this.applySettings();
+        this.renderSection(this.currentSection);
+        Notifications.updateBadge();
+      } catch (error) {
+        Toast.show(error.message || 'Error al importar', 'danger');
+      }
+      e.target.value = '';
+    });
+
+    const onlineEl = document.getElementById('online-status');
+    if (onlineEl) {
+      onlineEl.textContent = navigator.onLine ? '🟢 En línea' : '🔴 Sin conexión — los cambios se guardan localmente';
+      window.addEventListener('online', () => { onlineEl.textContent = '🟢 En línea'; });
+      window.addEventListener('offline', () => { onlineEl.textContent = '🔴 Sin conexión — los cambios se guardan localmente'; });
+    }
   },
 
   saveSettings() {

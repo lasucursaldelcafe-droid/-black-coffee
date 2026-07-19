@@ -631,6 +631,7 @@ const SupplierManager = {
     }
 
     this.save(supplier);
+    Toast.show(`Proveedor "${supplier.name}" guardado`, 'success');
     document.getElementById('supplier-modal').classList.remove('active');
     App.renderSection('suppliers');
   },

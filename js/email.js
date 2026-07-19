@@ -78,14 +78,28 @@ Fecha: ${formatDate(sale.soldAt || sale.createdAt)}
 
     this.logEmail(subject, body);
     this.queueEmail(subject, body, type);
-    this.sendViaFormSubmit(subject, body);
+    this.sendViaCloud(subject, body, type);
   },
 
-  async sendViaFormSubmit(subject, body) {
-    // FormSubmit bloquea CORS desde el navegador; la cola local + Firebase es el respaldo.
-    // El correo queda registrado para revisión en bca_email_queue.
-    void subject;
-    void body;
+  async sendViaCloud(subject, body, type = 'notification') {
+    if (typeof FirebaseSync === 'undefined' || !FirebaseSync.isEnabled() || !FirebaseSync.db) {
+      return;
+    }
+
+    try {
+      await FirebaseSync.db.collection('bca_email_outbox').add({
+        to: this.email,
+        subject,
+        body,
+        type,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        delivered: false,
+        failed: false
+      });
+      this.markDelivered(subject);
+    } catch (error) {
+      console.warn('No se pudo encolar correo en Firebase:', error.message);
+    }
   },
 
   queueEmail(subject, body, type = 'notification') {
@@ -96,7 +110,7 @@ Fecha: ${formatDate(sale.soldAt || sale.createdAt)}
       body,
       type,
       sentAt: new Date().toISOString(),
-      method: 'formsubmit',
+      method: 'cloud',
       delivered: false
     });
     if (emails.length > 100) emails.length = 100;
@@ -120,5 +134,35 @@ Fecha: ${formatDate(sale.soldAt || sale.createdAt)}
 
   getEmailQueue() {
     return Storage.get('bca_email_queue') || [];
+  },
+
+  renderQueueSummary() {
+    const queue = this.getEmailQueue();
+    const pending = queue.filter((e) => !e.delivered).length;
+    const delivered = queue.filter((e) => e.delivered).length;
+
+    if (queue.length === 0) {
+      return '<p class="form-hint">No hay correos en cola local.</p>';
+    }
+
+    const rows = queue.slice(0, 8).map((item) => `
+      <tr>
+        <td>${item.delivered ? '✅' : '⏳'}</td>
+        <td>${item.subject}</td>
+        <td>${new Intl.DateTimeFormat('es-CO', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(item.sentAt))}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <p class="form-hint" style="margin-bottom:8px">
+        Cola local: ${pending} pendientes · ${delivered} marcados como enviados
+      </p>
+      <div style="overflow-x:auto">
+        <table class="data-table" style="font-size:0.85rem">
+          <thead><tr><th></th><th>Asunto</th><th>Fecha</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
   }
 };

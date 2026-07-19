@@ -694,6 +694,7 @@ const InventoryManager = {
       this.adjustStock(coffeeId, field, newValue, reason);
     }
 
+    Toast.show('Inventario actualizado', 'success');
     document.getElementById('inventory-modal').classList.remove('active');
     App.renderSection('inventory');
   }

@@ -531,6 +531,7 @@ const QuotationManager = {
     };
 
     const saved = this.save(quotation);
+    Toast.show(`Cotización ${saved.number} guardada`, 'success');
     document.getElementById('quotation-modal').classList.remove('active');
     App.renderSection('quotations');
     PDFGenerator.generate(saved);

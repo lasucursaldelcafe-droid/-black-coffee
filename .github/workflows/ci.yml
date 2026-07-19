@@ -1,0 +1,27 @@
+name: CI Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'cursor/**']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: npm install playwright@1.49.1 --no-save
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      - name: Persistence test
+        run: node scripts/test-persistence.mjs

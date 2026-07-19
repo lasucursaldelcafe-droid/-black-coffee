@@ -161,6 +161,7 @@ const ClientManager = {
     }
 
     this.save(client);
+    Toast.show(`Cliente "${client.name}" guardado`, 'success');
     document.getElementById('client-modal').classList.remove('active');
     App.renderSection('clients');
   },
