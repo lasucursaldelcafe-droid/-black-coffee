@@ -1,5 +1,5 @@
 @{
-    ModuleVersion     = '1.0.0'
+    ModuleVersion     = '1.1.0'
     GUID              = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
     Author            = 'Black Coffee Administration'
     Description       = 'Funciones PowerShell para instalar, configurar y abrir enlaces de BCA en Windows.'
@@ -19,12 +19,20 @@
         'Set-BCAGitHubSecrets',
         'Get-BCAFirebaseToken',
         'Deploy-BCAFirebase',
+        'Deploy-BCAFirestoreRules',
         'Start-BCAGitHubWorkflow',
         'Open-BCAUrl',
         'Open-BCAEnlaces',
         'New-BCADesktopShortcut',
         'Install-BCADesktopShortcuts',
         'Install-BCAProject',
-        'Start-BCASetup'
+        'Start-BCASetup',
+        'Get-BCASetupPlan',
+        'Test-BCAUrlReachable',
+        'Test-BCAAppHealth',
+        'Wait-BCAGitHubWorkflow',
+        'Export-BCASetupReport',
+        'Invoke-BCASetupStep',
+        'Start-BCAFullAutomation'
     )
 }

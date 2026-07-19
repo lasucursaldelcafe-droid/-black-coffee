@@ -2,7 +2,7 @@ BLACK COFFEE - CONFIGURACION 100% AUTOMATICA
 ==========================================
 
 UN SOLO DOBLE CLIC (recomendado):
-  CONFIGURAR-TODO-AAUTO.bat
+  CONFIGURAR-TODO-AUTO.bat
 
 O en PowerShell (copiar y pegar):
   cd C:\Users\LENOVO\Documents\BlackCoffeeAdmin
@@ -10,7 +10,12 @@ O en PowerShell (copiar y pegar):
   .\CONFIGURAR-TODO-AUTO.bat
 
 O:
-  .\scripts\bca.ps1 auto
+  .\BCA.bat auto
+
+ERROR "ejecucion de scripts deshabilitada" (Import-Module falla):
+  Solucion A: doble clic HABILITAR-POWERSHELL.bat (1 vez)
+  Solucion B: doble clic BCA-CONSOLA.bat (consola lista)
+  Solucion C: .\BCA.bat auto (sin Import-Module manual)
 
 QUE HACE CADA COSA (automatico vs manual):
   1. git pull                    -> AUTO

@@ -10,11 +10,16 @@ Plataforma integral de gestión contable y logística para café de especialidad
 
 | Archivo | Acción |
 |---------|--------|
+| `CONFIGURAR-TODO-AUTO.bat` | **Configuracion completa automatica** (recomendado) |
+| `HABILITAR-POWERSHELL.bat` | Desbloquea scripts PowerShell en tu PC (1 vez) |
+| `BCA-CONSOLA.bat` | Abre PowerShell con el modulo BCA cargado |
 | `DESCARGAR-PROYECTO.bat` | Clona en `Documentos\BlackCoffeeAdmin` + iconos en Escritorio |
 | `ABRIR-ENLACES.bat` | Abre app, Firebase, GitHub y Resend en el navegador |
 | `INSTALAR-Y-ABRIR.bat` | Instala dependencias + abre todo |
 
-Ver también: [LEEME-ACCESOS.txt](LEEME-ACCESOS.txt) y [docs/RUTAS_ACCESO.md](docs/RUTAS_ACCESO.md)
+Ver tambien: [LEEME-ACCESOS.txt](LEEME-ACCESOS.txt), [docs/RUTAS_ACCESO.md](docs/RUTAS_ACCESO.md) y [scripts/BCA/README.md](scripts/BCA/README.md)
+
+**PowerShell bloqueado?** Doble clic en `HABILITAR-POWERSHELL.bat` o usa `.\BCA.bat auto` (no requiere `Import-Module` manual).
 
 ## 👤 Acceso
 

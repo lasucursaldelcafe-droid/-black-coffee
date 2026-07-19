@@ -480,18 +480,8 @@ function Install-BCADesktopShortcuts {
     New-BCADesktopShortcut -Name 'BCA - Abrir enlaces' -TargetPath (Join-Path $ProjectRoot 'ABRIR-ENLACES.bat') -WorkingDirectory $ProjectRoot
     New-BCADesktopShortcut -Name 'BCA - Instalar y abrir' -TargetPath (Join-Path $ProjectRoot 'INSTALAR-Y-ABRIR.bat') -WorkingDirectory $ProjectRoot
 
-    $ps1 = (Get-Command powershell.exe).Source
-    $modulePath = Join-Path $ProjectRoot 'scripts\BCA\BCA.psm1'
-    $desktop = [Environment]::GetFolderPath('Desktop')
-    $shortcutPath = Join-Path $desktop 'BCA - Consola PowerShell.lnk'
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $ps1
-    $shortcut.Arguments = "-NoExit -ExecutionPolicy Bypass -Command `"Import-Module '$modulePath' -Force; Set-Location '$ProjectRoot'; Write-Host 'Modulo BCA cargado. Comandos: Open-BCAEnlaces | Install-BCAProject | Get-BCAConfig' -ForegroundColor Green`""
-    $shortcut.WorkingDirectory = $ProjectRoot
-    $shortcut.Description = 'Black Coffee Administration - PowerShell'
-    $shortcut.Save()
-    Write-BCAStatus -Level Ok -Message "Acceso directo: $shortcutPath"
+    New-BCADesktopShortcut -Name 'BCA - Consola PowerShell' -TargetPath (Join-Path $ProjectRoot 'BCA-CONSOLA.bat') -WorkingDirectory $ProjectRoot
+    New-BCADesktopShortcut -Name 'BCA - Configurar todo' -TargetPath (Join-Path $ProjectRoot 'CONFIGURAR-TODO-AUTO.bat') -WorkingDirectory $ProjectRoot
 }
 
 function Install-BCAProject {
@@ -815,6 +805,11 @@ function Start-BCAFullAutomation {
     }
 
     $results += Invoke-BCASetupStep -Paso '5. Secretos GitHub' -Accion {
+        if ($env:GH_TOKEN) { $env:GITHUB_TOKEN = $env:GH_TOKEN }
+        gh auth status 2>$null
+        if ($LASTEXITCODE -ne 0 -and -not $env:GH_TOKEN) {
+            throw 'Sin GH_TOKEN ni gh auth - omitido'
+        }
         Set-BCAGitHubSecrets -ProjectRoot $script:ProjectRoot -AllowInteractive:$false
     }
 
