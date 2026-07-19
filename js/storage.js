@@ -22,6 +22,7 @@ const STORAGE_KEYS = {
   COST_SCENARIOS: 'bca_cost_scenarios',
   PROCESS_TEMPLATES: 'bca_process_templates',
   PLATFORM_SETUP: 'bca_platform_setup',
+  BIOMETRIC_CREDENTIALS: 'bca_biometric_credentials',
   DELETED_RECORDS: DELETED_RECORDS_KEY,
   DISMISSED_SUPPLIER_SERVICES: DISMISSED_SUPPLIER_SERVICES_KEY
 };

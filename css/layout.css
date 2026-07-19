@@ -71,6 +71,59 @@
   display: block;
 }
 
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.password-field .form-control {
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.password-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.biometric-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.login-users-hint {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.login-users-hint strong {
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 6px;
+}
+
 /* App Layout */
 .app-layout {
   display: flex;

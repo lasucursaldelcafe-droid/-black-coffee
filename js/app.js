@@ -546,6 +546,16 @@ const App = {
         <div id="pwa-install-card-settings"></div>
       </div>
       <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Seguridad e inicio biométrico</span></div>
+        <div id="settings-biometric-panel">
+          <p class="form-hint">Cargando opciones de seguridad...</p>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Usuarios de acceso</span></div>
+        <div id="settings-users-panel"></div>
+      </div>
+      <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Identidad Visual</span></div>
         <div class="form-group">
           <label>Logo de la Empresa</label>
@@ -663,6 +673,8 @@ const App = {
     document.getElementById('save-settings-btn')?.addEventListener('click', () => this.saveSettings());
     document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
     PWA.renderInstallCard('pwa-install-card-settings');
+    this.renderBiometricSettings();
+    this.renderUsersPanel();
 
     document.getElementById('factory-reset-btn')?.addEventListener('click', () => {
       if (typeof SetupWizard !== 'undefined') {
@@ -746,6 +758,110 @@ const App = {
     document.getElementById('user-avatar').textContent = initials;
     document.getElementById('user-name').textContent = session.name;
     document.getElementById('user-role').textContent = session.role;
+  },
+
+  async renderBiometricSettings() {
+    const panel = document.getElementById('settings-biometric-panel');
+    if (!panel || typeof BiometricAuth === 'undefined') return;
+
+    const session = Auth.getSession();
+    const user = Auth.getCurrentUser();
+    const supported = await BiometricAuth.isSupported();
+    const enabled = user ? BiometricAuth.hasCredentialForUser(user.id) : false;
+
+    if (!supported) {
+      panel.innerHTML = `
+        <p class="form-hint">Este navegador o dispositivo no soporta inicio biométrico (huella / Face ID).</p>
+        <p class="form-hint">Use Chrome o Safari en móvil con HTTPS para activarlo.</p>`;
+      return;
+    }
+
+    panel.innerHTML = `
+      <p class="form-hint" style="margin-bottom:12px">
+        Sesión actual: <strong>${session?.name || '—'}</strong>.
+        El inicio biométrico está disponible para <strong>todos los usuarios</strong> en este dispositivo.
+      </p>
+      <div class="form-group">
+        <span class="badge ${enabled ? 'badge-success' : 'badge-neutral'}">
+          ${enabled ? 'Biométrico activo' : 'Biométrico inactivo'}
+        </span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+        <button type="button" class="btn btn-primary" id="settings-enable-biometric" ${enabled ? 'disabled' : ''}>
+          Activar huella / Face ID
+        </button>
+        <button type="button" class="btn btn-secondary" id="settings-disable-biometric" ${enabled ? '' : 'disabled'}>
+          Desactivar en este dispositivo
+        </button>
+      </div>
+      <p class="form-hint" style="margin-top:12px">
+        Cada usuario debe activar su propio inicio biométrico al iniciar sesión con contraseña
+        (marque la casilla en la pantalla de login).
+      </p>`;
+
+    document.getElementById('settings-enable-biometric')?.addEventListener('click', async () => {
+      if (!user) return;
+      const result = await BiometricAuth.register(user);
+      if (result.success) {
+        Toast.show(result.message, 'success');
+        this.renderBiometricSettings();
+        this.renderUsersPanel();
+      } else {
+        Toast.show(result.message, 'danger');
+      }
+    });
+
+    document.getElementById('settings-disable-biometric')?.addEventListener('click', () => {
+      if (!user) return;
+      if (!confirm('¿Desactivar inicio biométrico para su usuario en este dispositivo?')) return;
+      BiometricAuth.remove(user.id);
+      Toast.show('Inicio biométrico desactivado', 'success');
+      this.renderBiometricSettings();
+      this.renderUsersPanel();
+    });
+  },
+
+  renderUsersPanel() {
+    const panel = document.getElementById('settings-users-panel');
+    if (!panel) return;
+
+    const users = typeof BiometricAuth !== 'undefined'
+      ? BiometricAuth.getUsersWithBiometricStatus()
+      : Auth.listUsersPublic().map((u) => ({ ...u, biometricEnabled: false }));
+
+    panel.innerHTML = `
+      <p class="form-hint" style="margin-bottom:12px">Usuarios configurados en la plataforma.</p>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Usuario</th>
+              <th>Rol</th>
+              <th>Email</th>
+              <th>Biométrico (este dispositivo)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${users.map((u) => `
+              <tr>
+                <td><strong>${u.name}</strong></td>
+                <td><code>${u.username}</code></td>
+                <td>${u.role}</td>
+                <td>${u.email || '—'}</td>
+                <td>
+                  <span class="badge ${u.biometricEnabled ? 'badge-success' : 'badge-neutral'}">
+                    ${u.biometricEnabled ? 'Activo' : 'Inactivo'}
+                  </span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p class="form-hint" style="margin-top:12px">
+        Las contraseñas no se muestran por seguridad. Use <strong>Reparar acceso</strong> en login si olvidó la suya.
+      </p>`;
   },
 
   checkProductionCostsModal() {

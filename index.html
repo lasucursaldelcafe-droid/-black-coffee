@@ -38,12 +38,30 @@
           </div>
           <div class="form-group">
             <label for="password">Contraseña</label>
-            <input type="password" class="form-control" id="password" placeholder="••••••••" required autocomplete="current-password">
+            <div class="password-field">
+              <input type="password" class="form-control" id="password" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="password-toggle" id="toggle-password" aria-label="Mostrar contraseña" title="Ver contraseña">👁</button>
+            </div>
+          </div>
+          <div class="form-group" id="biometric-enable-group" style="display:none">
+            <label class="toggle-group" style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0">
+              <input type="checkbox" id="enable-biometric" checked>
+              <span>Activar inicio biométrico en este dispositivo</span>
+            </label>
+            <p class="form-hint" style="margin-top:6px">Disponible para todos los usuarios (huella, Face ID o PIN del dispositivo).</p>
           </div>
           <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:8px">
             Iniciar Sesión
           </button>
+          <button type="button" class="btn btn-secondary btn-lg biometric-login-btn" id="biometric-login-btn" style="width:100%;margin-top:8px;display:none">
+            🔐 Iniciar con huella / Face ID
+          </button>
         </form>
+
+        <div class="login-users-hint" id="login-users-hint">
+          <strong>Usuarios de acceso</strong>
+          <div id="login-users-list"></div>
+        </div>
 
         <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border-color);text-align:center">
           <p style="font-size:0.8rem;color:var(--text-muted)">
@@ -72,18 +90,65 @@
     </div>
   </div>
 
-  <script>window.BCA_BUILD = '26';</script>
-  <script src="js/storage.js?v=26"></script>
-  <script src="js/auth.js?v=26"></script>
-  <script src="js/pwa.js?v=26"></script>
+  <script>window.BCA_BUILD = '27';</script>
+  <script src="js/storage.js?v=27"></script>
+  <script src="js/auth.js?v=27"></script>
+  <script src="js/auth-biometric.js?v=27"></script>
+  <script src="js/pwa.js?v=27"></script>
   <script>
     Auth.init();
+
+    function renderLoginUsersList() {
+      const listEl = document.getElementById('login-users-list');
+      if (!listEl) return;
+      listEl.innerHTML = Auth.listUsersPublic().map((u) => `
+        <div style="margin-bottom:4px">
+          <strong>${u.name}</strong> · usuario: <code>${u.username}</code> · ${u.role}
+        </div>
+      `).join('');
+    }
+
+    function bindPasswordToggle() {
+      document.getElementById('toggle-password')?.addEventListener('click', () => {
+        const input = document.getElementById('password');
+        const btn = document.getElementById('toggle-password');
+        if (!input || !btn) return;
+        if (input.type === 'password') {
+          input.type = 'text';
+          btn.textContent = '🙈';
+          btn.setAttribute('aria-label', 'Ocultar contraseña');
+          btn.title = 'Ocultar contraseña';
+        } else {
+          input.type = 'password';
+          btn.textContent = '👁';
+          btn.setAttribute('aria-label', 'Mostrar contraseña');
+          btn.title = 'Ver contraseña';
+        }
+      });
+    }
+
+    async function setupBiometricUI() {
+      const supported = await BiometricAuth.isSupported();
+      const enableGroup = document.getElementById('biometric-enable-group');
+      const bioBtn = document.getElementById('biometric-login-btn');
+
+      if (supported && enableGroup) {
+        enableGroup.style.display = '';
+      }
+
+      if (supported && bioBtn && BiometricAuth.hasAnyCredential()) {
+        bioBtn.style.display = '';
+      }
+    }
+
+    renderLoginUsersList();
+    bindPasswordToggle();
 
     if (Auth.isAuthenticated()) {
       window.location.href = 'app.html';
     }
 
-    document.getElementById('login-form').addEventListener('submit', (e) => {
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
@@ -92,11 +157,31 @@
       const result = Auth.login(username, password);
 
       if (result.success) {
+        const enableBio = document.getElementById('enable-biometric')?.checked;
+        const user = Auth.getCurrentUser();
+        if (enableBio && user && await BiometricAuth.isSupported()) {
+          const bioResult = await BiometricAuth.register(user);
+          if (!bioResult.success && !BiometricAuth.hasCredentialForUser(user.id)) {
+            errorEl.textContent = bioResult.message;
+            errorEl.classList.add('show');
+          }
+        }
         window.location.href = 'app.html';
       } else {
         errorEl.textContent = result.message;
         errorEl.classList.add('show');
       }
+    });
+
+    document.getElementById('biometric-login-btn')?.addEventListener('click', async () => {
+      const errorEl = document.getElementById('login-error');
+      const result = await BiometricAuth.authenticate();
+      if (result.success) {
+        window.location.href = 'app.html';
+        return;
+      }
+      errorEl.textContent = result.message;
+      errorEl.classList.add('show');
     });
 
     document.getElementById('repair-access-btn')?.addEventListener('click', () => {
@@ -114,6 +199,7 @@
     });
 
     PWA.init();
+    setupBiometricUI();
   </script>
 </body>
 </html>

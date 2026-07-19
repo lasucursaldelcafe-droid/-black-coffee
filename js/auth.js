@@ -106,5 +106,12 @@ const Auth = {
     const session = this.getSession();
     if (!session) return null;
     return this.users.find(u => u.id === session.userId);
+  },
+
+  /** Lista usuarios sin exponer contraseñas (para UI de administración) */
+  listUsersPublic() {
+    return this.users.map(({ id, username, name, role, email }) => ({
+      id, username, name, role, email
+    }));
   }
 };
