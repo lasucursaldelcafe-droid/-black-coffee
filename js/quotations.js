@@ -171,7 +171,8 @@ const QuotationManager = {
           clientProvidesPackaging: q.clientProvidesPackaging
         },
         deductPackaged: deductPackaged,
-        skipInventoryCheck: clientProvidesCoffee
+        skipInventoryCheck: clientProvidesCoffee,
+        isManual: false
       }, { silent: true });
 
       if (!sale) {

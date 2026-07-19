@@ -223,32 +223,59 @@ const InventoryManager = {
     Storage.set(STORAGE_KEYS.PURCHASES, purchases);
   },
 
-  calculateTransferOutput(transferKey, inputQty, coffee) {
+  calculateTransferOutput(transferKey, inputQty, coffee, options = {}) {
     const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
     const costs = ProductionCosts.get();
     if (!transfer) return null;
 
+    const mermaOverride = options.mermaPctOverride;
+    const hasMermaOverride = mermaOverride != null && !Number.isNaN(mermaOverride);
+
     if (transferKey === 'green_to_roasted') {
+      if (hasMermaOverride) {
+        const pct = Math.max(0, Math.min(100, mermaOverride));
+        const outputKg = inputQty * (1 - pct / 100);
+        return {
+          outputKg,
+          mermaKg: inputQty - outputKg,
+          mermaPct: pct,
+          mermaDetails: { totalLossPercent: pct }
+        };
+      }
       const roastSteps = getRoastMermaSteps(coffee.state);
       const result = ProductionCosts.calculateGreenToRoasted(inputQty, coffee.state, roastSteps);
+      const mermaPct = inputQty > 0 ? ((inputQty - result.roastedKg) / inputQty) * 100 : 0;
       return {
         outputKg: result.roastedKg,
         mermaKg: inputQty - result.roastedKg,
+        mermaPct: Math.round(mermaPct * 10) / 10,
         mermaDetails: result.mermaDetails
       };
     }
 
     if (transfer.isPackaged) {
-      return { outputUnits: inputQty, outputKg: null, mermaKg: 0 };
+      return { outputUnits: inputQty, outputKg: null, mermaKg: 0, mermaPct: 0 };
     }
 
     let outputKg = inputQty;
+    if (hasMermaOverride && transfer.mermaKey) {
+      const pct = Math.max(0, Math.min(100, mermaOverride));
+      outputKg = inputQty * (1 - pct / 100);
+      return {
+        outputKg,
+        mermaKg: inputQty - outputKg,
+        mermaPct: pct,
+        mermaDetails: null
+      };
+    }
     if (transfer.mermaKey) {
       outputKg = applyMermaToKg(inputQty, transfer.mermaKey, costs);
     }
+    const mermaPct = inputQty > 0 ? ((inputQty - outputKg) / inputQty) * 100 : 0;
     return {
       outputKg,
       mermaKg: inputQty - outputKg,
+      mermaPct: Math.round(mermaPct * 10) / 10,
       mermaDetails: null
     };
   },
@@ -288,7 +315,8 @@ const InventoryManager = {
       clientProvidesPackaging = false,
       materialCost,
       laborCost,
-      notes = ''
+      notes = '',
+      mermaPctOverride = null
     } = options;
 
     if (transfer.requiresGreenCoffee && !isGreenCoffeeState(coffee.state)) {
@@ -367,7 +395,7 @@ const InventoryManager = {
       return false;
     }
 
-    const output = this.calculateTransferOutput(transferKey, inputKg, coffee);
+    const output = this.calculateTransferOutput(transferKey, inputKg, coffee, { mermaPctOverride });
     const outputKg = output.outputKg;
     const processCost = this.calculateTransferCost(transferKey, inputKg, { supplierId, packaging });
 
@@ -386,6 +414,7 @@ const InventoryManager = {
         inputKg,
         outputKg,
         mermaKg: output.mermaKg,
+        mermaPct: output.mermaPct,
         processCost,
         supplierId,
         supplierName: SupplierManager.getName(supplierId),
@@ -400,6 +429,7 @@ const InventoryManager = {
       toStage: transfer.toStage,
       inputKg,
       outputKg,
+      mermaPct: output.mermaPct,
       mermaKg: output.mermaKg,
       processCost,
       supplierId,
@@ -638,7 +668,7 @@ const InventoryManager = {
           <div class="card-header">
             <div>
               <div class="card-title">${coffee.name}</div>
-              <span style="font-size:0.85rem;color:var(--text-muted)">${coffee.variety} · ${coffee.region} · <span class="badge badge-neutral">${stateLabel}</span></span>
+              <span style="font-size:0.85rem;color:var(--text-muted)">${getCoffeeVarietyLabel(coffee)} · ${coffee.region} · <span class="badge badge-neutral">${stateLabel}</span></span>
             </div>
             ${isLow ? '<span class="badge badge-danger">Stock Bajo</span>' : '<span class="badge badge-success">OK</span>'}
           </div>
@@ -864,7 +894,8 @@ const InventoryManager = {
     };
 
     document.getElementById('inv-client-packaging')?.addEventListener('change', () => {
-      const group = document.getElementById('inv-material-cost-group');
+      const group = document.querySelector('#inv-packaging-material-cost')?.closest('.standard-value-field')
+        || document.getElementById('inv-material-cost-group');
       const checked = document.getElementById('inv-client-packaging')?.checked;
       if (group) group.style.display = checked ? 'none' : '';
       refresh();
@@ -975,10 +1006,14 @@ const InventoryManager = {
         <input type="number" class="form-control" id="inv-quantity" step="${stage.isPackaged ? '1' : '0.1'}" min="0" required>
       </div>
       <div id="inv-cost-standard" class="form-row" style="${stage.isPackaged ? 'display:none' : ''}">
-        <div class="form-group" style="flex:1">
-          <label id="inv-cost-label">${stage.costLabel}</label>
-          <input type="number" class="form-control" id="inv-cost-standard-input" value="${coffee?.pricePerKg || ''}" min="0">
-        </div>
+        ${renderStandardNumberField({
+          id: 'inv-cost-standard-input',
+          label: stage.costLabel,
+          value: coffee?.pricePerKg || '',
+          quickValues: STANDARD_COST_KG_QUICK,
+          step: 100,
+          min: 0
+        })}
       </div>
       <div id="inv-cost-packaged" style="${stage.isPackaged ? '' : 'display:none'}">
         <div class="form-group">
@@ -988,16 +1023,22 @@ const InventoryManager = {
           </label>
         </div>
         <div class="form-row">
-          <div class="form-group" id="inv-material-cost-group">
-            <label>Costo material empaque / ud</label>
-            <input type="number" class="form-control" id="inv-packaging-material-cost" min="0" step="1">
-            <p class="form-hint">Valor de bolsa, valve bag o empaque según Configuración → Costos</p>
-          </div>
-          <div class="form-group">
-            <label>Mano de obra empacada / ud</label>
-            <input type="number" class="form-control" id="inv-packaging-labor-cost" min="0" step="1">
-            <p class="form-hint">Tarifa del proveedor empacador seleccionado abajo</p>
-          </div>
+          ${renderStandardNumberField({
+            id: 'inv-packaging-material-cost',
+            label: 'Costo individual material / ud',
+            value: '',
+            quickValues: STANDARD_COST_UNIT_QUICK,
+            step: 50,
+            min: 0
+          })}
+          ${renderStandardNumberField({
+            id: 'inv-packaging-labor-cost',
+            label: 'Costo individual MO empacada / ud',
+            value: '',
+            quickValues: STANDARD_COST_UNIT_QUICK,
+            step: 50,
+            min: 0
+          })}
         </div>
         <div class="cost-breakdown" id="inv-packaging-cost-preview" style="margin-bottom:12px"></div>
         <input type="hidden" id="inv-cost" value="0">
@@ -1038,8 +1079,8 @@ const InventoryManager = {
         if (laborInput) laborInput.value = breakdown.laborCost;
         this.getPackagingCostFromForm();
       } else {
-        const costLabel = document.getElementById('inv-cost-label');
-        if (costLabel) costLabel.textContent = st.costLabel;
+        const costLabelEl = document.querySelector('#inv-cost-standard .standard-value-field label');
+        if (costLabelEl) costLabelEl.textContent = st.costLabel;
       }
     };
 
@@ -1082,6 +1123,8 @@ const InventoryManager = {
       this.bindPackagingCostEvents();
       this.getPackagingCostFromForm();
     }
+
+    bindStandardNumberFields(['inv-cost-standard-input', 'inv-packaging-material-cost', 'inv-packaging-labor-cost']);
 
     modal.classList.add('active');
   },
@@ -1141,16 +1184,39 @@ const InventoryManager = {
         </label>
       </div>
       <div class="form-row">
-        <div class="form-group" id="inv-material-cost-group">
-          <label>Material / ud</label>
-          <input type="number" class="form-control" id="inv-packaging-material-cost" min="0" step="1">
-        </div>
-        <div class="form-group">
-          <label>MO empacada / ud</label>
-          <input type="number" class="form-control" id="inv-packaging-labor-cost" min="0" step="1">
-        </div>
+        ${renderStandardNumberField({
+          id: 'inv-packaging-material-cost',
+          label: 'Costo individual material / ud',
+          value: '',
+          quickValues: STANDARD_COST_UNIT_QUICK,
+          step: 50,
+          min: 0
+        })}
+        ${renderStandardNumberField({
+          id: 'inv-packaging-labor-cost',
+          label: 'Costo individual MO empacada / ud',
+          value: '',
+          quickValues: STANDARD_COST_UNIT_QUICK,
+          step: 50,
+          min: 0
+        })}
       </div>
       <div id="inv-packaging-cost-preview" class="cost-breakdown" style="margin-bottom:12px"></div>
+    ` : '';
+
+    const initialMermaPct = coffee ? getTransferMermaPercent(transferKey, coffee.state) : 0;
+    const mermaBlock = !transfer.isPackaged ? `
+      ${renderStandardNumberField({
+        id: 'inv-transfer-merma',
+        label: '% Merma (seleccionable)',
+        value: initialMermaPct,
+        quickValues: STANDARD_MERMA_QUICK,
+        step: 0.1,
+        min: 0,
+        max: 100,
+        suffix: '%'
+      })}
+      <p class="form-hint" style="margin-top:-4px;margin-bottom:12px">Por defecto usa los valores de Configuración → Costos. Ajuste si esta operación difiere.</p>
     ` : '';
 
     document.getElementById('inventory-form').innerHTML = `
@@ -1180,6 +1246,7 @@ const InventoryManager = {
         })}
       </div>
       ${packagedBlock}
+      ${mermaBlock}
       <div class="form-group">
         <label>Notas (opcional)</label>
         <textarea class="form-control" id="inv-transfer-notes" rows="2" placeholder="Lote, referencia, observaciones..."></textarea>
@@ -1214,21 +1281,33 @@ const InventoryManager = {
         return;
       }
 
-      const output = this.calculateTransferOutput(transferKey, qty, c);
+      const mermaPct = parseFloat(document.getElementById('inv-transfer-merma')?.value);
+      const mermaOptions = !Number.isNaN(mermaPct) ? { mermaPctOverride: mermaPct } : {};
+      const output = this.calculateTransferOutput(transferKey, qty, c, mermaOptions);
       const supplierId = document.getElementById(`inv-supplier-${transfer.serviceKey}`)?.value || null;
       const cost = this.calculateTransferCost(transferKey, qty, { supplierId });
       preview.innerHTML = `
         <div class="cost-breakdown">
           <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(qty)} kg</span></div>
           <div class="cost-row"><span class="cost-label">Salida estimada</span><span>${formatNumber(output.outputKg)} kg</span></div>
-          ${output.mermaKg > 0 ? `<div class="cost-row"><span class="cost-label">Merma</span><span>${formatNumber(output.mermaKg)} kg</span></div>` : ''}
+          ${output.mermaKg > 0 ? `<div class="cost-row"><span class="cost-label">Merma</span><span>${formatNumber(output.mermaKg)} kg (${formatNumber(output.mermaPct, 1)}%)</span></div>` : ''}
           <div class="cost-row"><span class="cost-label">Costo proceso estimado</span><span>${formatCurrency(cost)}</span></div>
         </div>`;
     };
 
-    document.getElementById('inv-coffee-id')?.addEventListener('change', refreshPreview);
+    document.getElementById('inv-coffee-id')?.addEventListener('change', () => {
+      const cid = document.getElementById('inv-coffee-id')?.value;
+      const c = cid ? CoffeeManager.getById(cid) : null;
+      const mermaInput = document.getElementById('inv-transfer-merma');
+      if (mermaInput && c) {
+        mermaInput.value = getTransferMermaPercent(transferKey, c.state);
+        bindStandardNumberField('inv-transfer-merma');
+      }
+      refreshPreview();
+    });
     document.getElementById('inv-transfer-qty')?.addEventListener('input', refreshPreview);
     document.getElementById(`inv-supplier-${transfer.serviceKey}`)?.addEventListener('change', refreshPreview);
+    document.getElementById('inv-transfer-merma')?.addEventListener('input', refreshPreview);
 
     if (transfer.isPackaged) {
       this._packagingCostBound = false;
@@ -1242,8 +1321,11 @@ const InventoryManager = {
         });
       });
       document.getElementById('inv-client-packaging')?.addEventListener('change', () => {
-        document.getElementById('inv-material-cost-group').style.display =
-          document.getElementById('inv-client-packaging')?.checked ? 'none' : '';
+        const materialGroup = document.querySelector('#inv-packaging-material-cost')?.closest('.standard-value-field')
+          || document.getElementById('inv-material-cost-group');
+        if (materialGroup) {
+          materialGroup.style.display = document.getElementById('inv-client-packaging')?.checked ? 'none' : '';
+        }
         this.getPackagingCostFromForm();
         refreshPreview();
       });
@@ -1257,6 +1339,12 @@ const InventoryManager = {
       this.bindPackagingCostEvents();
       this.getPackagingCostFromForm();
     }
+
+    bindStandardNumberFields([
+      'inv-transfer-merma',
+      'inv-packaging-material-cost',
+      'inv-packaging-labor-cost'
+    ].filter((id) => document.getElementById(id)));
 
     modal.classList.add('active');
     refreshPreview();
@@ -1423,6 +1511,10 @@ const InventoryManager = {
       const supplierId = document.getElementById(`inv-supplier-${transfer.serviceKey}`)?.value || null;
       const notes = document.getElementById('inv-transfer-notes')?.value?.trim() || '';
       const options = { supplierId, notes };
+      const mermaVal = document.getElementById('inv-transfer-merma')?.value;
+      if (mermaVal !== undefined && mermaVal !== '') {
+        options.mermaPctOverride = parseFloat(mermaVal);
+      }
 
       if (transfer.isPackaged) {
         const packagedCosts = this.getPackagingCostFromForm();

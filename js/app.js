@@ -18,6 +18,7 @@ const App = {
   async bootstrap() {
     try {
       DataSeed.init();
+      migrateCoffeeVarieties();
       EmailService.init();
 
       if (typeof AuditLog === 'undefined') {

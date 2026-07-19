@@ -199,86 +199,35 @@ const SetupWizard = {
     } else if (this.currentStep === 1) {
       bodyHtml = `
         <p class="setup-wizard-intro">
-          Tarifas estándar de transformación y empaque. Use <strong>0</strong> si aún no las conoce;
-          podrá actualizarlas al crear proveedores o en Costos de Producción.
+          Tarifas estándar de transformación y empaque. <strong>Seleccione un valor</strong> o ingrese uno personalizado.
+          Use <strong>0</strong> si aún no las conoce.
         </p>
         <div class="setup-cost-grid">
-          <div class="form-group">
-            <label>Trilla ($/kg)</label>
-            <input type="number" class="form-control" id="setup-trilla" min="0" step="1" value="${costs.transformation.trilla}">
-          </div>
-          <div class="form-group">
-            <label>Selección verde ($/kg)</label>
-            <input type="number" class="form-control" id="setup-greenSelection" min="0" step="1" value="${costs.transformation.greenSelection}">
-          </div>
-          <div class="form-group">
-            <label>Tostión ($/kg)</label>
-            <input type="number" class="form-control" id="setup-roasting" min="0" step="1" value="${costs.transformation.roasting}">
-          </div>
-          <div class="form-group">
-            <label>Selección post-tostión ($/kg)</label>
-            <input type="number" class="form-control" id="setup-selection" min="0" step="1" value="${costs.transformation.selection}">
-          </div>
-          <div class="form-group">
-            <label>Molienda ($/lb)</label>
-            <input type="number" class="form-control" id="setup-grinding" min="0" step="1" value="${costs.transformation.grinding}">
-          </div>
-          <div class="form-group">
-            <label>MO empacado 250g ($/ud)</label>
-            <input type="number" class="form-control" id="setup-pack-250" min="0" step="1" value="${costs.transformation.packagingLabor['250g']}">
-          </div>
-          <div class="form-group">
-            <label>MO empacado 500g ($/ud)</label>
-            <input type="number" class="form-control" id="setup-pack-500" min="0" step="1" value="${costs.transformation.packagingLabor['500g']}">
-          </div>
-          <div class="form-group">
-            <label>MO empacado 5lb ($/ud)</label>
-            <input type="number" class="form-control" id="setup-pack-5lb" min="0" step="1" value="${costs.transformation.packagingLabor['5lb']}">
-          </div>
+          ${renderStandardNumberField({ id: 'setup-trilla', label: 'Trilla ($/kg)', value: costs.transformation.trilla, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-greenSelection', label: 'Selección verde ($/kg)', value: costs.transformation.greenSelection, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-roasting', label: 'Tostión ($/kg)', value: costs.transformation.roasting, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-selection', label: 'Selección post-tostión ($/kg)', value: costs.transformation.selection, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-grinding', label: 'Molienda ($/lb)', value: costs.transformation.grinding, quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-pack-250', label: 'MO empacado 250g ($/ud)', value: costs.transformation.packagingLabor['250g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-pack-500', label: 'MO empacado 500g ($/ud)', value: costs.transformation.packagingLabor['500g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-pack-5lb', label: 'MO empacado 5lb ($/ud)', value: costs.transformation.packagingLabor['5lb'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
         </div>
         <h4 class="setup-subtitle">Mermas (%)</h4>
         <div class="setup-cost-grid setup-cost-grid--4">
-          <div class="form-group">
-            <label>Trilla</label>
-            <input type="number" class="form-control" id="setup-merma-trilla" min="0" max="100" step="0.1" value="${costs.mermas.trilla}">
-          </div>
-          <div class="form-group">
-            <label>Selección verde</label>
-            <input type="number" class="form-control" id="setup-merma-green" min="0" max="100" step="0.1" value="${costs.mermas.greenSelection}">
-          </div>
-          <div class="form-group">
-            <label>Tostión</label>
-            <input type="number" class="form-control" id="setup-merma-tostion" min="0" max="100" step="0.1" value="${costs.mermas.tostion}">
-          </div>
-          <div class="form-group">
-            <label>Selección</label>
-            <input type="number" class="form-control" id="setup-merma-seleccion" min="0" max="100" step="0.1" value="${costs.mermas.seleccion}">
-          </div>
+          ${renderStandardNumberField({ id: 'setup-merma-trilla', label: 'Trilla', value: costs.mermas.trilla, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
+          ${renderStandardNumberField({ id: 'setup-merma-green', label: 'Selección verde', value: costs.mermas.greenSelection, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
+          ${renderStandardNumberField({ id: 'setup-merma-tostion', label: 'Tostión', value: costs.mermas.tostion, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
+          ${renderStandardNumberField({ id: 'setup-merma-seleccion', label: 'Selección', value: costs.mermas.seleccion, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
         </div>
         <h4 class="setup-subtitle">Material de empaque ($/ud)</h4>
         <div class="setup-cost-grid setup-cost-grid--3">
-          <div class="form-group">
-            <label>250g</label>
-            <input type="number" class="form-control" id="setup-mat-250" min="0" step="1" value="${costs.packaging['250g']}">
-          </div>
-          <div class="form-group">
-            <label>500g</label>
-            <input type="number" class="form-control" id="setup-mat-500" min="0" step="1" value="${costs.packaging['500g']}">
-          </div>
-          <div class="form-group">
-            <label>5lb</label>
-            <input type="number" class="form-control" id="setup-mat-5lb" min="0" step="1" value="${costs.packaging['5lb']}">
-          </div>
+          ${renderStandardNumberField({ id: 'setup-mat-250', label: '250g', value: costs.packaging['250g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-mat-500', label: '500g', value: costs.packaging['500g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-mat-5lb', label: '5lb', value: costs.packaging['5lb'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
         </div>
         <div class="setup-cost-grid setup-cost-grid--2">
-          <div class="form-group">
-            <label>Etiqueta pequeña ($/ud)</label>
-            <input type="number" class="form-control" id="setup-label-small" min="0" step="1" value="${costs.labels.small}">
-          </div>
-          <div class="form-group">
-            <label>Etiqueta grande ($/ud)</label>
-            <input type="number" class="form-control" id="setup-label-large" min="0" step="1" value="${costs.labels.large}">
-          </div>
+          ${renderStandardNumberField({ id: 'setup-label-small', label: 'Etiqueta pequeña ($/ud)', value: costs.labels.small, quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+          ${renderStandardNumberField({ id: 'setup-label-large', label: 'Etiqueta grande ($/ud)', value: costs.labels.large, quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
         </div>
       `;
     } else if (this.currentStep === 2) {
@@ -363,6 +312,15 @@ const SetupWizard = {
     }
 
     this.saveState({ step: this.currentStep });
+
+    if (this.currentStep === 1) {
+      bindStandardNumberFields([
+        'setup-trilla', 'setup-greenSelection', 'setup-roasting', 'setup-selection', 'setup-grinding',
+        'setup-pack-250', 'setup-pack-500', 'setup-pack-5lb',
+        'setup-merma-trilla', 'setup-merma-green', 'setup-merma-tostion', 'setup-merma-seleccion',
+        'setup-mat-250', 'setup-mat-500', 'setup-mat-5lb', 'setup-label-small', 'setup-label-large'
+      ]);
+    }
   },
 
   saveStepData() {

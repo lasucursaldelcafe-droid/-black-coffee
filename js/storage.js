@@ -433,10 +433,132 @@ const DEFAULT_SETTINGS = {
   syncPullEnabled: false
 };
 
+const COFFEE_VARIETY_OTHER = 'Otras variedades';
+
 const COFFEE_VARIETIES = [
   'Caturra', 'Castillo', 'Colombia', 'Típica', 'Borbón', 'Geisha',
-  'SL28', 'SL34', 'Pacamara', 'Maragogipe', 'Tabi', 'Variedad Colombia'
+  'SL28', 'SL34', 'Pacamara', 'Maragogipe', 'Tabi', 'Variedades Colombia',
+  COFFEE_VARIETY_OTHER
 ];
+
+/** Valores rápidos para campos numéricos estándar (costos, mermas, etc.) */
+const STANDARD_MERMA_QUICK = [0, 3, 5, 10, 15, 16, 20, 25];
+const STANDARD_COST_KG_QUICK = [0, 500, 1000, 1500, 2000, 2500, 3000, 5000, 8000, 10000];
+const STANDARD_COST_UNIT_QUICK = [0, 200, 400, 600, 800, 1000, 1500, 2000, 3000];
+const STANDARD_COST_FIXED_QUICK = [0, 5000, 10000, 15000, 20000, 50000];
+
+function renderStandardNumberField({
+  id,
+  label,
+  value = 0,
+  quickValues = [],
+  step = 1,
+  min = 0,
+  max = null,
+  suffix = ''
+}) {
+  const maxAttr = max != null ? ` max="${max}"` : '';
+  const displaySuffix = suffix ? ` ${suffix}` : '';
+  return `
+    <div class="form-group standard-value-field">
+      <label>${label}</label>
+      <input type="number" class="form-control" id="${id}" value="${value}" step="${step}" min="${min}"${maxAttr}>
+      ${quickValues.length ? `
+        <div class="selection-grid selection-grid-compact" id="${id}-quick" style="margin-top:8px">
+          ${quickValues.map((v) => `
+            <button type="button" class="selection-btn${String(v) === String(value) ? ' active' : ''}" data-value="${v}">${v}${displaySuffix}</button>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>`;
+}
+
+function bindStandardNumberField(inputId) {
+  const input = document.getElementById(inputId);
+  const quick = document.getElementById(`${inputId}-quick`);
+  if (!input) return;
+
+  quick?.querySelectorAll('.selection-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      quick.querySelectorAll('.selection-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      input.value = btn.dataset.value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+
+  input.addEventListener('input', () => {
+    quick?.querySelectorAll('.selection-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.value === input.value);
+    });
+  });
+}
+
+function bindStandardNumberFields(inputIds) {
+  inputIds.forEach((id) => bindStandardNumberField(id));
+}
+
+function migrateCoffeeVarieties() {
+  const coffees = Storage.get(STORAGE_KEYS.COFFEES) || [];
+  let changed = false;
+  const migrated = coffees.map((coffee) => {
+    let variety = coffee.variety;
+    let varietyCustom = coffee.varietyCustom;
+    if (variety === 'Variedad Colombia') {
+      variety = 'Variedades Colombia';
+      changed = true;
+    }
+    if (variety && !COFFEE_VARIETIES.includes(variety)) {
+      varietyCustom = varietyCustom || variety;
+      variety = COFFEE_VARIETY_OTHER;
+      changed = true;
+    }
+    if (variety === coffee.variety && varietyCustom === coffee.varietyCustom) return coffee;
+    return { ...coffee, variety, varietyCustom };
+  });
+  if (changed) Storage.set(STORAGE_KEYS.COFFEES, migrated);
+  return changed;
+}
+
+function getCoffeeVarietyLabel(coffee) {
+  if (!coffee) return '';
+  if (coffee.variety === COFFEE_VARIETY_OTHER && coffee.varietyCustom) {
+    return `${COFFEE_VARIETY_OTHER}: ${coffee.varietyCustom}`;
+  }
+  return coffee.variety || '';
+}
+
+function isManualSaleDate(soldAt) {
+  if (!soldAt) return true;
+  const saleDay = new Date(soldAt);
+  saleDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return saleDay.getTime() <= today.getTime();
+}
+
+function getTransferMermaPercent(transferKey, coffeeState) {
+  const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
+  if (!transfer) return 0;
+  const stored = Storage.get(STORAGE_KEYS.PRODUCTION_COSTS);
+  const costs = migrateProductionCosts(stored);
+  if (transfer.mermaKey) {
+    return costs.mermas?.[transfer.mermaKey] || 0;
+  }
+  if (transfer.mermaSteps?.length) {
+    const steps = transfer.key === 'green_to_roasted'
+      ? getRoastMermaSteps(coffeeState)
+      : transfer.mermaSteps;
+    let remaining = 100;
+    steps.forEach((key) => {
+      const pct = costs.mermas?.[key] || 0;
+      remaining -= remaining * (pct / 100);
+    });
+    return Math.round((100 - remaining) * 10) / 10;
+  }
+  return 0;
+}
 
 const COFFEE_PROCESSES = [
   'Lavado', 'Natural', 'Honey', 'Semi-lavado', 'Anaeróbico',
@@ -719,7 +841,7 @@ const INVENTORY_PIPELINE_STAGES = {
     shortLabel: 'Verde',
     icon: '🌱',
     unit: 'kg',
-    costLabel: 'Costo por kg',
+    costLabel: 'Costo individual ($/kg)',
     supplierServices: ['compra', 'transporte'],
     coffeeStates: ['verde', 'pergamino'],
     auditAction: 'purchase'
@@ -730,7 +852,7 @@ const INVENTORY_PIPELINE_STAGES = {
     shortLabel: 'Tostado',
     icon: '🔥',
     unit: 'kg',
-    costLabel: 'Costo por kg tostado',
+    costLabel: 'Costo individual ($/kg tostado)',
     supplierServices: ['tostion'],
     coffeeStates: ['tostado'],
     auditAction: 'purchase_roasted'
@@ -741,7 +863,7 @@ const INVENTORY_PIPELINE_STAGES = {
     shortLabel: 'Seleccionado',
     icon: '✨',
     unit: 'kg',
-    costLabel: 'Costo por kg',
+    costLabel: 'Costo individual ($/kg)',
     supplierServices: ['seleccion'],
     coffeeStates: ['seleccionado'],
     auditAction: 'purchase_selected'
@@ -752,7 +874,7 @@ const INVENTORY_PIPELINE_STAGES = {
     shortLabel: 'Molido',
     icon: '⚙️',
     unit: 'kg',
-    costLabel: 'Costo por kg molido',
+    costLabel: 'Costo individual ($/kg molido)',
     supplierServices: ['molienda'],
     coffeeStates: ['molido'],
     auditAction: 'purchase_ground'
@@ -764,7 +886,7 @@ const INVENTORY_PIPELINE_STAGES = {
     icon: '📦',
     unit: 'uds',
     isPackaged: true,
-    costLabel: 'Costo total por unidad (material + mano de obra)',
+    costLabel: 'Costo individual ($/ud — material + mano de obra)',
     supplierServices: ['empacada'],
     coffeeStates: [],
     auditAction: 'purchase_packaged'

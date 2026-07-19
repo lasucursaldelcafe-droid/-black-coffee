@@ -148,7 +148,7 @@ const CoffeeManager = {
         <div class="coffee-card-body">
           <div class="coffee-card-title">${coffee.name}</div>
           <div class="coffee-card-meta">
-            ${coffee.variety} · ${coffee.region} · ${coffee.process}
+            ${getCoffeeVarietyLabel(coffee)} · ${coffee.region} · ${coffee.process}
             ${coffee.fermentation ? `<br>${coffee.fermentation}` : ''}
             ${supplierLabel}
           </div>
@@ -197,10 +197,15 @@ const CoffeeManager = {
         <label>Variedad</label>
         <div class="selection-grid" id="variety-selection">
           ${COFFEE_VARIETIES.map(v => `
-            <button type="button" class="selection-btn ${coffee?.variety === v ? 'active' : ''}" data-value="${v}">${v}</button>
+            <button type="button" class="selection-btn ${(coffee?.variety === v || (v === COFFEE_VARIETY_OTHER && coffee?.varietyCustom && !COFFEE_VARIETIES.includes(coffee?.variety))) ? 'active' : ''}" data-value="${v}">${v}</button>
           `).join('')}
         </div>
-        <input type="hidden" id="coffee-variety" value="${coffee?.variety || ''}">
+        <input type="hidden" id="coffee-variety" value="${coffee?.variety === COFFEE_VARIETY_OTHER || (coffee?.varietyCustom && !COFFEE_VARIETIES.includes(coffee?.variety || '')) ? COFFEE_VARIETY_OTHER : (coffee?.variety || '')}">
+        <div class="form-group" id="coffee-variety-custom-group" style="margin-top:12px;${(coffee?.variety === COFFEE_VARIETY_OTHER || coffee?.varietyCustom) ? '' : 'display:none'}">
+          <label>Nombre de la variedad</label>
+          <input type="text" class="form-control" id="coffee-variety-custom" value="${coffee?.varietyCustom || (coffee?.variety && !COFFEE_VARIETIES.includes(coffee.variety) ? coffee.variety : '')}" placeholder="Ej: Pink Bourbon, Chiroso, Sidra...">
+          <p class="form-hint">Los Borbón no son únicos — indique la variedad específica.</p>
+        </div>
       </div>
       <div class="form-group">
         <label>Región</label>
@@ -292,6 +297,12 @@ const CoffeeManager = {
           container.querySelectorAll('.selection-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           document.getElementById(`coffee-${hiddenId}`).value = btn.dataset.value;
+          if (id === 'variety-selection') {
+            const customGroup = document.getElementById('coffee-variety-custom-group');
+            if (customGroup) {
+              customGroup.style.display = btn.dataset.value === COFFEE_VARIETY_OTHER ? '' : 'none';
+            }
+          }
           if (id === 'state-selection') {
             const hint = document.getElementById('coffee-state-hint');
             if (hint) hint.innerHTML = CoffeeManager.getStateInventoryHint(btn.dataset.value);
@@ -343,12 +354,23 @@ const CoffeeManager = {
     let farmer = document.getElementById('coffee-farmer').value.trim();
     if (!farmer && supplier) farmer = supplier.name;
 
+    let variety = document.getElementById('coffee-variety').value;
+    let varietyCustom = '';
+    if (variety === COFFEE_VARIETY_OTHER) {
+      varietyCustom = document.getElementById('coffee-variety-custom')?.value?.trim() || '';
+      if (!varietyCustom) {
+        Toast.show('Indique el nombre de la variedad', 'danger');
+        return;
+      }
+    }
+
     const coffee = {
       id: document.getElementById('coffee-id').value || undefined,
       name: document.getElementById('coffee-name').value,
       supplierId: supplierId || null,
       farmer,
-      variety: document.getElementById('coffee-variety').value,
+      variety,
+      varietyCustom: varietyCustom || null,
       region: document.getElementById('coffee-region').value,
       process: document.getElementById('coffee-process').value,
       fermentation: document.getElementById('coffee-fermentation').value,

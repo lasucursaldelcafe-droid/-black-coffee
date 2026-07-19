@@ -85,6 +85,11 @@ const SalesManager = {
     return sale;
   },
 
+  getManualBadge(sale) {
+    const manual = sale.isManual != null ? sale.isManual : isManualSaleDate(sale.soldAt);
+    return manual ? '<span class="badge badge-neutral" title="Venta registrada manualmente">Manual</span>' : '';
+  },
+
   getPaymentBadge(status) {
     const cfg = SALE_PAYMENT_STATUSES[status] || SALE_PAYMENT_STATUSES.pending_payment;
     return `<span class="badge badge-${cfg.badge}">${cfg.label}</span>`;
@@ -208,7 +213,8 @@ const SalesManager = {
       quotationNumber: data.quotationNumber || null,
       paymentStatus: data.paymentStatus || 'pending_payment',
       paidAt: data.paidAt || null,
-      paymentNotes: data.paymentNotes || ''
+      paymentNotes: data.paymentNotes || '',
+      isManual: data.isManual ?? isManualSaleDate(data.soldAt || new Date().toISOString())
     };
 
     this.save(sale);
@@ -327,6 +333,7 @@ const SalesManager = {
             <thead>
               <tr>
                 <th>Fecha</th>
+                <th>Tipo</th>
                 <th>Café</th>
                 <th>Cliente</th>
                 <th>Presentación</th>
@@ -345,6 +352,7 @@ const SalesManager = {
               ${sales.map((s) => `
                 <tr data-sale-id="${s.id}">
                   <td>${formatDateTime(s.soldAt)}</td>
+                  <td>${this.getManualBadge(s)}</td>
                   <td><strong>${s.coffeeName}</strong></td>
                   <td>${s.clientName}</td>
                   <td>${PACKAGING_SIZES[s.packaging]?.label || s.packaging}</td>
@@ -373,7 +381,7 @@ const SalesManager = {
             </tbody>
             <tfoot>
               <tr style="font-weight:700;background:var(--bg-secondary)">
-                <td colspan="5">Totales (${summary.count} ventas · ${summary.totalUnits} uds)</td>
+                <td colspan="6">Totales (${summary.count} ventas · ${summary.totalUnits} uds)</td>
                 <td>${formatCurrency(summary.totalRevenue)}</td>
                 <td>${formatCurrency(summary.totalCost)}</td>
                 <td style="color:var(--success)">${formatCurrency(summary.totalProfit)}</td>
@@ -433,7 +441,8 @@ const SalesManager = {
         </div>
         <div class="form-group">
           <label>Fecha de venta</label>
-          <input type="date" class="form-control" id="sale-date" value="${today}">
+          <input type="date" class="form-control" id="sale-date" value="${today}" max="${today}">
+          <p class="form-hint">Ventas de hoy hacia atrás se marcan como <strong>manuales</strong>.</p>
         </div>
       </div>
 
@@ -592,7 +601,8 @@ const SalesManager = {
       paymentStatus,
       paidAt: paymentStatus === 'paid' ? soldAt : null,
       costOptions: this.getFormCostOptions(),
-      deductPackaged: deductMode === 'packaged'
+      deductPackaged: deductMode === 'packaged',
+      isManual: isManualSaleDate(soldAt)
     });
 
     if (!sale) return;

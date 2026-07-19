@@ -512,84 +512,40 @@ const ProductionCosts = {
 
     container.innerHTML = `
       <h4 style="margin: 0 0 12px; color: var(--text-secondary);">Transformación del Café</h4>
+      <p class="form-hint" style="margin-bottom:12px">Seleccione un valor estándar o ingrese uno personalizado.</p>
       <div class="form-row">
-        <div class="form-group">
-          <label>Trilla (por kg)</label>
-          <input type="number" class="form-control" id="cost-trilla" value="${t.trilla}">
-        </div>
-        <div class="form-group">
-          <label>Selección en Verde (por kg)</label>
-          <input type="number" class="form-control" id="cost-green-selection" value="${t.greenSelection}">
-        </div>
-        <div class="form-group">
-          <label>Tostión (por kg)</label>
-          <input type="number" class="form-control" id="cost-roasting" value="${t.roasting}">
-        </div>
+        ${renderStandardNumberField({ id: 'cost-trilla', label: 'Trilla (por kg)', value: t.trilla, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-green-selection', label: 'Selección en Verde (por kg)', value: t.greenSelection, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-roasting', label: 'Tostión (por kg)', value: t.roasting, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Selección Post-Tostión (por kg)</label>
-          <input type="number" class="form-control" id="cost-selection" value="${t.selection}">
-        </div>
-        <div class="form-group">
-          <label>Molienda (por libra)</label>
-          <input type="number" class="form-control" id="cost-grinding" value="${t.grinding}">
-        </div>
+        ${renderStandardNumberField({ id: 'cost-selection', label: 'Selección Post-Tostión (por kg)', value: t.selection, quickValues: STANDARD_COST_KG_QUICK, step: 100, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-grinding', label: 'Molienda (por libra)', value: t.grinding, quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Empacada — Mano de Obra</h4>
       <div class="form-row">
-        <div class="form-group">
-          <label>250g</label>
-          <input type="number" class="form-control" id="cost-labor-250" value="${t.packagingLabor['250g']}">
-        </div>
-        <div class="form-group">
-          <label>500g</label>
-          <input type="number" class="form-control" id="cost-labor-500" value="${t.packagingLabor['500g']}">
-        </div>
-        <div class="form-group">
-          <label>5 libras</label>
-          <input type="number" class="form-control" id="cost-labor-5lb" value="${t.packagingLabor['5lb']}">
-        </div>
+        ${renderStandardNumberField({ id: 'cost-labor-250', label: '250g', value: t.packagingLabor['250g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-labor-500', label: '500g', value: t.packagingLabor['500g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-labor-5lb', label: '5 libras', value: t.packagingLabor['5lb'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Administrativa (Full Pack)</h4>
       <div class="form-row">
-        <div class="form-group">
-          <label>Negociación (tarifa fija)</label>
-          <input type="number" class="form-control" id="cost-negotiation" value="${a.negotiation}">
-        </div>
+        ${renderStandardNumberField({ id: 'cost-negotiation', label: 'Negociación (tarifa fija)', value: a.negotiation, quickValues: STANDARD_COST_FIXED_QUICK, step: 1000, min: 0 })}
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Materiales de Empaque (Full Pack)</h4>
       <div class="form-row">
-        <div class="form-group">
-          <label>Bolsa 250g</label>
-          <input type="number" class="form-control" id="cost-pkg-250" value="${costs.packaging['250g']}">
-        </div>
-        <div class="form-group">
-          <label>Bolsa 500g</label>
-          <input type="number" class="form-control" id="cost-pkg-500" value="${costs.packaging['500g']}">
-        </div>
-        <div class="form-group">
-          <label>Bolsa 5 libras</label>
-          <input type="number" class="form-control" id="cost-pkg-5lb" value="${costs.packaging['5lb']}">
-        </div>
+        ${renderStandardNumberField({ id: 'cost-pkg-250', label: 'Bolsa 250g', value: costs.packaging['250g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-pkg-500', label: 'Bolsa 500g', value: costs.packaging['500g'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-pkg-5lb', label: 'Bolsa 5 libras', value: costs.packaging['5lb'], quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Etiquetas (Full Pack)</h4>
       <div class="form-row">
-        <div class="form-group">
-          <label>Etiqueta Grande</label>
-          <input type="number" class="form-control" id="cost-label-large" value="${costs.labels.large}">
-        </div>
-        <div class="form-group">
-          <label>Etiqueta Pequeña</label>
-          <input type="number" class="form-control" id="cost-label-small" value="${costs.labels.small}">
-        </div>
+        ${renderStandardNumberField({ id: 'cost-label-large', label: 'Etiqueta Grande', value: costs.labels.large, quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
+        ${renderStandardNumberField({ id: 'cost-label-small', label: 'Etiqueta Pequeña', value: costs.labels.small, quickValues: STANDARD_COST_UNIT_QUICK, step: 50, min: 0 })}
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Costo de Alza</h4>
       <div class="form-row">
-        <div class="form-group">
-          <label>Monto de Alza</label>
-          <input type="number" class="form-control" id="cost-increase-amount" value="${costs.costIncrease.amount}">
-        </div>
+        ${renderStandardNumberField({ id: 'cost-increase-amount', label: 'Monto de Alza', value: costs.costIncrease.amount, quickValues: STANDARD_COST_FIXED_QUICK, step: 1000, min: 0 })}
         <div class="form-group">
           <label>Activar Costo de Alza</label>
           <div class="toggle-group" style="margin-top: 8px;">
@@ -603,22 +559,12 @@ const ProductionCosts = {
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Mermas (%)</h4>
       <div class="form-row">
-        <div class="form-group">
-          <label>Trilla</label>
-          <input type="number" class="form-control" id="merma-trilla" value="${m.trilla}" step="0.1">
-        </div>
-        <div class="form-group">
-          <label>Selección en Verde</label>
-          <input type="number" class="form-control" id="merma-green-selection" value="${m.greenSelection || 0}" step="0.1">
-        </div>
-        <div class="form-group">
-          <label>Tostión</label>
-          <input type="number" class="form-control" id="merma-tostion" value="${m.tostion}" step="0.1">
-        </div>
-        <div class="form-group">
-          <label>Selección</label>
-          <input type="number" class="form-control" id="merma-seleccion" value="${m.seleccion}" step="0.1">
-        </div>
+        ${renderStandardNumberField({ id: 'merma-trilla', label: 'Trilla', value: m.trilla, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
+        ${renderStandardNumberField({ id: 'merma-green-selection', label: 'Selección en Verde', value: m.greenSelection || 0, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
+      </div>
+      <div class="form-row">
+        ${renderStandardNumberField({ id: 'merma-tostion', label: 'Tostión', value: m.tostion, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
+        ${renderStandardNumberField({ id: 'merma-seleccion', label: 'Selección', value: m.seleccion, quickValues: STANDARD_MERMA_QUICK, step: 0.1, min: 0, max: 100, suffix: '%' })}
       </div>
       <h4 style="margin: 20px 0 12px; color: var(--text-secondary);">Proveedores por Defecto</h4>
       <p class="form-hint" style="margin-bottom:12px">Se preseleccionan al registrar compras, tostión, lotes y cotizaciones. Las tarifas por proveedor se configuran en <strong>Proveedores</strong>.</p>
@@ -667,6 +613,13 @@ const ProductionCosts = {
     document.getElementById('cost-increase-enabled')?.addEventListener('change', (e) => {
       document.getElementById('cost-increase-status').textContent = e.target.checked ? 'Activado' : 'Desactivado';
     });
+
+    bindStandardNumberFields([
+      'cost-trilla', 'cost-green-selection', 'cost-roasting', 'cost-selection', 'cost-grinding',
+      'cost-labor-250', 'cost-labor-500', 'cost-labor-5lb', 'cost-negotiation',
+      'cost-pkg-250', 'cost-pkg-500', 'cost-pkg-5lb', 'cost-label-large', 'cost-label-small',
+      'cost-increase-amount', 'merma-trilla', 'merma-green-selection', 'merma-tostion', 'merma-seleccion'
+    ]);
   },
 
   saveFromForm() {

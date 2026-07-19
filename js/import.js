@@ -50,9 +50,16 @@ const ImportManager = {
     else if (!['verde', 'pergamino', 'tostado', 'seleccionado', 'molido'].includes(state)) state = 'verde';
 
     let variety = get('variety');
+    let varietyCustom = null;
+    if (variety === 'Variedad Colombia') variety = 'Variedades Colombia';
     if (variety && !COFFEE_VARIETIES.includes(variety)) {
       const match = COFFEE_VARIETIES.find((v) => v.toLowerCase() === variety.toLowerCase());
-      variety = match || variety;
+      if (match) {
+        variety = match;
+      } else {
+        varietyCustom = variety;
+        variety = COFFEE_VARIETY_OTHER;
+      }
     }
 
     let region = get('region');
@@ -71,6 +78,7 @@ const ImportManager = {
       name,
       farmer: get('farmer') || name,
       variety: variety || 'Caturra',
+      varietyCustom,
       region: region || 'Huila',
       process: process || 'Lavado',
       fermentation: get('fermentation'),
