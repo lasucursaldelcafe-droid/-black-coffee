@@ -62,6 +62,15 @@ const InventoryManager = {
     const item = this.getByCoffeeId(coffeeId);
     if (!stage || !coffee || !item) return false;
 
+    const naturalStage = getInventoryStageForCoffeeState(coffee.state);
+    if (stageKey !== naturalStage && hasUpstreamInventoryStock(item, stageKey)) {
+      Toast.show(
+        `Hay stock en etapas anteriores. Use "Transformar" en lugar de entrada directa a ${stage.shortLabel}.`,
+        'warning'
+      );
+      return false;
+    }
+
     const {
       quantity,
       cost = 0,
@@ -192,43 +201,11 @@ const InventoryManager = {
     return inventory[index];
   },
 
-  processRoasting(coffeeId, greenKg, supplierId = null, activeSteps = ['tostion']) {
-    const coffee = CoffeeManager.getById(coffeeId);
-    if (!coffee) return;
-
-    if (!isGreenCoffeeState(coffee.state)) {
-      Toast.show('Use "Entrada por etapa" para cafés que no están en verde/pergamino.', 'warning');
-      return;
-    }
-
-    const item = this.getByCoffeeId(coffeeId);
-    if (!item || item.greenKg < greenKg) {
-      Toast.show('Stock insuficiente de café verde', 'danger');
-      return;
-    }
-
-    const result = ProductionCosts.calculateGreenToRoasted(greenKg, coffee.state, activeSteps);
-    this.update(coffeeId, {
-      greenKg: item.greenKg - greenKg,
-      roastedKg: item.roastedKg + result.roastedKg
-    }, {
-      action: 'roast',
-      entity: coffee.name,
-      details: {
-        coffeeName: coffee.name,
-        coffeeId,
-        greenKg,
-        roastedKg: result.roastedKg,
-        mermaKg: greenKg - result.roastedKg,
-        supplierId,
-        supplierName: SupplierManager.getName(supplierId)
-      }
+  processRoasting(coffeeId, greenKg, supplierId = null) {
+    return this.processStageTransfer(coffeeId, 'green_to_roasted', greenKg, {
+      supplierId,
+      notes: 'Tostión (lote/registro directo)'
     });
-
-    Notifications.add(`Tostión completada: ${formatNumber(result.roastedKg)}kg tostado`, 'info', {
-      section: 'inventory', entityId: coffeeId, action: 'roast'
-    });
-    return result;
   },
 
   recordMovement(payload) {
@@ -252,7 +229,8 @@ const InventoryManager = {
     if (!transfer) return null;
 
     if (transferKey === 'green_to_roasted') {
-      const result = ProductionCosts.calculateGreenToRoasted(inputQty, coffee.state, ['tostion']);
+      const roastSteps = getRoastMermaSteps(coffee.state);
+      const result = ProductionCosts.calculateGreenToRoasted(inputQty, coffee.state, roastSteps);
       return {
         outputKg: result.roastedKg,
         mermaKg: inputQty - result.roastedKg,
@@ -438,26 +416,27 @@ const InventoryManager = {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
 
-    if (coffee.state !== 'verde' && coffee.state !== 'pergamino') {
+    if (!isGreenCoffeeState(coffee.state)) {
       Toast.show('Este café ya está en estado procesado. Use "Entrada por etapa".', 'warning');
       return;
     }
 
-    const activeSteps = ProductionCosts.getActiveSteps({
-      productionMode: 'full_pack',
-      coffee,
-      grindType: 'grano'
+    const item = this.getByCoffeeId(coffeeId);
+    if (!item || item.greenKg < greenKg) {
+      Toast.show('Stock insuficiente de café verde', 'danger');
+      return;
+    }
+
+    const roastSteps = getRoastMermaSteps(coffee.state);
+    const roastPreview = ProductionCosts.calculateGreenToRoasted(greenKg, coffee.state, roastSteps);
+
+    const ok = this.processStageTransfer(coffeeId, 'green_to_roasted', greenKg, {
+      supplierId: processSuppliers.tostion || null,
+      notes: 'Lote de tostión con proveedores'
     });
+    if (!ok) return;
 
-    const result = this.processRoasting(
-      coffeeId,
-      greenKg,
-      processSuppliers.tostion || null,
-      activeSteps.filter((s) => ['trilla', 'greenSelection', 'tostion', 'seleccion'].includes(s))
-    );
-    if (!result) return;
-
-    const steps = activeSteps.map((stepKey) => ({
+    const steps = roastSteps.map((stepKey) => ({
       step: stepKey,
       label: getProcessSupplierLabel(stepKey),
       ...this.getSupplierSnapshot(processSuppliers[stepKey])
@@ -469,8 +448,9 @@ const InventoryManager = {
       id: Storage.generateId(),
       coffeeId,
       coffeeName: coffee.name,
+      batchType: 'roast',
       greenKg,
-      roastedKg: result.roastedKg,
+      roastedKg: roastPreview.roastedKg,
       processSuppliers,
       steps,
       userId: session?.userId,
@@ -483,12 +463,13 @@ const InventoryManager = {
     AuditLog.log('production_batch', coffee.name, {
       coffeeName: coffee.name,
       coffeeId,
+      batchType: 'roast',
       greenKg,
-      roastedKg: result.roastedKg,
+      roastedKg: roastPreview.roastedKg,
       steps
     });
 
-    Notifications.add(`Lote de producción registrado: ${coffee.name}`, 'success', {
+    Notifications.add(`Lote de tostión registrado: ${coffee.name}`, 'success', {
       section: 'inventory', entityId: coffeeId
     });
   },
@@ -673,13 +654,13 @@ const InventoryManager = {
           </div>` : ''}
           <div class="action-buttons">
             <button class="btn btn-sm btn-primary" onclick="InventoryManager.showStageEntryForm('${coffee.id}')">+ Entrada</button>
-            ${getAvailableTransfersForItem(item).map((t) => `
+            ${getAvailableTransfersForItem(item, coffee).map((t) => `
               <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showTransformForm('${coffee.id}', '${t.key}')" title="${t.label}">
                 ${t.icon} ${t.shortLabel}
               </button>
             `).join('')}
             ${isGreenCoffeeState(coffee.state) ? `
-            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote Proveedores</button>` : ''}
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote Tostión</button>` : ''}
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.setBatchFilter('${coffee.id}')">Ver Lotes</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showAdjustForm('${coffee.id}')">Ajustar</button>
           </div>
@@ -736,7 +717,7 @@ const InventoryManager = {
         <div class="empty-state" style="padding:24px">
           <div class="empty-state-icon">⚙️</div>
           <h3>Sin lotes registrados</h3>
-          <p>Use <strong>Lote con Proveedores</strong> en un café para registrar tostión y proveedores por proceso</p>
+          <p>Use <strong>Lote Tostión</strong> en un café verde/pergamino para registrar tostión y proveedores del proceso</p>
         </div>`;
       return;
     }
@@ -1285,26 +1266,24 @@ const InventoryManager = {
     const coffee = CoffeeManager.getById(coffeeId);
     const item = this.getByCoffeeId(coffeeId);
     const defaults = ProductionCosts.get().defaultSuppliers || {};
-    const activeSteps = ProductionCosts.getActiveSteps({
-      productionMode: 'full_pack',
-      coffee,
-      grindType: 'grano'
-    });
+    const roastSteps = getRoastMermaSteps(coffee.state);
     const modal = document.getElementById('inventory-modal');
-    document.getElementById('inventory-modal-title').textContent = `Lote de Producción - ${coffee.name}`;
+    document.getElementById('inventory-modal-title').textContent = `Lote de Tostión - ${coffee.name}`;
 
     document.getElementById('inventory-form').innerHTML = `
       <input type="hidden" id="inv-coffee-id" value="${coffeeId}">
       <input type="hidden" id="inv-action" value="production_batch">
       <p class="form-hint" style="margin-bottom:16px">
-        Registre el lote indicando qué proveedor realizó cada proceso. Stock verde: <strong>${formatNumber(item.greenKg)} kg</strong>
+        Registra tostión con trazabilidad (descuenta verde, aplica mermas de trilla/selección/tostión).
+        Para selección, molienda o empacado use <strong>Transformar</strong> después.
+        Stock verde: <strong>${formatNumber(item.greenKg)} kg</strong>
       </p>
       <div class="form-group">
-        <label>Cantidad a procesar (kg verde)</label>
+        <label>Cantidad a tostar (kg verde)</label>
         <input type="number" class="form-control" id="inv-kg" step="0.1" max="${item.greenKg}" required>
       </div>
-      <h4 style="margin:16px 0 8px;font-size:0.95rem;color:var(--text-secondary)">Proveedores por proceso</h4>
-      ${activeSteps.map((stepKey) => `
+      <h4 style="margin:16px 0 8px;font-size:0.95rem;color:var(--text-secondary)">Proveedores del proceso de tostión</h4>
+      ${roastSteps.map((stepKey) => `
         <div class="form-group">
           <label>${getProcessSupplierLabel(stepKey)}</label>
           ${SupplierManager.renderSelect(stepKey, {
@@ -1319,11 +1298,11 @@ const InventoryManager = {
     document.getElementById('inv-kg')?.addEventListener('input', (e) => {
       const kg = parseFloat(e.target.value);
       if (kg > 0) {
-        const result = ProductionCosts.calculateGreenToRoasted(kg, coffee.state, activeSteps);
+        const result = ProductionCosts.calculateGreenToRoasted(kg, coffee.state, roastSteps);
         document.getElementById('roast-preview').innerHTML = `
           <div class="cost-breakdown">
             <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(kg)} kg verde</span></div>
-            <div class="cost-row"><span class="cost-label">Salida estimada</span><span>${formatNumber(result.roastedKg)} kg tostado</span></div>
+            <div class="cost-row"><span class="cost-label">Salida estimada (tostado)</span><span>${formatNumber(result.roastedKg)} kg</span></div>
             <div class="cost-row"><span class="cost-label">Merma total</span><span>${formatNumber(kg - result.roastedKg)} kg</span></div>
           </div>`;
       }
@@ -1478,13 +1457,9 @@ const InventoryManager = {
         return;
       }
       const coffee = CoffeeManager.getById(coffeeId);
-      const activeSteps = ProductionCosts.getActiveSteps({
-        productionMode: 'full_pack',
-        coffee,
-        grindType: 'grano'
-      });
+      const roastSteps = getRoastMermaSteps(coffee.state);
       const processSuppliers = {};
-      activeSteps.forEach((stepKey) => {
+      roastSteps.forEach((stepKey) => {
         const el = document.getElementById(`inv-supplier-${stepKey}`);
         if (el?.value) processSuppliers[stepKey] = el.value;
       });

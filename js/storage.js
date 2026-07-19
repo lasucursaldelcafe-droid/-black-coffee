@@ -525,7 +525,7 @@ const INVENTORY_STAGE_TRANSFERS = {
     toField: 'roastedKg',
     unit: 'kg',
     serviceKey: 'tostion',
-    mermaSteps: ['tostion'],
+    mermaSteps: ['trilla', 'greenSelection', 'tostion'],
     auditAction: 'transfer_green_roasted',
     requiresGreenCoffee: true
   },
@@ -572,9 +572,52 @@ const INVENTORY_STAGE_TRANSFERS = {
   }
 };
 
-function getAvailableTransfersForItem(item) {
+const INVENTORY_STAGE_ORDER = ['green', 'roasted', 'selected', 'ground', 'packaged'];
+
+/** Pasos de merma aplicados al transformar verde/pergamino → tostado (sin selección post-tostión) */
+function getRoastMermaSteps(coffeeState) {
+  if (coffeeState === 'pergamino') return ['trilla', 'greenSelection', 'tostion'];
+  if (coffeeState === 'verde') return ['greenSelection', 'tostion'];
+  return ['tostion'];
+}
+
+function getAllowedTransferKeysForCoffeeState(state) {
+  switch (state) {
+    case 'verde':
+    case 'pergamino':
+      return ['green_to_roasted', 'roasted_to_selected', 'selected_to_ground', 'ground_to_packaged'];
+    case 'tostado':
+      return ['roasted_to_selected', 'selected_to_ground', 'ground_to_packaged'];
+    case 'seleccionado':
+      return ['selected_to_ground', 'ground_to_packaged'];
+    case 'molido':
+      return ['ground_to_packaged'];
+    default:
+      return [];
+  }
+}
+
+function getUpstreamInventoryStages(stageKey) {
+  const idx = INVENTORY_STAGE_ORDER.indexOf(stageKey);
+  if (idx <= 0) return [];
+  return INVENTORY_STAGE_ORDER.slice(0, idx);
+}
+
+function hasUpstreamInventoryStock(item, stageKey) {
+  if (!item) return false;
+  return getUpstreamInventoryStages(stageKey).some((sk) => {
+    const stage = INVENTORY_PIPELINE_STAGES[sk];
+    if (!stage) return false;
+    if (stage.isPackaged) return getPackagedUnitsTotal(item.packagedUnits) > 0;
+    return (item[stage.field] || 0) > 0;
+  });
+}
+
+function getAvailableTransfersForItem(item, coffee) {
   if (!item) return [];
+  const allowed = coffee ? getAllowedTransferKeysForCoffeeState(coffee.state) : null;
   return Object.values(INVENTORY_STAGE_TRANSFERS).filter((transfer) => {
+    if (allowed && !allowed.includes(transfer.key)) return false;
     if (transfer.isPackaged) {
       return (item.groundKg || 0) > 0;
     }

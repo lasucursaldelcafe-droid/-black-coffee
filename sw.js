@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_VERSION = 'bca-v22';
+const CACHE_VERSION = 'bca-v23';
 
 const PRECACHE_URLS = [
   './',

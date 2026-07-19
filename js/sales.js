@@ -141,12 +141,16 @@ const SalesManager = {
     return { ok: true };
   },
 
-  registerSale(data) {
+  registerSale(data, options = {}) {
     const coffee = CoffeeManager.getById(data.coffeeId);
     if (!coffee) {
-      Toast.show('Café no encontrado', 'danger');
+      if (!options.silent) Toast.show('Café no encontrado', 'danger');
       return null;
     }
+
+    const clientProvidesCoffee = data.costOptions?.clientProvidesCoffee === true
+      || data.skipInventoryCheck === true;
+    const deductPackaged = data.deductPackaged === true && !clientProvidesCoffee;
 
     const metrics = this.calculateMetrics(
       coffee,
@@ -157,19 +161,20 @@ const SalesManager = {
     );
 
     const item = InventoryManager.getByCoffeeId(data.coffeeId);
-    const deductPackaged = data.deductPackaged === true;
 
     if (deductPackaged) {
       const packCheck = this.deductInventoryForSale(data.coffeeId, data.packaging, data.quantity, { deductPackaged: true });
       if (!packCheck.ok) {
-        Toast.show(packCheck.message, 'danger');
+        if (!options.silent) Toast.show(packCheck.message, 'danger');
         return null;
       }
-    } else if (item && metrics.roastedKgUsed > item.roastedKg) {
-      Toast.show(
-        `Stock tostado insuficiente (disponible: ${formatNumber(item.roastedKg)} kg, necesario: ${formatNumber(metrics.roastedKgUsed)} kg)`,
-        'danger'
-      );
+    } else if (!clientProvidesCoffee && item && metrics.roastedKgUsed > item.roastedKg) {
+      if (!options.silent) {
+        Toast.show(
+          `Stock tostado insuficiente (disponible: ${formatNumber(item.roastedKg)} kg, necesario: ${formatNumber(metrics.roastedKgUsed)} kg)`,
+          'danger'
+        );
+      }
       return null;
     }
 
@@ -189,8 +194,9 @@ const SalesManager = {
       totalCost: metrics.totalCost,
       profit: metrics.profit,
       profitMargin: metrics.profitMargin,
-      roastedKgUsed: deductPackaged ? 0 : metrics.roastedKgUsed,
+      roastedKgUsed: deductPackaged || clientProvidesCoffee ? 0 : metrics.roastedKgUsed,
       packagedUnitsUsed: deductPackaged ? data.quantity : 0,
+      clientProvidesCoffee,
       productionMode: data.costOptions?.productionMode || 'full_pack',
       grindType: data.costOptions?.grindType || 'grano',
       labels: data.costOptions?.labels || ['small'],

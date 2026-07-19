@@ -17,7 +17,8 @@ const AUDIT_ACTIONS = {
   transfer_ground_packaged: 'Transformación · Empacado',
   quotation_status: 'Estado cotización',
   convert_quotation: 'Cotización → Venta',
-  payment_received: 'Pago recibido',
+  payment_received: 'Pago recibido'
+};
 
 const AuditLog = {
   getAll() {

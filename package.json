@@ -7,8 +7,9 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "node scripts/test-persistence.mjs",
-    "test:persistence": "node scripts/test-persistence.mjs"
+    "test": "node scripts/test-persistence.mjs && node scripts/test-pipeline.mjs",
+    "test:persistence": "node scripts/test-persistence.mjs",
+    "test:pipeline": "node scripts/test-pipeline.mjs"
   },
   "repository": {
     "type": "git",
