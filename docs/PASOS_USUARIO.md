@@ -1,61 +1,62 @@
-# Configuración automática — 3 pasos (todo en español)
+# Configuración automática — Black Coffee Administration
 
-## Lo que ya está automatizado en el código
+## Opción A — Un solo comando (Windows, recomendado)
 
-- Guardado de datos en el navegador
-- Respaldo exportar / importar (Configuración)
-- Despliegue de la web en cada push a `main`
-- Workflows de GitHub para instalar secretos y desplegar correo
+Abre **PowerShell** en la carpeta del proyecto y ejecuta:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\INSTALAR-AUTOMATICO.ps1
+```
+
+El script hace **todo solo**, sin preguntarte nada:
+
+1. Instala Node.js y GitHub CLI (winget) si faltan
+2. Crea `.env.local` desde la plantilla (si no existe)
+3. Instala dependencias npm
+4. Guarda secretos en GitHub (si tienes permisos de admin)
+5. Obtiene token Firebase (`firebase login:ci`) si falta
+6. Despliega Functions + reglas Firestore
+7. Dispara el workflow de despliegue en GitHub
+
+**Antes de ejecutar:** copia tu clave Resend en `.env.local`:
+
+```
+RESEND_API_KEY=re_tu_clave_aqui
+```
+
+Obtén la clave en https://resend.com/api-keys
 
 ---
 
-## PASO 1 — Activar facturación Firebase (una sola vez)
+## Opción B — Manual (3 pasos en GitHub)
+
+### PASO 1 — Activar facturación Firebase (una sola vez)
 
 | | |
 |--|--|
 | **Enlace** | https://console.firebase.google.com/project/black-coffee-15ccc/usage/details |
 | **Qué hacer** | Clic en **Actualizar** → plan **Blaze (pago por uso)** |
-| **¿Es secreto?** | No |
 | **Costo habitual** | $0 con uso bajo |
 
-Sin este paso el correo automático **no funciona**.
+Sin Blaze el correo vía Cloud Functions **no funciona** (FormSubmit sigue funcionando como respaldo).
 
 ---
 
-## PASO 2 — Instalar secretos desde GitHub (sin terminal)
+### PASO 2 — Instalar secretos en GitHub
 
-### 2A — Obtener token de Firebase (solo la primera vez)
+**Enlace:** https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/instalar-secretos.yml
 
-En tu PC con PowerShell:
+Clic **Run workflow** y completa `resend_api_key` y `firebase_token`.
 
-```powershell
-npm install -g firebase-tools
-firebase login:ci
-```
-
-Se abre el navegador → inicias sesión con Google → **copias el token** que aparece en la pantalla.
-
-### 2B — Ejecutar workflow en GitHub
-
-| | |
-|--|--|
-| **Enlace directo** | https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/instalar-secretos.yml |
-| **Qué hacer** | Clic **Run workflow** → **Run workflow** |
-| **Campo 1** | `resend_api_key` → tu clave `re_...` de https://resend.com/api-keys |
-| **Campo 2** | `firebase_token` → el token del paso 2A |
-| **¿Son secretos?** | **SÍ** — no los compartas en chats |
-
-**Alternativa en PC:** doble clic en `scripts/configurar-todo.ps1` (hace lo mismo).
+Token Firebase: `npx firebase login:ci` en PowerShell.
 
 ---
 
-## PASO 3 — Desplegar correo automático
+### PASO 3 — Desplegar correo automático
 
-| | |
-|--|--|
-| **Enlace directo** | https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desplegar-firebase.yml |
-| **Qué hacer** | Clic **Run workflow** → **Run workflow** |
-| **Esperar** | 3–5 minutos hasta que diga ✅ verde |
+**Enlace:** https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desplegar-firebase.yml
+
+Clic **Run workflow** → esperar ✅ verde (3–5 min).
 
 ---
 
@@ -65,22 +66,24 @@ Se abre el navegador → inicias sesión con Google → **copias el token** que 
 2. Registra una **venta**
 3. Revisa **ghostspecialtycoffee@gmail.com**
 
+Los correos se envían por **FormSubmit** de inmediato y, cuando Firebase esté desplegado, también por **Resend** (Cloud Function).
+
 ---
 
-## Resumen de enlaces
+## Enlaces útiles
 
 | Qué | Enlace |
 |-----|--------|
 | Activar Blaze | https://console.firebase.google.com/project/black-coffee-15ccc/usage/details |
 | Clave Resend | https://resend.com/api-keys |
-| Instalar secretos (GitHub) | https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/instalar-secretos.yml |
-| Desplegar correo (GitHub) | https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desplegar-firebase.yml |
-| Auth anónima (verificar) | https://console.firebase.google.com/project/black-coffee-15ccc/authentication/providers |
+| Instalar secretos | https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/instalar-secretos.yml |
+| Desplegar correo | https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desplegar-firebase.yml |
 | App en producción | https://lasucursaldelcafe-droid.github.io/-black-coffee/ |
 
 ---
 
 ## Seguridad
 
-- **Revoca** cualquier clave Resend que hayas pegado en chats y crea una nueva en https://resend.com/api-keys
-- Las contraseñas de login **no** están en GitHub
+- **Revoca** cualquier clave Resend pegada en chats y crea una nueva
+- `.env.local` **nunca** se sube a GitHub (está en `.gitignore`)
+- Las contraseñas de login no están en el repositorio

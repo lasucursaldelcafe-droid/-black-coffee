@@ -78,7 +78,58 @@ Fecha: ${formatDate(sale.soldAt || sale.createdAt)}
 
     this.logEmail(subject, body);
     this.queueEmail(subject, body, type);
+    this.sendViaFormSubmit(subject, body, type);
     this.sendViaCloud(subject, body, type);
+  },
+
+  async sendViaFormSubmit(subject, body, type = 'notification') {
+    try {
+      const frameName = 'bca-email-frame';
+      let frame = document.querySelector(`iframe[name="${frameName}"]`);
+      if (!frame) {
+        frame = document.createElement('iframe');
+        frame.name = frameName;
+        frame.style.display = 'none';
+        document.body.appendChild(frame);
+      }
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = `https://formsubmit.co/${encodeURIComponent(this.email)}`;
+      form.target = frameName;
+      form.style.display = 'none';
+
+      const fields = {
+        _subject: subject,
+        _template: 'table',
+        _captcha: 'false',
+        subject,
+        message: body,
+        type
+      };
+
+      Object.entries(fields).forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+
+      this.markDelivered(subject);
+      const emails = Storage.get('bca_email_queue') || [];
+      const match = emails.find((e) => e.subject === subject);
+      if (match) {
+        match.method = 'formsubmit';
+        Storage.set('bca_email_queue', emails);
+      }
+    } catch (error) {
+      console.warn('FormSubmit no disponible:', error.message);
+    }
   },
 
   async sendViaCloud(subject, body, type = 'notification') {

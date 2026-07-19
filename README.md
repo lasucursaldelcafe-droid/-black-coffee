@@ -12,9 +12,16 @@ Usuarios: `ximena.polo` y `pablo.colorado`. Las contraseñas las administra el e
 
 ## 📧 Notificaciones
 
-Destino configurado: **ghostspecialtycoffee@gmail.com**
+Destino: **ghostspecialtycoffee@gmail.com**
 
-Para que los correos lleguen al buzón, siga la **Fase 2** en [docs/PASOS_USUARIO.md](docs/PASOS_USUARIO.md) (Resend + Firebase Functions).
+- **Inmediato:** FormSubmit (sin configuración extra)
+- **Profesional:** Resend + Firebase Functions — instalar con un comando:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\INSTALAR-AUTOMATICO.ps1
+```
+
+Guía completa: **[docs/PASOS_USUARIO.md](docs/PASOS_USUARIO.md)**
 
 ## 💾 Datos y respaldo
 

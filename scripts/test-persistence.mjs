@@ -1,7 +1,10 @@
 import { chromium } from 'playwright';
 import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
-import { join, extname } from 'path';
+import { join, extname, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const MIME = {
   '.html': 'text/html',
@@ -43,7 +46,7 @@ async function login(page, baseUrl) {
 }
 
 const port = 8878;
-const server = await startServer('/workspace', port);
+const server = await startServer(ROOT, port);
 const baseUrl = `http://127.0.0.1:${port}`;
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext();
