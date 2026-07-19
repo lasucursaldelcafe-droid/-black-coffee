@@ -66,8 +66,16 @@ const PDFGenerator = {
     doc.setFontSize(10);
     doc.text(`Presentación: ${packagingLabel}`, 50, 84 + (details.length - 1) * 4);
     doc.text(`Preparación: ${grindLabel}`, 50, 90 + (details.length - 1) * 4);
+    if (quotation.productionMode === 'maquila') {
+      const packagingSource = quotation.clientProvidesPackaging !== false
+        ? 'Empaque: aportado por el cliente'
+        : 'Empaque: aportado por nosotros (material incluido)';
+      doc.text(packagingSource, 50, 96 + (details.length - 1) * 4);
+    }
 
-    const tableY = 98 + (details.length - 1) * 4;
+    const tableY = quotation.productionMode === 'maquila'
+      ? 104 + (details.length - 1) * 4
+      : 98 + (details.length - 1) * 4;
     doc.line(20, tableY - 4, 190, tableY - 4);
 
     doc.setFont('helvetica', 'bold');
