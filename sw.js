@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_VERSION = 'bca-v20';
+const CACHE_VERSION = 'bca-v21';
 
 const PRECACHE_URLS = [
   './',
@@ -21,6 +21,7 @@ const PRECACHE_URLS = [
   './js/auth.js',
   './js/audit.js',
   './js/data.js',
+  './js/setupWizard.js',
   './js/backup.js',
   './js/costs.js',
   './js/coffees.js',

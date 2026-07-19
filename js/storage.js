@@ -21,8 +21,17 @@ const STORAGE_KEYS = {
   PRODUCTION_BATCHES: 'bca_production_batches',
   COST_SCENARIOS: 'bca_cost_scenarios',
   PROCESS_TEMPLATES: 'bca_process_templates',
+  PLATFORM_SETUP: 'bca_platform_setup',
   DELETED_RECORDS: DELETED_RECORDS_KEY,
   DISMISSED_SUPPLIER_SERVICES: DISMISSED_SUPPLIER_SERVICES_KEY
+};
+
+const DEFAULT_PLATFORM_SETUP = {
+  completed: false,
+  step: 0,
+  completedAt: null,
+  completedBy: null,
+  version: 1
 };
 
 const TOMBSTONE_LIST_KEYS = new Set([

@@ -20,6 +20,10 @@ const App = {
       DataSeed.init();
       EmailService.init();
 
+      if (typeof SetupWizard !== 'undefined') {
+        SetupWizard.init();
+      }
+
       this.bindNavigation();
       this.bindModals();
       this.bindSyncEvents();
@@ -383,6 +387,13 @@ const App = {
     `;
 
     const alerts = [];
+    if (typeof SetupWizard !== 'undefined' && !SetupWizard.isComplete()) {
+      alerts.push(`<div class="card" style="border-color:var(--accent);margin-bottom:16px">
+        <p>⚙️ <strong>Configuración inicial pendiente.</strong>
+        Complete los datos básicos para desbloquear inventario, cotizaciones y más.
+        <button type="button" class="btn btn-sm btn-primary" style="margin-left:8px" onclick="SetupWizard.open({force:true})">Continuar configuración</button></p>
+      </div>`);
+    }
     if (lowStockCount > 0) {
       alerts.push(`<div class="card" style="border-color:var(--warning);margin-bottom:16px">
         <p>⚠️ <strong>${lowStockCount}</strong> café(s) con stock bajo. <a href="#" onclick="App.navigateTo('inventory');return false">Ver inventario</a></p>
@@ -528,6 +539,22 @@ const App = {
           <input type="email" class="form-control" id="settings-email" value="${settings.email}">
         </div>
       </div>
+      <div class="card" style="margin-bottom:20px;border-color:var(--danger)">
+        <div class="card-header"><span class="card-title">Reiniciar plataforma</span></div>
+        <p class="form-hint" style="margin-bottom:12px">
+          Borra todos los datos operativos (cafés, clientes, proveedores, inventario, cotizaciones, ventas)
+          y vuelve a mostrar la configuración inicial. <strong>No elimina usuarios de acceso.</strong>
+        </p>
+        <button type="button" class="btn btn-danger" id="factory-reset-btn">Reiniciar todos los datos</button>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Parámetros del pipeline</span></div>
+        <p class="form-hint" style="margin-bottom:8px">
+          ${typeof SetupWizard !== 'undefined' ? SetupWizard.getPipelineParameterCatalog().totalCount : '52'} parámetros configurables
+          desde la compra al caficultor hasta producto empacado (Full Pack, Maquila, mayorista).
+        </p>
+        <button type="button" class="btn btn-sm btn-secondary" id="reopen-setup-wizard-btn">Ver configuración inicial</button>
+      </div>
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Respaldo de Datos</span></div>
         <p class="form-hint" style="margin-bottom:12px">
@@ -606,6 +633,18 @@ const App = {
     document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
     PWA.renderInstallCard('pwa-install-card-settings');
 
+    document.getElementById('factory-reset-btn')?.addEventListener('click', () => {
+      if (typeof SetupWizard !== 'undefined') {
+        SetupWizard.runFactoryReset();
+      }
+    });
+
+    document.getElementById('reopen-setup-wizard-btn')?.addEventListener('click', () => {
+      if (typeof SetupWizard !== 'undefined') {
+        SetupWizard.open({ force: true, step: 0 });
+      }
+    });
+
     document.getElementById('export-backup-btn')?.addEventListener('click', () => {
       BackupManager.download();
       Toast.show('Respaldo descargado', 'success');
@@ -679,6 +718,9 @@ const App = {
   },
 
   checkProductionCostsModal() {
+    if (typeof SetupWizard !== 'undefined' && !SetupWizard.isComplete()) {
+      return;
+    }
     if (ProductionCosts.shouldShowModal()) {
       setTimeout(() => {
         document.getElementById('costs-check-modal')?.classList.add('active');

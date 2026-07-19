@@ -1,0 +1,502 @@
+const SetupWizard = {
+  currentStep: 0,
+  totalSteps: 4,
+  _pendingSection: null,
+  _pendingOptions: null,
+
+  getState() {
+    return Storage.get(STORAGE_KEYS.PLATFORM_SETUP) || { ...DEFAULT_PLATFORM_SETUP };
+  },
+
+  isComplete() {
+    return this.getState().completed === true;
+  },
+
+  saveState(partial) {
+    const next = { ...this.getState(), ...partial };
+    Storage.set(STORAGE_KEYS.PLATFORM_SETUP, next, { immediate: true });
+  },
+
+  markComplete() {
+    const session = typeof Auth !== 'undefined' ? Auth.getSession() : null;
+    this.saveState({
+      completed: true,
+      step: this.totalSteps,
+      completedAt: new Date().toISOString(),
+      completedBy: session?.userId || session?.name || null
+    });
+  },
+
+  getPipelineParameterCatalog() {
+    const categories = [
+      {
+        id: 'compra',
+        label: 'Compra al caficultor',
+        count: 8,
+        items: [
+          'Precio por kg (FOB origen)',
+          'Costo de transporte / flete',
+          'Transporte incluido en precio (sí/no)',
+          'Estado de llegada (verde, pergamino, tostado…)',
+          'Variedad, proceso, región, productor',
+          'Proveedor de café vinculado',
+          'Notas de calidad / lote',
+          'Entrada a inventario (kg por etapa)'
+        ]
+      },
+      {
+        id: 'transformacion',
+        label: 'Transformación (por kg o unidad)',
+        count: 14,
+        items: [
+          'Trilla ($/kg)',
+          'Selección en verde ($/kg)',
+          'Tostión ($/kg)',
+          'Selección post-tostión ($/kg)',
+          'Molienda ($/lb)',
+          'Empacada — mano de obra 250g / 500g / 5lb',
+          'Mermas: trilla, selección verde, tostión, selección',
+          'Proveedor por etapa (8 slots)'
+        ]
+      },
+      {
+        id: 'empaque',
+        label: 'Empaque y etiquetas',
+        count: 7,
+        items: [
+          'Material empaque 250g / 500g / 5lb',
+          'Etiqueta pequeña / grande',
+          'Mix de presentaciones en cotización',
+          'Cliente aporta empaque (maquila)',
+          'Costo total por unidad empacada',
+          'Unidades por tamaño en inventario',
+          'Negociación administrativa ($/kg)'
+        ]
+      },
+      {
+        id: 'cotizacion',
+        label: 'Cotización y modos de producción',
+        count: 12,
+        items: [
+          'Modo Full Pack vs Maquila',
+          'Pasos de maquila seleccionables',
+          'Tipo de molienda (grano / molido)',
+          'Margen de ganancia (markup %)',
+          'Tipo de cliente (final, mayorista, distribuidor)',
+          'Multiplicador por tipo de cliente',
+          'Cantidad y presentación',
+          'Cliente aporta café (maquila)',
+          'Desglose de costos por etapa',
+          'Precio unitario y total',
+          'Escenarios de costo guardados',
+          'Plantillas de proceso'
+        ]
+      },
+      {
+        id: 'inventario',
+        label: 'Pipeline de inventario',
+        count: 5,
+        items: [
+          'Verde / pergamino (kg)',
+          'Tostado (kg)',
+          'Seleccionado (kg)',
+          'Molido (kg)',
+          'Empacado (uds por tamaño)'
+        ]
+      },
+      {
+        id: 'global',
+        label: 'Configuración global',
+        count: 6,
+        items: [
+          'Nombre empresa, email, logo',
+          'Umbral stock bajo',
+          'Incremento de costo opcional',
+          'Hero del dashboard',
+          'Sincronización Firebase',
+          'Auditoría de movimientos'
+        ]
+      }
+    ];
+
+    const totalCount = categories.reduce((sum, cat) => sum + cat.count, 0);
+    return { categories, totalCount };
+  },
+
+  shouldInterceptNavigation(section) {
+    if (this.isComplete()) return false;
+    if (section === 'settings' || section === 'dashboard') return false;
+    return true;
+  },
+
+  open(options = {}) {
+    if (options.force || !this.isComplete()) {
+      this.currentStep = options.step ?? this.getState().step ?? 0;
+      this.render();
+      document.getElementById('setup-wizard-overlay')?.classList.add('active');
+      document.body.classList.add('setup-wizard-open');
+    }
+  },
+
+  close() {
+    document.getElementById('setup-wizard-overlay')?.classList.remove('active');
+    document.body.classList.remove('setup-wizard-open');
+  },
+
+  bindNavigationIntercept() {
+    if (this._bound) return;
+    this._bound = true;
+
+    const originalNavigate = App.navigateTo.bind(App);
+    App.navigateTo = (section, options = {}) => {
+      if (this.shouldInterceptNavigation(section)) {
+        this._pendingSection = section;
+        this._pendingOptions = options;
+        this.open();
+        Toast?.show('Complete la configuración inicial para usar esta sección', 'warning');
+        return;
+      }
+      originalNavigate(section, options);
+    };
+  },
+
+  render() {
+    const container = document.getElementById('setup-wizard-body');
+    if (!container) return;
+
+    const catalog = this.getPipelineParameterCatalog();
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
+    const costs = migrateProductionCosts(Storage.get(STORAGE_KEYS.PRODUCTION_COSTS));
+
+    const stepLabels = ['Identidad', 'Costos base', 'Pipeline café', 'Listo'];
+    const progress = Math.round(((this.currentStep + 1) / this.totalSteps) * 100);
+
+    let bodyHtml = '';
+
+    if (this.currentStep === 0) {
+      bodyHtml = `
+        <p class="setup-wizard-intro">
+          Bienvenido. Antes de operar la plataforma, configure los datos básicos de su negocio.
+          Puede ajustar todo después en <strong>Configuración</strong> y <strong>Costos</strong>.
+        </p>
+        <div class="form-group">
+          <label>Nombre de la empresa</label>
+          <input type="text" class="form-control" id="setup-company" value="${settings.companyName || ''}">
+        </div>
+        <div class="form-group">
+          <label>Correo de notificaciones</label>
+          <input type="email" class="form-control" id="setup-email" value="${settings.email || ''}">
+        </div>
+        <div class="form-group">
+          <label>Eslogan (opcional)</label>
+          <input type="text" class="form-control" id="setup-tagline" value="${settings.tagline || ''}">
+        </div>
+        <div class="form-group">
+          <label>Umbral de stock bajo (kg)</label>
+          <input type="number" class="form-control" id="setup-low-stock" min="0" step="0.1" value="${settings.lowStockThreshold ?? 0}">
+        </div>
+      `;
+    } else if (this.currentStep === 1) {
+      bodyHtml = `
+        <p class="setup-wizard-intro">
+          Tarifas estándar de transformación y empaque. Use <strong>0</strong> si aún no las conoce;
+          podrá actualizarlas al crear proveedores o en Costos de Producción.
+        </p>
+        <div class="setup-cost-grid">
+          <div class="form-group">
+            <label>Trilla ($/kg)</label>
+            <input type="number" class="form-control" id="setup-trilla" min="0" step="1" value="${costs.transformation.trilla}">
+          </div>
+          <div class="form-group">
+            <label>Selección verde ($/kg)</label>
+            <input type="number" class="form-control" id="setup-greenSelection" min="0" step="1" value="${costs.transformation.greenSelection}">
+          </div>
+          <div class="form-group">
+            <label>Tostión ($/kg)</label>
+            <input type="number" class="form-control" id="setup-roasting" min="0" step="1" value="${costs.transformation.roasting}">
+          </div>
+          <div class="form-group">
+            <label>Selección post-tostión ($/kg)</label>
+            <input type="number" class="form-control" id="setup-selection" min="0" step="1" value="${costs.transformation.selection}">
+          </div>
+          <div class="form-group">
+            <label>Molienda ($/lb)</label>
+            <input type="number" class="form-control" id="setup-grinding" min="0" step="1" value="${costs.transformation.grinding}">
+          </div>
+          <div class="form-group">
+            <label>MO empacado 250g ($/ud)</label>
+            <input type="number" class="form-control" id="setup-pack-250" min="0" step="1" value="${costs.transformation.packagingLabor['250g']}">
+          </div>
+          <div class="form-group">
+            <label>MO empacado 500g ($/ud)</label>
+            <input type="number" class="form-control" id="setup-pack-500" min="0" step="1" value="${costs.transformation.packagingLabor['500g']}">
+          </div>
+          <div class="form-group">
+            <label>MO empacado 5lb ($/ud)</label>
+            <input type="number" class="form-control" id="setup-pack-5lb" min="0" step="1" value="${costs.transformation.packagingLabor['5lb']}">
+          </div>
+        </div>
+        <h4 class="setup-subtitle">Mermas (%)</h4>
+        <div class="setup-cost-grid setup-cost-grid--4">
+          <div class="form-group">
+            <label>Trilla</label>
+            <input type="number" class="form-control" id="setup-merma-trilla" min="0" max="100" step="0.1" value="${costs.mermas.trilla}">
+          </div>
+          <div class="form-group">
+            <label>Selección verde</label>
+            <input type="number" class="form-control" id="setup-merma-green" min="0" max="100" step="0.1" value="${costs.mermas.greenSelection}">
+          </div>
+          <div class="form-group">
+            <label>Tostión</label>
+            <input type="number" class="form-control" id="setup-merma-tostion" min="0" max="100" step="0.1" value="${costs.mermas.tostion}">
+          </div>
+          <div class="form-group">
+            <label>Selección</label>
+            <input type="number" class="form-control" id="setup-merma-seleccion" min="0" max="100" step="0.1" value="${costs.mermas.seleccion}">
+          </div>
+        </div>
+        <h4 class="setup-subtitle">Material de empaque ($/ud)</h4>
+        <div class="setup-cost-grid setup-cost-grid--3">
+          <div class="form-group">
+            <label>250g</label>
+            <input type="number" class="form-control" id="setup-mat-250" min="0" step="1" value="${costs.packaging['250g']}">
+          </div>
+          <div class="form-group">
+            <label>500g</label>
+            <input type="number" class="form-control" id="setup-mat-500" min="0" step="1" value="${costs.packaging['500g']}">
+          </div>
+          <div class="form-group">
+            <label>5lb</label>
+            <input type="number" class="form-control" id="setup-mat-5lb" min="0" step="1" value="${costs.packaging['5lb']}">
+          </div>
+        </div>
+        <div class="setup-cost-grid setup-cost-grid--2">
+          <div class="form-group">
+            <label>Etiqueta pequeña ($/ud)</label>
+            <input type="number" class="form-control" id="setup-label-small" min="0" step="1" value="${costs.labels.small}">
+          </div>
+          <div class="form-group">
+            <label>Etiqueta grande ($/ud)</label>
+            <input type="number" class="form-control" id="setup-label-large" min="0" step="1" value="${costs.labels.large}">
+          </div>
+        </div>
+      `;
+    } else if (this.currentStep === 2) {
+      bodyHtml = `
+        <p class="setup-wizard-intro">
+          La plataforma modela el café desde la <strong>compra al caficultor</strong> hasta el
+          <strong>producto empacado</strong>, con modos <strong>Full Pack</strong>, <strong>Maquila</strong> y precios por
+          <strong>mayorista / distribuidor</strong>.
+        </p>
+        <div class="setup-param-summary">
+          <div class="setup-param-total">
+            <span class="setup-param-total-num">${catalog.totalCount}</span>
+            <span>parámetros configurables en el pipeline</span>
+          </div>
+        </div>
+        <div class="setup-pipeline-flow">
+          <span>🌱 Compra</span><span>→</span>
+          <span>⚙️ Trilla</span><span>→</span>
+          <span>✨ Selección</span><span>→</span>
+          <span>🔥 Tostión</span><span>→</span>
+          <span>✨ Selección</span><span>→</span>
+          <span>⚙️ Molienda</span><span>→</span>
+          <span>📦 Empaque</span>
+        </div>
+        <div class="setup-catalog-grid">
+          ${catalog.categories.map((cat) => `
+            <details class="setup-catalog-card">
+              <summary><strong>${cat.label}</strong> <span class="badge">${cat.count} params</span></summary>
+              <ul>${cat.items.map((item) => `<li>${item}</li>`).join('')}</ul>
+            </details>
+          `).join('')}
+        </div>
+        <div class="setup-mode-cards">
+          <div class="setup-mode-card">
+            <h4>Full Pack</h4>
+            <p>Café + logística + transformación completa + empaque con materiales propios.</p>
+          </div>
+          <div class="setup-mode-card">
+            <h4>Maquila</h4>
+            <p>Cliente aporta café y/o empaque; se cobra transformación y mano de obra.</p>
+          </div>
+          <div class="setup-mode-card">
+            <h4>Tipos de cliente</h4>
+            <p>Final (×1.0), Mayorista (×0.85), Distribuidor (×0.75) sobre precio base.</p>
+          </div>
+        </div>
+        <p class="form-hint">Los proveedores, cafés y clientes los agregará después según necesidad.</p>
+      `;
+    } else {
+      bodyHtml = `
+        <div class="setup-complete">
+          <div class="setup-complete-icon">✅</div>
+          <h3>Configuración base lista</h3>
+          <p>Puede comenzar a registrar cafés, proveedores, inventario y cotizaciones.</p>
+          <ul class="setup-complete-list">
+            <li>Agregue su primer café en <strong>Cafés</strong></li>
+            <li>Registre proveedores de transformación en <strong>Proveedores</strong></li>
+            <li>Entrada de compra en <strong>Inventario → Verde</strong></li>
+            <li>Genere cotizaciones Full Pack o Maquila</li>
+          </ul>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div class="setup-wizard-progress">
+        <div class="setup-wizard-progress-bar" style="width:${progress}%"></div>
+      </div>
+      <div class="setup-wizard-steps">
+        ${stepLabels.map((label, i) => `
+          <span class="setup-wizard-step ${i === this.currentStep ? 'active' : ''} ${i < this.currentStep ? 'done' : ''}">${i + 1}. ${label}</span>
+        `).join('')}
+      </div>
+      <div class="setup-wizard-content">${bodyHtml}</div>
+    `;
+
+    const backBtn = document.getElementById('setup-wizard-back');
+    const nextBtn = document.getElementById('setup-wizard-next');
+    if (backBtn) backBtn.style.display = this.currentStep === 0 ? 'none' : '';
+    if (nextBtn) {
+      nextBtn.textContent = this.currentStep === this.totalSteps - 1 ? 'Comenzar a operar' : 'Siguiente';
+    }
+
+    this.saveState({ step: this.currentStep });
+  },
+
+  saveStepData() {
+    if (this.currentStep === 0) {
+      const settings = {
+        ...(Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS),
+        companyName: document.getElementById('setup-company')?.value?.trim() || DEFAULT_SETTINGS.companyName,
+        email: document.getElementById('setup-email')?.value?.trim() || DEFAULT_SETTINGS.email,
+        tagline: document.getElementById('setup-tagline')?.value?.trim() || DEFAULT_SETTINGS.tagline,
+        lowStockThreshold: parseFloat(document.getElementById('setup-low-stock')?.value) || 0
+      };
+      Storage.set(STORAGE_KEYS.SETTINGS, settings, { immediate: true });
+      if (typeof EmailService !== 'undefined') {
+        EmailService.email = settings.email;
+      }
+      if (typeof App !== 'undefined') {
+        App.applySettings();
+      }
+    }
+
+    if (this.currentStep === 1) {
+      const costs = migrateProductionCosts(Storage.get(STORAGE_KEYS.PRODUCTION_COSTS));
+      const updated = {
+        ...costs,
+        transformation: {
+          ...costs.transformation,
+          trilla: parseFloat(document.getElementById('setup-trilla')?.value) || 0,
+          greenSelection: parseFloat(document.getElementById('setup-greenSelection')?.value) || 0,
+          roasting: parseFloat(document.getElementById('setup-roasting')?.value) || 0,
+          selection: parseFloat(document.getElementById('setup-selection')?.value) || 0,
+          grinding: parseFloat(document.getElementById('setup-grinding')?.value) || 0,
+          packagingLabor: {
+            '250g': parseFloat(document.getElementById('setup-pack-250')?.value) || 0,
+            '500g': parseFloat(document.getElementById('setup-pack-500')?.value) || 0,
+            '5lb': parseFloat(document.getElementById('setup-pack-5lb')?.value) || 0
+          }
+        },
+        mermas: {
+          trilla: parseFloat(document.getElementById('setup-merma-trilla')?.value) || 0,
+          greenSelection: parseFloat(document.getElementById('setup-merma-green')?.value) || 0,
+          tostion: parseFloat(document.getElementById('setup-merma-tostion')?.value) || 0,
+          seleccion: parseFloat(document.getElementById('setup-merma-seleccion')?.value) || 0
+        },
+        packaging: {
+          '250g': parseFloat(document.getElementById('setup-mat-250')?.value) || 0,
+          '500g': parseFloat(document.getElementById('setup-mat-500')?.value) || 0,
+          '5lb': parseFloat(document.getElementById('setup-mat-5lb')?.value) || 0
+        },
+        labels: {
+          small: parseFloat(document.getElementById('setup-label-small')?.value) || 0,
+          large: parseFloat(document.getElementById('setup-label-large')?.value) || 0
+        },
+        lastUpdated: new Date().toISOString()
+      };
+      Storage.set(STORAGE_KEYS.PRODUCTION_COSTS, updated, { immediate: true });
+    }
+  },
+
+  next() {
+    this.saveStepData();
+
+    if (this.currentStep >= this.totalSteps - 1) {
+      this.finish();
+      return;
+    }
+
+    this.currentStep += 1;
+    this.render();
+  },
+
+  back() {
+    if (this.currentStep <= 0) return;
+    this.currentStep -= 1;
+    this.render();
+  },
+
+  finish() {
+    this.markComplete();
+    this.close();
+    Toast?.show('Configuración inicial completada', 'success');
+    window.dispatchEvent(new CustomEvent('bca-data-changed'));
+
+    const pending = this._pendingSection;
+    const pendingOpts = this._pendingOptions;
+    this._pendingSection = null;
+    this._pendingOptions = null;
+
+    if (pending && typeof App !== 'undefined') {
+      App.navigateTo(pending, pendingOpts || {});
+    } else if (typeof App !== 'undefined') {
+      App.renderSection(App.currentSection);
+      App.applySettings();
+    }
+  },
+
+  init() {
+    document.getElementById('setup-wizard-back')?.addEventListener('click', () => this.back());
+    document.getElementById('setup-wizard-next')?.addEventListener('click', () => this.next());
+    document.getElementById('setup-wizard-skip')?.addEventListener('click', () => {
+      if (confirm('¿Omitir por ahora? Las secciones seguirán bloqueadas hasta completar la configuración.')) {
+        this.close();
+      }
+    });
+
+    this.bindNavigationIntercept();
+
+    if (!this.isComplete()) {
+      setTimeout(() => this.open(), 600);
+    }
+  },
+
+  confirmFactoryReset() {
+    const first = confirm(
+      '¿Reiniciar TODOS los datos de la plataforma?\n\nSe borrarán cafés, clientes, proveedores, inventario, cotizaciones, ventas y auditoría.\nLos usuarios de acceso NO se eliminan.'
+    );
+    if (!first) return false;
+
+    const second = confirm(
+      'Confirmación final: esta acción no se puede deshacer.\n\n¿Proceder con el reinicio total?'
+    );
+    return second;
+  },
+
+  runFactoryReset() {
+    if (!this.confirmFactoryReset()) return;
+
+    DataSeed.factoryReset({ preserveSession: true });
+    this.currentStep = 0;
+    Toast?.show('Plataforma reiniciada. Complete la configuración inicial.', 'success');
+    this.open({ force: true });
+
+    if (typeof App !== 'undefined') {
+      App.applySettings();
+      App.navigateTo('dashboard');
+    }
+  }
+};

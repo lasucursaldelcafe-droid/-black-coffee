@@ -1,6 +1,7 @@
-const DATA_VERSION = 15;
+const DATA_VERSION = 16;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
+const FACTORY_RESET_V16_FLAG = 'bca_factory_reset_v16_done';
 
 const DataSeed = {
   init() {
@@ -12,13 +13,103 @@ const DataSeed = {
       Storage.set(DATA_VERSION_KEY, DATA_VERSION);
     }
 
+    this.seedPlatformSetup();
     this.seedProductionCosts();
     this.seedSettings();
-    this.seedCoffees();
-    this.seedClients();
-    this.seedSuppliers();
-    this.seedInventory();
-    this.linkCoffeeSuppliers();
+
+    const setupComplete = typeof SetupWizard !== 'undefined'
+      ? SetupWizard.isComplete()
+      : (Storage.get(STORAGE_KEYS.PLATFORM_SETUP)?.completed === true);
+
+    if (setupComplete) {
+      this.seedCoffees();
+      this.seedClients();
+      this.seedSuppliers();
+      this.seedInventory();
+      this.linkCoffeeSuppliers();
+    } else {
+      this.ensureEmptyBusinessData();
+    }
+  },
+
+  seedPlatformSetup() {
+    if (!Storage.get(STORAGE_KEYS.PLATFORM_SETUP)) {
+      Storage.set(STORAGE_KEYS.PLATFORM_SETUP, { ...DEFAULT_PLATFORM_SETUP });
+    }
+  },
+
+  ensureEmptyBusinessData() {
+    const emptyLists = [
+      STORAGE_KEYS.COFFEES,
+      STORAGE_KEYS.CLIENTS,
+      STORAGE_KEYS.SUPPLIERS,
+      STORAGE_KEYS.INVENTORY,
+      STORAGE_KEYS.QUOTATIONS,
+      STORAGE_KEYS.PURCHASES,
+      STORAGE_KEYS.SALES,
+      STORAGE_KEYS.NOTIFICATIONS,
+      STORAGE_KEYS.AUDIT_LOG,
+      STORAGE_KEYS.PRODUCTION_BATCHES,
+      STORAGE_KEYS.COST_SCENARIOS,
+      STORAGE_KEYS.PROCESS_TEMPLATES
+    ];
+    emptyLists.forEach((key) => {
+      if (Storage.get(key) === null) {
+        Storage.set(key, []);
+      }
+    });
+    Storage.set(STORAGE_KEYS.DELETED_RECORDS, {});
+  },
+
+  factoryReset(options = {}) {
+    const preserveSession = options.preserveSession !== false;
+
+    const businessKeys = [
+      STORAGE_KEYS.COFFEES,
+      STORAGE_KEYS.CLIENTS,
+      STORAGE_KEYS.SUPPLIERS,
+      STORAGE_KEYS.INVENTORY,
+      STORAGE_KEYS.QUOTATIONS,
+      STORAGE_KEYS.PURCHASES,
+      STORAGE_KEYS.SALES,
+      STORAGE_KEYS.NOTIFICATIONS,
+      STORAGE_KEYS.AUDIT_LOG,
+      STORAGE_KEYS.PRODUCTION_BATCHES,
+      STORAGE_KEYS.COST_SCENARIOS,
+      STORAGE_KEYS.PROCESS_TEMPLATES
+    ];
+
+    businessKeys.forEach((key) => Storage.set(key, [], { immediate: true }));
+    Storage.set(STORAGE_KEYS.DELETED_RECORDS, {}, { immediate: true });
+    Storage.set(STORAGE_KEYS.DISMISSED_SUPPLIER_SERVICES, [], { immediate: true });
+
+    Storage.set(STORAGE_KEYS.PRODUCTION_COSTS, {
+      ...DEFAULT_PRODUCTION_COSTS,
+      lastUpdated: new Date().toISOString()
+    }, { immediate: true });
+
+    Storage.set(STORAGE_KEYS.SETTINGS, { ...DEFAULT_SETTINGS }, { immediate: true });
+    Storage.remove(STORAGE_KEYS.COSTS_CHECKED);
+    localStorage.removeItem(SUPPLIER_TEMPLATES_FLAG);
+
+    Storage.set(STORAGE_KEYS.PLATFORM_SETUP, {
+      ...DEFAULT_PLATFORM_SETUP,
+      completed: false,
+      step: 0,
+      completedAt: null,
+      completedBy: null
+    }, { immediate: true });
+
+    if (!preserveSession) {
+      Storage.remove(STORAGE_KEYS.SESSION);
+    }
+
+    if (typeof EmailService !== 'undefined') {
+      EmailService.email = DEFAULT_SETTINGS.email;
+    }
+
+    window.dispatchEvent(new CustomEvent('bca-data-changed'));
+    return true;
   },
 
   linkCoffeeSuppliers() {
@@ -109,8 +200,19 @@ const DataSeed = {
       this.migrateV14ToV15();
       return;
     }
+    if (fromVersion === 15) {
+      this.migrateV15ToV16();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
+    }
+  },
+
+  migrateV15ToV16() {
+    if (!localStorage.getItem(FACTORY_RESET_V16_FLAG)) {
+      this.factoryReset({ preserveSession: true });
+      localStorage.setItem(FACTORY_RESET_V16_FLAG, '1');
     }
   },
 
@@ -285,52 +387,10 @@ const DataSeed = {
   },
 
   resetAllToZero() {
-    Storage.set(STORAGE_KEYS.PRODUCTION_COSTS, {
-      ...DEFAULT_PRODUCTION_COSTS,
-      lastUpdated: new Date().toISOString()
-    });
-
-    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
-    Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, lowStockThreshold: 0 });
-
-    const coffees = (Storage.get(STORAGE_KEYS.COFFEES) || []).map((coffee) => ({
-      ...coffee,
-      pricePerKg: 0,
-      transportCost: 0,
-      transportIncluded: false
-    }));
-
-    if (coffees.length === 0) {
-      coffees.push(this.createSampleCoffee());
+    this.factoryReset({ preserveSession: true });
+    if (typeof SetupWizard !== 'undefined') {
+      SetupWizard.open({ force: true });
     }
-
-    Storage.set(STORAGE_KEYS.COFFEES, coffees);
-
-    Storage.set(STORAGE_KEYS.INVENTORY, coffees.map((coffee) => ({
-      id: Storage.generateId(),
-      coffeeId: coffee.id,
-      greenKg: 0,
-      roastedKg: 0,
-      packagedUnits: {},
-      minStockKg: 0,
-      lastUpdated: new Date().toISOString()
-    })));
-
-    Storage.set(STORAGE_KEYS.QUOTATIONS, []);
-    Storage.set(STORAGE_KEYS.PURCHASES, []);
-    Storage.set(STORAGE_KEYS.SALES, []);
-    Storage.set(STORAGE_KEYS.PRODUCTION_BATCHES, []);
-    Storage.set(STORAGE_KEYS.NOTIFICATIONS, []);
-    Storage.set(STORAGE_KEYS.AUDIT_LOG, []);
-    Storage.remove(STORAGE_KEYS.COSTS_CHECKED);
-
-    if (!Storage.get(STORAGE_KEYS.CLIENTS)?.length) {
-      this.seedClients(true);
-    }
-    if (!Storage.get(STORAGE_KEYS.SUPPLIERS)?.length) {
-      this.seedSuppliers(true);
-    }
-    this.ensureTransformationSuppliers();
   },
 
   getTransformationSupplierTemplates() {
