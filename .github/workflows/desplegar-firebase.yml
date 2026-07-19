@@ -27,6 +27,16 @@ jobs:
         working-directory: functions
         run: npm ci || npm install
 
+      - name: Comprobar secretos necesarios
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ] || [ -z "$RESEND_API_KEY" ]; then
+            echo "Faltan secretos. Ejecuta primero el workflow 'Instalar secretos de GitHub' o scripts/configurar-todo.ps1"
+            exit 1
+          fi
+
       - name: Instalar Firebase CLI
         run: npm install -g firebase-tools
 
