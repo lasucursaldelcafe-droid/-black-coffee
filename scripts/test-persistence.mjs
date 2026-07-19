@@ -5,6 +5,7 @@ import { join, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const BUILD = '12';
 
 const MIME = {
   '.html': 'text/html',
@@ -31,74 +32,91 @@ function startServer(root, port) {
   });
 }
 
-async function login(page, baseUrl) {
+async function openApp(page, baseUrl) {
   await page.goto(`${baseUrl}/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.fill('#username', 'ximena.polo');
-  await page.fill('#password', 'XimenaBCA2026!');
-  await page.click('button[type="submit"]');
-  await page.waitForURL(/app\.html/, { timeout: 15000 });
-  await page.waitForTimeout(1500);
-  const costsModal = page.locator('#costs-check-modal.active');
-  if (await costsModal.count()) {
-    await page.click('#costs-no-change');
-    await page.waitForTimeout(300);
-  }
+  await page.evaluate(() => {
+    const users = [{
+      id: 'user_ximena',
+      username: 'ximena.polo',
+      password: 'XimenaBCA2026!',
+      name: 'Ximena Polo',
+      role: 'Administradora',
+      email: 'ximena@blackcoffee.admin'
+    }];
+    localStorage.setItem('bca_users', JSON.stringify(users));
+    localStorage.setItem('bca_session', JSON.stringify({
+      userId: 'user_ximena',
+      name: 'Ximena Polo',
+      role: 'Administradora',
+      loginTime: new Date().toISOString()
+    }));
+  });
+  await page.goto(`${baseUrl}/app.html?v=${BUILD}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForFunction(() => typeof SupplierManager !== 'undefined' && typeof DataSeed !== 'undefined', null, { timeout: 20000 });
 }
 
 const port = 8878;
 const server = await startServer(ROOT, port);
 const baseUrl = `http://127.0.0.1:${port}`;
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext();
-const page = await context.newPage();
-
-const errors = [];
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-page.on('console', (msg) => {
-  if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
-});
-
-const uniqueName = `Test Café ${Date.now()}`;
+const page = await browser.newPage();
 
 try {
-  await login(page, baseUrl);
+  await openApp(page, baseUrl);
 
-  await page.click('button[data-section="coffees"]');
-  await page.waitForTimeout(500);
-  await page.click('button:has-text("+ Nuevo Café")');
-  await page.waitForSelector('#coffee-modal.active', { timeout: 5000 });
-  await page.fill('#coffee-name', uniqueName);
-  await page.fill('#coffee-price', '15000');
-  await page.click('#save-coffee-btn');
-  await page.waitForTimeout(800);
+  const result = await page.evaluate(() => {
+    const build = window.BCA_BUILD || 'missing';
+    const suppliers = SupplierManager.getAll();
+    const trilla = suppliers.find((s) => s.services?.includes('trilla'));
+    const generic = suppliers[0];
 
-  const visibleBefore = await page.locator('.coffee-card').filter({ hasText: uniqueName }).count();
-  const storedBefore = await page.evaluate(() => {
-    const raw = localStorage.getItem('bca_coffees');
-    return raw ? JSON.parse(raw).some((c) => c.name?.includes('Test Café')) : false;
+    const cases = [];
+
+    if (trilla) {
+      const targetId = trilla.id;
+      SupplierManager.delete(targetId);
+      const afterDelete = SupplierManager.getAll().some((s) => s.id === targetId);
+      DataSeed.init();
+      const afterReload = SupplierManager.getAll().some((s) => s.id === targetId);
+      const tomb = Storage.getRaw('bca_deleted_records') || {};
+      cases.push({
+        type: 'transformation_supplier',
+        targetName: trilla.name,
+        afterDelete,
+        afterReload,
+        tombHas: (tomb.bca_suppliers || []).includes(targetId),
+        passed: !afterDelete && !afterReload
+      });
+    }
+
+    if (generic) {
+      const targetId = generic.id;
+      SupplierManager.delete(targetId);
+      const afterDelete = SupplierManager.getAll().some((s) => s.id === targetId);
+      DataSeed.init();
+      const afterReload = SupplierManager.getAll().some((s) => s.id === targetId);
+      cases.push({
+        type: 'generic_supplier',
+        targetName: generic.name,
+        afterDelete,
+        afterReload,
+        passed: !afterDelete && !afterReload
+      });
+    }
+
+    const ensureTransformationNoOp = (() => {
+      const before = SupplierManager.getAll().length;
+      DataSeed.ensureTransformationSuppliers();
+      return SupplierManager.getAll().length === before;
+    })();
+
+    return {
+      build,
+      ensureTransformationNoOp,
+      cases,
+      passed: cases.every((c) => c.passed) && ensureTransformationNoOp
+    };
   });
-
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2500);
-  await page.click('#costs-no-change').catch(() => {});
-  await page.click('button[data-section="coffees"]');
-  await page.waitForTimeout(500);
-
-  const visibleAfter = await page.locator('.coffee-card').filter({ hasText: uniqueName }).count();
-  const storedAfter = await page.evaluate((name) => {
-    const raw = localStorage.getItem('bca_coffees');
-    return raw ? JSON.parse(raw).some((c) => c.name === name) : false;
-  }, uniqueName);
-
-  const result = {
-    uniqueName,
-    visibleBefore,
-    storedBefore,
-    visibleAfter,
-    storedAfter,
-    passed: visibleBefore === 1 && storedBefore && visibleAfter === 1 && storedAfter,
-    errors
-  };
 
   console.log(JSON.stringify(result, null, 2));
   if (!result.passed) process.exit(1);

@@ -412,7 +412,8 @@ const DEFAULT_SETTINGS = {
   heroSubtitle: 'Plataforma integral para la gestión de producción, cotizaciones e inventario de café de especialidad.',
   primaryColor: '#f5f5f5',
   accentColor: '#e5e5e5',
-  lowStockThreshold: 0
+  lowStockThreshold: 0,
+  syncPullEnabled: false
 };
 
 const COFFEE_VARIETIES = [

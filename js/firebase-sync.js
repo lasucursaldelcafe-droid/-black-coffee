@@ -120,14 +120,19 @@ const FirebaseSync = {
   },
 
   _runBackgroundSync() {
-    // Local primero: subir cambios ANTES de escuchar la nube (evita revivir borrados)
-    this._localBootstrapped = false;
+    // Modo push-only por defecto: la nube NO puede sobrescribir local al recargar
+    this._localBootstrapped = true;
+    if (typeof Storage !== 'undefined') {
+      Storage.purgeDeletedFromStorage();
+    }
+
     this.pushAllLocal()
       .then(() => {
-        this._localBootstrapped = true;
+        if (!this._isPullEnabled()) return null;
         return this.restoreFromCloudIfEmpty();
       })
       .then(() => {
+        if (!this._isPullEnabled()) return;
         if (!this._unsubscribe) {
           this.setupRealtimeListener();
         }
@@ -143,6 +148,12 @@ const FirebaseSync = {
 
   getAllSyncKeys() {
     return [...FIREBASE_SYNC_KEYS, ...FIREBASE_META_KEYS];
+  },
+
+  _isPullEnabled() {
+    if (typeof Storage === 'undefined') return false;
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS);
+    return settings?.syncPullEnabled === true;
   },
 
   loadSdk() {
@@ -205,12 +216,30 @@ const FirebaseSync = {
     if (this.syncing) return { pushed: 0, pulled: 0 };
 
     this.syncing = true;
-    this._pulling = true;
     let pushed = 0;
     let pulled = 0;
 
     try {
       await this.flushPendingWrites({ sync: true });
+
+      if (!this._isPullEnabled()) {
+        if (typeof Storage !== 'undefined') {
+          Storage.purgeDeletedFromStorage();
+        }
+        pushed = await this.pushAllLocal();
+        this.lastSyncAt = new Date().toISOString();
+        this.lastError = null;
+
+        if (!options.silent) {
+          window.dispatchEvent(new CustomEvent('bca-sync-complete', {
+            detail: { pushed, pulled: 0, at: this.lastSyncAt }
+          }));
+        }
+
+        return { pushed, pulled: 0 };
+      }
+
+      this._pulling = true;
 
       const snapshot = await this._withTimeout(
         this.db.collection(FIREBASE_COLLECTION).get(),
@@ -568,10 +597,11 @@ const FirebaseSync = {
     if (!this.ready) {
       return this.lastError ? `Error: ${this.lastError}` : 'Conectando respaldo en la nube...';
     }
+    const pull = this._isPullEnabled() ? ' · pull ON' : ' · solo envío (local manda)';
     const when = this.lastSyncAt
       ? ` · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(this.lastSyncAt))}`
       : '';
-    return `Guardado local · respaldo en la nube${when}`;
+    return `Guardado local · respaldo en la nube${pull}${when}`;
   },
 
   updateStatusElement() {

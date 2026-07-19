@@ -1,11 +1,11 @@
-const DATA_VERSION = 10;
+const DATA_VERSION = 12;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 
 const DataSeed = {
   init() {
     this.repairStorage();
-    this.purgeDeletedFromStorage();
+    Storage.purgeDeletedFromStorage();
     const storedVersion = Storage.get(DATA_VERSION_KEY);
     if (storedVersion !== DATA_VERSION) {
       this.migrate(storedVersion);
@@ -89,6 +89,14 @@ const DataSeed = {
       this.migrateV9ToV10();
       return;
     }
+    if (fromVersion === 10) {
+      this.migrateV10ToV11();
+      return;
+    }
+    if (fromVersion === 11) {
+      this.migrateV11ToV12();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -141,6 +149,20 @@ const DataSeed = {
 
   migrateV9ToV10() {
     Storage.set(SUPPLIER_TEMPLATES_FLAG, true);
+  },
+
+  migrateV10ToV11() {
+    Storage.set(SUPPLIER_TEMPLATES_FLAG, true);
+    Storage.purgeDeletedFromStorage();
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
+    Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, syncPullEnabled: false });
+  },
+
+  migrateV11ToV12() {
+    Storage.set(SUPPLIER_TEMPLATES_FLAG, true);
+    Storage.purgeDeletedFromStorage();
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS) || DEFAULT_SETTINGS;
+    Storage.set(STORAGE_KEYS.SETTINGS, { ...settings, syncPullEnabled: false });
   },
 
   backfillLocalSyncMeta() {
@@ -367,37 +389,8 @@ const DataSeed = {
   },
 
   ensureTransformationSuppliers() {
-    const suppliers = Storage.get(STORAGE_KEYS.SUPPLIERS) || [];
-    const templates = this.getTransformationSupplierTemplates();
-    let changed = false;
-
-    templates.forEach((template) => {
-      const serviceKey = template.services[0];
-      if (Storage.isSupplierServiceDismissed(serviceKey)) {
-        return;
-      }
-      const exists = suppliers.some((s) =>
-        s.services?.includes(serviceKey) || (serviceKey === 'transporte' && s.category === 'logistics')
-      );
-      if (!exists) {
-        suppliers.push({
-          id: Storage.generateId(),
-          ...template,
-          serviceRates: {},
-          invima: template.invima || '',
-          kimba: template.kimba || '',
-          contact: template.contact || '',
-          email: template.email || '',
-          phone: '',
-          createdAt: new Date().toISOString()
-        });
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      Storage.set(STORAGE_KEYS.SUPPLIERS, suppliers);
-    }
+    // Desactivado: no reinsertar plantillas automaticamente (causaba borrados fantasma)
+    return;
   },
 
   createSampleCoffee() {
@@ -427,19 +420,23 @@ const DataSeed = {
   },
 
   seedSettings() {
-    if (!Storage.get(STORAGE_KEYS.SETTINGS)) {
+    const existing = Storage.get(STORAGE_KEYS.SETTINGS);
+    if (!existing) {
       Storage.set(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      return;
+    }
+    if (existing.syncPullEnabled === undefined) {
+      Storage.set(STORAGE_KEYS.SETTINGS, { ...existing, syncPullEnabled: false });
     }
   },
 
   seedCoffees() {
-    if (!Storage.get(STORAGE_KEYS.COFFEES)) {
-      Storage.set(STORAGE_KEYS.COFFEES, [this.createSampleCoffee()]);
-    }
+    if (localStorage.getItem(STORAGE_KEYS.COFFEES) !== null) return;
+    Storage.set(STORAGE_KEYS.COFFEES, [this.createSampleCoffee()]);
   },
 
   seedClients(force = false) {
-    if (force || !Storage.get(STORAGE_KEYS.CLIENTS)) {
+    if (!force && localStorage.getItem(STORAGE_KEYS.CLIENTS) !== null) return;
       const clients = [
         {
           id: Storage.generateId(),
@@ -456,11 +453,10 @@ const DataSeed = {
         }
       ];
       Storage.set(STORAGE_KEYS.CLIENTS, clients);
-    }
   },
 
   seedSuppliers(force = false) {
-    if (force || !Storage.get(STORAGE_KEYS.SUPPLIERS)) {
+    if (!force && localStorage.getItem(STORAGE_KEYS.SUPPLIERS) !== null) return;
       const suppliers = [
         {
           id: Storage.generateId(),
@@ -494,11 +490,10 @@ const DataSeed = {
         }))
       ];
       Storage.set(STORAGE_KEYS.SUPPLIERS, suppliers);
-    }
   },
 
   seedInventory() {
-    if (!Storage.get(STORAGE_KEYS.INVENTORY)) {
+    if (localStorage.getItem(STORAGE_KEYS.INVENTORY) === null) {
       const coffees = Storage.get(STORAGE_KEYS.COFFEES) || [];
       const inventory = coffees.map((coffee) => ({
         id: Storage.generateId(),
