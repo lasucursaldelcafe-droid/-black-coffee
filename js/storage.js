@@ -1,4 +1,5 @@
 const LOCAL_SYNC_META_KEY = 'bca_local_sync_meta';
+const DEVICE_ID_KEY = 'bca_device_id';
 
 const STORAGE_KEYS = {
   USERS: 'bca_users',
@@ -37,6 +38,15 @@ const Storage = {
     }
   },
 
+  getDeviceId() {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = `dev_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`;
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  },
+
   markLocalWrite(key) {
     const meta = this.getLocalSyncMeta();
     meta[key] = Date.now();
@@ -48,7 +58,13 @@ const Storage = {
   },
 
   set(key, value, options = {}) {
-    localStorage.setItem(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error(`No se pudo guardar ${key}:`, error);
+      throw new Error('No hay espacio suficiente para guardar los datos en este navegador.');
+    }
+
     if (options.fromRemote) return;
 
     this.markLocalWrite(key);

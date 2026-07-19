@@ -1,5 +1,5 @@
 const FIREBASE_COLLECTION = 'bca_data';
-const FIREBASE_SYNC_EXCLUDED = new Set([STORAGE_KEYS.SESSION, STORAGE_KEYS.USERS]);
+const FIREBASE_SYNC_EXCLUDED = new Set([STORAGE_KEYS.SESSION, STORAGE_KEYS.USERS, DEVICE_ID_KEY, LOCAL_SYNC_META_KEY]);
 const FIREBASE_SYNC_KEYS = Object.values(STORAGE_KEYS).filter((key) => !FIREBASE_SYNC_EXCLUDED.has(key));
 const FIREBASE_META_KEYS = ['bca_data_version', 'bca_email_queue'];
 
@@ -15,12 +15,21 @@ const FirebaseSync = {
   _pulling: false,
   _suppressRemote: false,
   _lastPushedAt: {},
-  _pendingPushKeys: new Map(),
-  _offlinePushKeys: new Map(),
+  _pendingPushKeys: new Set(),
+  _offlinePushKeys: new Set(),
   _unsubscribe: null,
+  _listenerReady: false,
 
   isEnabled() {
     return this.enabled && this.ready;
+  },
+
+  getDeviceId() {
+    return Storage.getDeviceId();
+  },
+
+  getDocId(key) {
+    return `${this.getDeviceId()}__${key}`;
   },
 
   _withTimeout(promise, ms, label = 'operación') {
@@ -40,6 +49,8 @@ const FirebaseSync = {
     if (this._initPromise) {
       return this._initPromise;
     }
+
+    this._bindFlushHandlers();
 
     this._initPromise = this._connect()
       .then((connected) => {
@@ -63,6 +74,21 @@ const FirebaseSync = {
     return this.startInBackground();
   },
 
+  _bindFlushHandlers() {
+    if (this._flushBound) return;
+    this._flushBound = true;
+
+    window.addEventListener('beforeunload', () => {
+      this.flushPendingWrites({ sync: true });
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        this.flushPendingWrites({ sync: true });
+      }
+    });
+  },
+
   async _connect() {
     const config = window.FIREBASE_CONFIG;
     if (!config?.projectId) {
@@ -79,25 +105,21 @@ const FirebaseSync = {
     this.enabled = true;
     this.ready = true;
     this.lastError = null;
-    this.setupRealtimeListener();
     this.setupConnectivityListeners();
     this.updateStatusElement();
     await this._flushOfflinePushes();
+    this._listenerReady = true;
+    this.setupRealtimeListener();
     return true;
   },
 
   _runBackgroundSync() {
-    // Subir datos locales primero para no perder cambios recientes
+    // Modo local-first: solo respaldar en la nube, nunca sobrescribir local al arrancar
     this.pushAllLocal()
-      .then(() => this.syncAll({ silent: true }))
-      .then(() => {
-        window.dispatchEvent(new CustomEvent('bca-data-changed', {
-          detail: { source: 'firebase-bootstrap' }
-        }));
-      })
+      .then(() => this.restoreFromCloudIfEmpty())
       .catch((error) => {
-        console.warn('Sincronización inicial en segundo plano:', error.message);
-        this.lastError = error.message || 'Error al sincronizar';
+        console.warn('Respaldo en segundo plano:', error.message);
+        this.lastError = error.message || 'Error al respaldar';
       })
       .finally(() => {
         this.updateStatusElement();
@@ -131,6 +153,36 @@ const FirebaseSync = {
     return scripts.reduce((promise, src) => promise.then(() => loadScript(src)), Promise.resolve());
   },
 
+  async restoreFromCloudIfEmpty() {
+    if (!this.db) return { restored: 0 };
+
+    let restored = 0;
+    const deviceId = this.getDeviceId();
+
+    for (const key of this.getAllSyncKeys()) {
+      const localRaw = localStorage.getItem(key);
+      if (localRaw) continue;
+
+      const doc = await this.db.collection(FIREBASE_COLLECTION).doc(this.getDocId(key)).get();
+      if (!doc.exists) continue;
+
+      const remote = doc.data();
+      if (this._isEmptyPayload(remote?.payload)) continue;
+
+      Storage.setRemote(key, remote.payload);
+      restored += 1;
+    }
+
+    if (restored > 0) {
+      window.dispatchEvent(new CustomEvent('bca-data-changed', {
+        detail: { source: 'firebase-restore', deviceId }
+      }));
+    }
+
+    this.lastSyncAt = new Date().toISOString();
+    return { restored };
+  },
+
   async syncAll(options = {}) {
     if (!this.db) {
       throw new Error('Firebase no está conectado');
@@ -143,15 +195,22 @@ const FirebaseSync = {
     let pulled = 0;
 
     try {
+      await this.flushPendingWrites({ sync: true });
+
       const snapshot = await this._withTimeout(
-        this.db.collection(FIREBASE_COLLECTION).get(),
+        this.db.collection(FIREBASE_COLLECTION)
+          .where('deviceId', '==', this.getDeviceId())
+          .get(),
         20000,
         'lectura de Firebase'
       );
-      const remoteByKey = new Map();
 
+      const remoteByKey = new Map();
       snapshot.forEach((doc) => {
-        remoteByKey.set(doc.id, doc.data());
+        const data = doc.data();
+        if (data?.key) {
+          remoteByKey.set(data.key, data);
+        }
       });
 
       const keysToPush = [];
@@ -160,7 +219,6 @@ const FirebaseSync = {
         const localRaw = localStorage.getItem(key);
         const remote = remoteByKey.get(key);
         const localPayload = localRaw ? JSON.parse(localRaw) : null;
-        const localUpdated = this._getLocalUpdatedAt(key, localPayload);
 
         if (!localPayload && remote?.payload !== undefined) {
           if (!this._isEmptyPayload(remote.payload)) {
@@ -185,12 +243,6 @@ const FirebaseSync = {
         }
       });
 
-      if (remoteByKey.size === 0) {
-        this.getAllSyncKeys().forEach((key) => {
-          if (localStorage.getItem(key)) keysToPush.push(key);
-        });
-      }
-
       const uniquePush = [...new Set(keysToPush)];
       if (uniquePush.length > 0) {
         pushed = await this.pushKeys(uniquePush);
@@ -205,6 +257,12 @@ const FirebaseSync = {
         }));
       }
 
+      if (pulled > 0) {
+        window.dispatchEvent(new CustomEvent('bca-data-changed', {
+          detail: { source: 'firebase-sync' }
+        }));
+      }
+
       return { pushed, pulled };
     } catch (error) {
       this.lastError = error.message || 'Error al sincronizar';
@@ -212,7 +270,7 @@ const FirebaseSync = {
     } finally {
       this._pulling = false;
       this.syncing = false;
-      this._flushPendingPushes();
+      this._flushPendingPushQueue();
     }
   },
 
@@ -222,13 +280,19 @@ const FirebaseSync = {
     const batch = this.db.batch();
     let count = 0;
     const now = Date.now();
+    const deviceId = this.getDeviceId();
 
     keys.forEach((key) => {
       const raw = localStorage.getItem(key);
       if (!raw) return;
       const payload = JSON.parse(raw);
-      const ref = this.db.collection(FIREBASE_COLLECTION).doc(key);
-      batch.set(ref, { payload, updatedAt: now });
+      const ref = this.db.collection(FIREBASE_COLLECTION).doc(this.getDocId(key));
+      batch.set(ref, {
+        key,
+        deviceId,
+        payload,
+        updatedAt: now
+      });
       this._lastPushedAt[key] = now;
       count += 1;
     });
@@ -251,137 +315,120 @@ const FirebaseSync = {
 
     window.addEventListener('online', () => {
       if (!this.isEnabled()) return;
-      this.pushAllLocal()
-        .then(() => this.syncAll({ silent: true }))
-        .catch((error) => {
-          console.warn('Re-sincronización al volver en línea:', error.message);
-        });
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible' || !this.isEnabled()) return;
-      this.pushAllLocal()
-        .then(() => this.syncAll({ silent: true }))
-        .catch((error) => {
-          console.warn('Re-sincronización al volver a la pestaña:', error.message);
-        });
+      this.pushAllLocal().catch((error) => {
+        console.warn('Reintento de respaldo en línea:', error.message);
+      });
     });
   },
 
   setupRealtimeListener() {
     if (!this.db || this._unsubscribe) return;
 
-    this._unsubscribe = this.db.collection(FIREBASE_COLLECTION).onSnapshot((snapshot) => {
-      if (this._pulling || this.syncing) return;
-
-      let changed = false;
-
-      snapshot.docChanges().forEach((change) => {
-        const key = change.doc.id;
-        if (!this.getAllSyncKeys().includes(key)) return;
-
-        if (change.type === 'removed') {
-          return;
-        }
-
-        const remote = change.doc.data();
-        const lastPush = this._lastPushedAt[key] || 0;
-        if (Date.now() - lastPush < 1500) return;
-
-        const localRaw = localStorage.getItem(key);
-        const localPayload = localRaw ? JSON.parse(localRaw) : null;
-
-        if (!remote?.payload && remote?.payload !== null) return;
-
-        if (!localPayload || this._shouldApplyRemote(key, localPayload, remote)) {
-          this._suppressRemote = true;
-          Storage.setRemote(key, remote.payload);
-          this._suppressRemote = false;
-          changed = true;
-        }
+    this._unsubscribe = this.db.collection(FIREBASE_COLLECTION)
+      .where('deviceId', '==', this.getDeviceId())
+      .onSnapshot(() => {
+        // Solo monitoreo: nunca sobrescribir datos locales automáticamente
+        this.updateStatusElement();
+      }, (error) => {
+        console.error('Listener Firebase:', error);
+        this.lastError = error.message || 'Error en tiempo real';
       });
-
-      if (changed) {
-        window.dispatchEvent(new CustomEvent('bca-data-changed', {
-          detail: { source: 'firebase' }
-        }));
-      }
-    }, (error) => {
-      console.error('Listener Firebase:', error);
-      this.lastError = error.message || 'Error en tiempo real';
-    });
   },
 
   queuePush(key, value) {
     if (this._suppressRemote) return;
     if (!this.getAllSyncKeys().includes(key)) return;
 
+    this._pendingPushKeys.add(key);
+
     if (this._pulling) {
-      this._pendingPushKeys.set(key, value);
       return;
     }
 
     if (!this.isEnabled()) {
-      this._offlinePushKeys.set(key, value);
+      this._offlinePushKeys.add(key);
       return;
     }
 
     clearTimeout(this._writeTimers[key]);
-    this._writeTimers[key] = setTimeout(async () => {
-      try {
-        const now = Date.now();
-        await this.db.collection(FIREBASE_COLLECTION).doc(key).set({
-          payload: value,
-          updatedAt: now
-        });
-        this._lastPushedAt[key] = now;
-        this.lastSyncAt = new Date().toISOString();
-      } catch (error) {
+    this._writeTimers[key] = setTimeout(() => {
+      this._pushKeyNow(key).catch((error) => {
         console.error(`Error sincronizando ${key}:`, error);
         this.lastError = error.message || `Error al guardar ${key}`;
-        this._offlinePushKeys.set(key, value);
-      }
-    }, 350);
+        this._offlinePushKeys.add(key);
+      });
+    }, 100);
+  },
+
+  async _pushKeyNow(key) {
+    if (!this.db) return;
+
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+
+    const payload = JSON.parse(raw);
+    const now = Date.now();
+
+    await this.db.collection(FIREBASE_COLLECTION).doc(this.getDocId(key)).set({
+      key,
+      deviceId: this.getDeviceId(),
+      payload,
+      updatedAt: now
+    });
+
+    this._lastPushedAt[key] = now;
+    this._pendingPushKeys.delete(key);
+    this._offlinePushKeys.delete(key);
+    this.lastSyncAt = new Date().toISOString();
   },
 
   queueDelete(key) {
     if (!this.getAllSyncKeys().includes(key)) return;
 
-    if (this._pulling) {
-      this._pendingPushKeys.delete(key);
-      return;
-    }
+    this._pendingPushKeys.delete(key);
 
-    if (!this.isEnabled()) return;
+    if (this._pulling || !this.isEnabled()) return;
 
     clearTimeout(this._writeTimers[key]);
     this._writeTimers[key] = setTimeout(async () => {
       try {
-        await this.db.collection(FIREBASE_COLLECTION).doc(key).delete();
+        await this.db.collection(FIREBASE_COLLECTION).doc(this.getDocId(key)).delete();
       } catch (error) {
         console.error(`Error eliminando ${key} en Firebase:`, error);
       }
-    }, 350);
+    }, 100);
   },
 
-  _flushPendingPushes() {
+  flushPendingWrites({ sync = false } = {}) {
+    const keys = [...this._pendingPushKeys, ...this._offlinePushKeys];
+    if (keys.length === 0) return Promise.resolve();
+
+    if (!this.isEnabled()) {
+      return Promise.resolve();
+    }
+
+    if (sync) {
+      return this.pushKeys([...new Set(keys)]).then(() => {
+        keys.forEach((key) => {
+          this._pendingPushKeys.delete(key);
+          this._offlinePushKeys.delete(key);
+        });
+      });
+    }
+
+    return Promise.all([...new Set(keys)].map((key) => this._pushKeyNow(key)));
+  },
+
+  _flushPendingPushQueue() {
     if (this._pendingPushKeys.size === 0) return;
-
-    const pending = new Map(this._pendingPushKeys);
-    this._pendingPushKeys.clear();
-
-    pending.forEach((value, key) => {
-      this.queuePush(key, value);
-    });
+    const keys = [...this._pendingPushKeys];
+    keys.forEach((key) => this.queuePush(key, Storage.get(key)));
   },
 
   async _flushOfflinePushes() {
     if (!this.isEnabled() || this._offlinePushKeys.size === 0) return;
-
-    const offline = new Map(this._offlinePushKeys);
+    const keys = [...this._offlinePushKeys];
     this._offlinePushKeys.clear();
-
-    const keys = [...offline.keys()];
     await this.pushKeys(keys);
   },
 
@@ -434,18 +481,18 @@ const FirebaseSync = {
 
   getStatusLabel() {
     if (!window.FIREBASE_CONFIG?.projectId) {
-      return 'Solo navegador (Firebase no configurado)';
+      return 'Guardado en este navegador';
     }
     if (this.syncing) {
       return 'Sincronizando...';
     }
     if (!this.ready) {
-      return this.lastError ? `Error: ${this.lastError}` : 'Conectando con Firebase...';
+      return this.lastError ? `Error: ${this.lastError}` : 'Conectando respaldo en la nube...';
     }
     const when = this.lastSyncAt
       ? ` · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(this.lastSyncAt))}`
       : '';
-    return `Sincronizado · ${window.FIREBASE_CONFIG.projectId}${when}`;
+    return `Guardado local · respaldo activo${when}`;
   },
 
   updateStatusElement() {

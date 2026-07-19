@@ -1,4 +1,4 @@
-const DATA_VERSION = 7;
+const DATA_VERSION = 8;
 const DATA_VERSION_KEY = 'bca_data_version';
 
 const DataSeed = {
@@ -76,6 +76,10 @@ const DataSeed = {
       this.migrateV6ToV7();
       return;
     }
+    if (fromVersion === 7) {
+      this.migrateV7ToV8();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -116,6 +120,10 @@ const DataSeed = {
 
   migrateV6ToV7() {
     this.backfillLocalSyncMeta();
+  },
+
+  migrateV7ToV8() {
+    Storage.getDeviceId();
   },
 
   backfillLocalSyncMeta() {
