@@ -472,7 +472,8 @@ const App = {
         <div class="card-header"><span class="card-title">Correos de Notificación</span></div>
         <div id="email-queue-summary">${typeof EmailService !== 'undefined' ? EmailService.renderQueueSummary() : ''}</div>
         <p class="form-hint" style="margin-top:8px">
-          Para que lleguen al buzón real, debe configurar Resend + Cloud Functions (ver docs/PASOS_USUARIO.md).
+          Para activar correo real: GitHub → Acciones → <strong>Instalar secretos</strong> y luego <strong>Desplegar Firebase</strong>.
+          Guía: <a href="https://github.com/lasucursaldelcafe-droid/-black-coffee/blob/main/docs/PASOS_USUARIO.md" target="_blank" rel="noopener">PASOS_USUARIO.md</a>
         </p>
       </div>
       <div class="card" style="margin-bottom:20px">

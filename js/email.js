@@ -96,7 +96,6 @@ Fecha: ${formatDate(sale.soldAt || sale.createdAt)}
         delivered: false,
         failed: false
       });
-      this.markDelivered(subject);
     } catch (error) {
       console.warn('No se pudo encolar correo en Firebase:', error.message);
     }
