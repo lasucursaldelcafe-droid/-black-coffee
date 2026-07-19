@@ -12,6 +12,38 @@ $script:BCAConfig = @{
     AppPlatformUrl    = 'https://lasucursaldelcafe-droid.github.io/-black-coffee/app.html'
 }
 
+function Convert-BCAToSinglePath {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        $Path
+    )
+
+    if ($null -eq $Path) { return $null }
+    if ($Path -is [System.Array]) {
+        $Path = $Path[-1]
+    }
+    if ($Path -is [System.IO.FileInfo] -or $Path -is [System.Management.Automation.PathInfo]) {
+        return $Path.ProviderPath
+    }
+    return [string]$Path
+}
+
+function Resolve-BCADirectory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $Path.TrimEnd('\')
+    }
+
+    $resolved = Resolve-Path -LiteralPath $Path -ErrorAction Stop
+    return Convert-BCAToSinglePath -Path $resolved
+}
+
 function Get-BCAProjectRoot {
     [CmdletBinding()]
     param(
@@ -25,7 +57,7 @@ function Get-BCAProjectRoot {
     $current = $StartPath
     for ($i = 0; $i -lt 6; $i++) {
         if (Test-Path (Join-Path $current 'js\firebase-config.js')) {
-            return (Resolve-Path $current).Path
+            return Resolve-BCADirectory -Path $current
         }
         $parent = Split-Path $current -Parent
         if (-not $parent -or $parent -eq $current) { break }
@@ -137,7 +169,10 @@ function Sync-BCARepository {
         Write-BCAStatus -Level Info -Message "Actualizando repositorio en $Destination"
         Push-Location $Destination
         try {
-            git pull origin main
+            $null = git pull origin main 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "git pull fallo (codigo $LASTEXITCODE)"
+            }
         } finally {
             Pop-Location
         }
@@ -147,10 +182,13 @@ function Sync-BCARepository {
         if (-not (Test-Path $parent)) {
             New-Item -ItemType Directory -Force -Path $parent | Out-Null
         }
-        git clone $script:BCAConfig.RepoUrl $Destination
+        $null = git clone $script:BCAConfig.RepoUrl $Destination 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "git clone fallo (codigo $LASTEXITCODE)"
+        }
     }
 
-    return (Resolve-Path $Destination).Path
+    return Resolve-BCADirectory -Path $Destination
 }
 
 function Initialize-BCAEnvFile {
@@ -543,7 +581,7 @@ function Start-BCASetup {
     Write-Host "Destino: $Destination" -ForegroundColor Gray
     Write-Host ''
 
-    $root = Sync-BCARepository -Destination $Destination
+    $root = Convert-BCAToSinglePath -Path (Sync-BCARepository -Destination $Destination)
     Install-BCADesktopShortcuts -ProjectRoot $root
 
     Write-Host ''
@@ -771,6 +809,7 @@ function Start-BCAFullAutomation {
     )
 
     $results = @()
+    $projectRoot = $null
 
     Write-Host ''
     Write-Host '##########################################################' -ForegroundColor Cyan
@@ -778,29 +817,32 @@ function Start-BCAFullAutomation {
     Write-Host '##########################################################' -ForegroundColor Cyan
     Write-Host ''
 
-    $results += Invoke-BCASetupStep -Paso '1. Actualizar codigo' -Accion {
-        $script:ProjectRoot = Sync-BCARepository -Destination $Destination
-        Set-Location $script:ProjectRoot
+    try {
+        $projectRoot = Convert-BCAToSinglePath -Path (Sync-BCARepository -Destination $Destination)
+        Set-Location $projectRoot
+        $results += [pscustomobject]@{ Paso = '1. Actualizar codigo'; Estado = 'OK'; Detalle = 'Completado' }
+    } catch {
+        $results += [pscustomobject]@{ Paso = '1. Actualizar codigo'; Estado = 'SKIP'; Detalle = $_.Exception.Message }
     }
 
-    if (-not $script:ProjectRoot) {
-        $script:ProjectRoot = Get-BCAProjectRoot -StartPath $Destination
+    if (-not $projectRoot) {
+        $projectRoot = Convert-BCAToSinglePath -Path (Get-BCAProjectRoot -StartPath $Destination)
     }
 
     $results += Invoke-BCASetupStep -Paso '2. Instalar dependencias' -Accion {
-        Install-BCADependencies -ProjectRoot $script:ProjectRoot
+        Install-BCADependencies -ProjectRoot $projectRoot
     }
 
     $results += Invoke-BCASetupStep -Paso '3. Credenciales .env.local' -Accion {
-        Import-BCAEnvFile -ProjectRoot $script:ProjectRoot | Out-Null
+        Import-BCAEnvFile -ProjectRoot $projectRoot | Out-Null
         if ($env:GH_TOKEN) { $env:GITHUB_TOKEN = $env:GH_TOKEN }
     }
 
     $results += Invoke-BCASetupStep -Paso '4. Iconos Escritorio' -Accion {
-        Install-BCADesktopShortcuts -ProjectRoot $script:ProjectRoot
-        $autoBat = Join-Path $script:ProjectRoot 'CONFIGURAR-TODO-AUTO.bat'
+        Install-BCADesktopShortcuts -ProjectRoot $projectRoot
+        $autoBat = Join-Path $projectRoot 'CONFIGURAR-TODO-AUTO.bat'
         if (Test-Path $autoBat) {
-            New-BCADesktopShortcut -Name 'BCA - Configurar todo AUTO' -TargetPath $autoBat -WorkingDirectory $script:ProjectRoot | Out-Null
+            New-BCADesktopShortcut -Name 'BCA - Configurar todo AUTO' -TargetPath $autoBat -WorkingDirectory $projectRoot | Out-Null
         }
     }
 
@@ -810,12 +852,12 @@ function Start-BCAFullAutomation {
         if ($LASTEXITCODE -ne 0 -and -not $env:GH_TOKEN) {
             throw 'Sin GH_TOKEN ni gh auth - omitido'
         }
-        Set-BCAGitHubSecrets -ProjectRoot $script:ProjectRoot -AllowInteractive:$false
+        Set-BCAGitHubSecrets -ProjectRoot $projectRoot -AllowInteractive:$false
     }
 
     $results += Invoke-BCASetupStep -Paso '6. Reglas Firestore' -Accion {
         if ($env:FIREBASE_TOKEN) {
-            Deploy-BCAFirestoreRules -ProjectRoot $script:ProjectRoot | Out-Null
+            Deploy-BCAFirestoreRules -ProjectRoot $projectRoot | Out-Null
         } else {
             throw 'Sin FIREBASE_TOKEN'
         }
@@ -823,7 +865,7 @@ function Start-BCAFullAutomation {
 
     $results += Invoke-BCASetupStep -Paso '7. Functions + correo' -Accion {
         if ($env:FIREBASE_TOKEN -and $env:RESEND_API_KEY) {
-            if (-not (Deploy-BCAFirebase -ProjectRoot $script:ProjectRoot)) {
+            if (-not (Deploy-BCAFirebase -ProjectRoot $projectRoot)) {
                 throw 'Deploy Firebase fallo (verifica plan Blaze)'
             }
         } else {
@@ -837,13 +879,13 @@ function Start-BCAFullAutomation {
     }
 
     $results += Invoke-BCASetupStep -Paso '9. Verificar app online' -Accion {
-        $health = Test-BCAAppHealth -ProjectRoot $script:ProjectRoot
+        $health = Test-BCAAppHealth -ProjectRoot $projectRoot
         if (-not $health.AllOk) {
             throw ("Login=$($health.LoginOk) EmailJs=$($health.EmailJsOk) FormSubmit=$($health.FormSubmitOk)")
         }
     }
 
-    $report = Export-BCASetupReport -Results $results -ProjectRoot $script:ProjectRoot
+    $report = Export-BCASetupReport -Results $results -ProjectRoot $projectRoot
 
     Write-Host ''
     Write-Host '##########################################################' -ForegroundColor Green
