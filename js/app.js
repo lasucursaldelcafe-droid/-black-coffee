@@ -295,6 +295,7 @@ const App = {
 
     const titles = {
       dashboard: 'Dashboard',
+      reports: 'Reportes',
       coffees: 'Cafés',
       clients: 'Clientes',
       suppliers: 'Proveedores',
@@ -330,6 +331,9 @@ const App = {
     switch (section) {
       case 'dashboard':
         this.renderDashboard();
+        break;
+      case 'reports':
+        ReportsManager.render(document.getElementById('reports-container'));
         break;
       case 'coffees':
         CoffeeManager.renderGrid(document.getElementById('coffees-grid'));
@@ -490,6 +494,7 @@ const App = {
 
     document.getElementById('dashboard-quick-actions').innerHTML = `
       <button class="btn btn-primary" onclick="SalesManager.create()">Registrar Venta</button>
+      <button class="btn btn-secondary" onclick="App.navigateTo('reports')">📈 Reportes</button>
       <button class="btn btn-secondary" onclick="QuotationManager.create()">Nueva Cotización</button>
       <button class="btn btn-secondary" onclick="App.navigateTo('cost-engine')">Costeo Interno</button>
       <button class="btn btn-secondary" onclick="App.navigateTo('inventory')">Inventario</button>
