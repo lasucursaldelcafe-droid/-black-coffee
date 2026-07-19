@@ -1,4 +1,4 @@
-const DATA_VERSION = 13;
+const DATA_VERSION = 14;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 
@@ -101,6 +101,10 @@ const DataSeed = {
       this.migrateV12ToV13();
       return;
     }
+    if (fromVersion === 13) {
+      this.migrateV13ToV14();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -171,6 +175,15 @@ const DataSeed = {
 
   migrateV12ToV13() {
     // v13: cotizaciones maquila con varias presentaciones (packagingMix)
+  },
+
+  migrateV13ToV14() {
+    if (!Storage.get(STORAGE_KEYS.COST_SCENARIOS)) {
+      Storage.set(STORAGE_KEYS.COST_SCENARIOS, []);
+    }
+    if (!Storage.get(STORAGE_KEYS.PROCESS_TEMPLATES)) {
+      Storage.set(STORAGE_KEYS.PROCESS_TEMPLATES, []);
+    }
   },
 
   backfillLocalSyncMeta() {
@@ -529,6 +542,12 @@ const DataSeed = {
     }
     if (!Storage.get(STORAGE_KEYS.NOTIFICATIONS)) {
       Storage.set(STORAGE_KEYS.NOTIFICATIONS, []);
+    }
+    if (!Storage.get(STORAGE_KEYS.COST_SCENARIOS)) {
+      Storage.set(STORAGE_KEYS.COST_SCENARIOS, []);
+    }
+    if (!Storage.get(STORAGE_KEYS.PROCESS_TEMPLATES)) {
+      Storage.set(STORAGE_KEYS.PROCESS_TEMPLATES, []);
     }
   }
 };

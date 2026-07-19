@@ -224,6 +224,7 @@ const App = {
       suppliers: 'Proveedores',
       inventory: 'Inventario',
       quotations: 'Cotizaciones',
+      'cost-engine': 'Costeo Interno',
       sales: 'Ventas',
       costs: 'Costos de Producción',
       settings: 'Configuración'
@@ -254,6 +255,9 @@ const App = {
         break;
       case 'quotations':
         QuotationManager.renderTable(document.getElementById('quotations-table'));
+        break;
+      case 'cost-engine':
+        CostEngine.render(document.getElementById('cost-engine-container'));
         break;
       case 'sales':
         SalesManager.renderDashboard(document.getElementById('sales-dashboard'));
@@ -377,6 +381,7 @@ const App = {
     document.getElementById('dashboard-quick-actions').innerHTML = `
       <button class="btn btn-primary" onclick="SalesManager.create()">Registrar Venta</button>
       <button class="btn btn-secondary" onclick="QuotationManager.create()">Nueva Cotización</button>
+      <button class="btn btn-secondary" onclick="App.navigateTo('cost-engine')">Costeo Interno</button>
       <button class="btn btn-secondary" onclick="CoffeeManager.create()">Agregar Café</button>
       <button class="btn btn-secondary" onclick="ClientManager.create()">Agregar Cliente</button>
     `;

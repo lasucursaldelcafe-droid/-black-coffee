@@ -19,6 +19,8 @@ const STORAGE_KEYS = {
   COSTS_CHECKED: 'bca_costs_checked_date',
   AUDIT_LOG: 'bca_audit_log',
   PRODUCTION_BATCHES: 'bca_production_batches',
+  COST_SCENARIOS: 'bca_cost_scenarios',
+  PROCESS_TEMPLATES: 'bca_process_templates',
   DELETED_RECORDS: DELETED_RECORDS_KEY,
   DISMISSED_SUPPLIER_SERVICES: DISMISSED_SUPPLIER_SERVICES_KEY
 };
@@ -443,6 +445,37 @@ function clampProfitMargin(value, fallback = PROFIT_MARGIN_DEFAULT) {
   const parsed = parseInt(String(value), 10);
   if (Number.isNaN(parsed)) return fallback;
   return Math.min(PROFIT_MARGIN_MAX, Math.max(PROFIT_MARGIN_MIN, parsed));
+}
+
+/** Margen sobre costo (markup): precio = costo × (1 + markup/100) */
+function priceFromMarkupOnCost(unitCost, markupPct) {
+  if (!unitCost || unitCost <= 0) return 0;
+  const markup = clampProfitMargin(markupPct, 0);
+  return Math.ceil(unitCost * (1 + markup / 100) / 100) * 100;
+}
+
+function markupFromTargetPrice(unitCost, targetPrice) {
+  if (!unitCost || unitCost <= 0 || !targetPrice || targetPrice <= 0) return PROFIT_MARGIN_DEFAULT;
+  const raw = ((targetPrice / unitCost) - 1) * 100;
+  return clampProfitMargin(Math.round(raw));
+}
+
+function profitAmountFromMarkup(unitCost, markupPct) {
+  const price = priceFromMarkupOnCost(unitCost, markupPct);
+  return Math.max(0, price - unitCost);
+}
+
+function markupFromProfitAmount(unitCost, profitAmount) {
+  if (!unitCost || unitCost <= 0) return PROFIT_MARGIN_DEFAULT;
+  const targetPrice = unitCost + Math.max(0, profitAmount);
+  return markupFromTargetPrice(unitCost, targetPrice);
+}
+
+/** Porcentaje de ganancia sobre el precio de venta (margen comercial) */
+function marginOnRevenueFromMarkup(markupPct) {
+  const markup = clampProfitMargin(markupPct, 0);
+  if (markup <= 0) return 0;
+  return Math.round((markup / (100 + markup)) * 1000) / 10;
 }
 
 const CLIENT_TYPES = {
