@@ -26,6 +26,14 @@ const CoffeeManager = {
     return this.findSupplierForCoffee(coffee)?.id || coffee?.supplierId || '';
   },
 
+  getStateInventoryHint(state) {
+    const stageKey = getInventoryStageForCoffeeState(state);
+    const stage = INVENTORY_PIPELINE_STAGES[stageKey];
+    const stateInfo = COFFEE_STATES[state];
+    if (!stage) return stateInfo?.description || '';
+    return `Las entradas de este café se registran en inventario <strong>${stage.shortLabel}</strong> (${stage.label}). Use Inventario → Entrada por Etapa o el menú Transformación.`;
+  },
+
   applySupplierToForm(supplierId) {
     const supplier = supplierId ? SupplierManager.getById(supplierId) : null;
     const farmerInput = document.getElementById('coffee-farmer');
@@ -72,6 +80,8 @@ const CoffeeManager = {
         coffeeId: coffee.id,
         greenKg: 0,
         roastedKg: 0,
+        selectedKg: 0,
+        groundKg: 0,
         packagedUnits: {},
         minStockKg: 0,
         lastUpdated: new Date().toISOString()
@@ -230,8 +240,8 @@ const CoffeeManager = {
           `).join('')}
         </div>
         <input type="hidden" id="coffee-state" value="${coffee?.state || 'verde'}">
-        <p class="form-hint" id="coffee-state-hint" style="margin-top:8px;display:${coffee?.state === 'tostado' ? 'block' : 'none'}">
-          Estado tostado: las compras/entradas se registran directo en inventario tostado (sin paso de transformación).
+        <p class="form-hint" id="coffee-state-hint" style="margin-top:8px">
+          ${this.getStateInventoryHint(coffee?.state || 'verde')}
         </p>
       </div>
       <div class="form-row">
@@ -284,7 +294,7 @@ const CoffeeManager = {
           document.getElementById(`coffee-${hiddenId}`).value = btn.dataset.value;
           if (id === 'state-selection') {
             const hint = document.getElementById('coffee-state-hint');
-            if (hint) hint.style.display = btn.dataset.value === 'tostado' ? 'block' : 'none';
+            if (hint) hint.innerHTML = CoffeeManager.getStateInventoryHint(btn.dataset.value);
           }
         });
       });

@@ -58,46 +58,84 @@
         </div>
       </div>
 
-      <nav class="sidebar-nav">
-        <div class="nav-section">
-          <div class="nav-section-title">Principal</div>
-          <button class="nav-item active" data-section="dashboard">
-            <span class="icon">📊</span> Dashboard
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="principal">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Principal</span>
+            <span class="nav-chevron">▾</span>
           </button>
-          <button class="nav-item" data-section="quotations">
-            <span class="icon">📋</span> Cotizaciones
-          </button>
-          <button class="nav-item" data-section="cost-engine">
-            <span class="icon">🧠</span> Costeo Interno
-          </button>
-          <button class="nav-item" data-section="sales">
-            <span class="icon">💰</span> Ventas
-          </button>
+          <div class="nav-section-items">
+            <button class="nav-item active" data-section="dashboard">
+              <span class="icon">📊</span> Dashboard
+            </button>
+            <button class="nav-item" data-section="quotations">
+              <span class="icon">📋</span> Cotizaciones
+            </button>
+            <button class="nav-item" data-section="cost-engine">
+              <span class="icon">🧠</span> Costeo Interno
+            </button>
+            <button class="nav-item" data-section="sales">
+              <span class="icon">💰</span> Ventas
+            </button>
+          </div>
         </div>
-        <div class="nav-section">
-          <div class="nav-section-title">Gestión</div>
-          <button class="nav-item" data-section="coffees">
-            <span class="icon">☕</span> Cafés
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="gestion">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Gestión</span>
+            <span class="nav-chevron">▾</span>
           </button>
-          <button class="nav-item" data-section="clients">
-            <span class="icon">👥</span> Clientes
-          </button>
-          <button class="nav-item" data-section="suppliers">
-            <span class="icon">🌱</span> Proveedores
-          </button>
-          <button class="nav-item" data-section="inventory">
-            <span class="icon">📦</span> Inventario
-            <span class="nav-badge" id="notification-badge" style="display:none">0</span>
-          </button>
+          <div class="nav-section-items">
+            <button class="nav-item" data-section="coffees">
+              <span class="icon">☕</span> Cafés
+            </button>
+            <button class="nav-item" data-section="clients">
+              <span class="icon">👥</span> Clientes
+            </button>
+            <button class="nav-item" data-section="suppliers">
+              <span class="icon">🌱</span> Proveedores
+            </button>
+            <button class="nav-item" data-section="inventory">
+              <span class="icon">📦</span> Inventario
+              <span class="nav-badge" id="notification-badge" style="display:none">0</span>
+            </button>
+          </div>
         </div>
-        <div class="nav-section">
-          <div class="nav-section-title">Configuración</div>
-          <button class="nav-item" data-section="costs">
-            <span class="icon">💰</span> Costos de Producción
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="transformacion">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Transformación</span>
+            <span class="nav-chevron">▾</span>
           </button>
-          <button class="nav-item" data-section="settings">
-            <span class="icon">⚙️</span> Configuración
+          <div class="nav-section-items">
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="green" data-open-form="true">
+              <span class="icon">🌱</span> Llegada Verde
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="roasted" data-open-form="true">
+              <span class="icon">🔥</span> Tostión
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="selected" data-open-form="true">
+              <span class="icon">✨</span> Selección
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="ground" data-open-form="true">
+              <span class="icon">⚙️</span> Molienda
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="packaged" data-open-form="true">
+              <span class="icon">📦</span> Empacado
+            </button>
+          </div>
+        </div>
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="config">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Configuración</span>
+            <span class="nav-chevron">▾</span>
           </button>
+          <div class="nav-section-items">
+            <button class="nav-item" data-section="costs">
+              <span class="icon">💰</span> Costos de Producción
+            </button>
+            <button class="nav-item" data-section="settings">
+              <span class="icon">⚙️</span> Configuración
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -396,27 +434,27 @@
   </div>
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
-  <script>window.BCA_BUILD = '17';</script>
-  <script src="js/storage.js?v=17"></script>
-  <script src="js/firebase-config.js?v=17"></script>
-  <script src="js/firebase-sync.js?v=17"></script>
-  <script src="js/auth.js?v=17"></script>
-  <script src="js/audit.js?v=17"></script>
-  <script src="js/data.js?v=17"></script>
-  <script src="js/backup.js?v=17"></script>
-  <script src="js/costs.js?v=17"></script>
-  <script src="js/coffees.js?v=17"></script>
-  <script src="js/clients.js?v=17"></script>
-  <script src="js/suppliers.js?v=17"></script>
-  <script src="js/inventory.js?v=17"></script>
-  <script src="js/sales.js?v=17"></script>
-  <script src="js/ghostCatalog.js?v=17"></script>
-  <script src="js/import.js?v=17"></script>
-  <script src="js/quotations.js?v=17"></script>
-  <script src="js/pdf.js?v=17"></script>
-  <script src="js/notifications.js?v=17"></script>
-  <script src="js/email.js?v=17"></script>
-  <script src="js/costEngine.js?v=17"></script>
-  <script src="js/app.js?v=17"></script>
+  <script>window.BCA_BUILD = '18';</script>
+  <script src="js/storage.js?v=18"></script>
+  <script src="js/firebase-config.js?v=18"></script>
+  <script src="js/firebase-sync.js?v=18"></script>
+  <script src="js/auth.js?v=18"></script>
+  <script src="js/audit.js?v=18"></script>
+  <script src="js/data.js?v=18"></script>
+  <script src="js/backup.js?v=18"></script>
+  <script src="js/costs.js?v=18"></script>
+  <script src="js/coffees.js?v=18"></script>
+  <script src="js/clients.js?v=18"></script>
+  <script src="js/suppliers.js?v=18"></script>
+  <script src="js/inventory.js?v=18"></script>
+  <script src="js/sales.js?v=18"></script>
+  <script src="js/ghostCatalog.js?v=18"></script>
+  <script src="js/import.js?v=18"></script>
+  <script src="js/quotations.js?v=18"></script>
+  <script src="js/pdf.js?v=18"></script>
+  <script src="js/notifications.js?v=18"></script>
+  <script src="js/email.js?v=18"></script>
+  <script src="js/costEngine.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
 </body>
 </html>

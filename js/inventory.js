@@ -1,5 +1,6 @@
 const InventoryManager = {
   _batchFilter: 'all',
+  _pendingStageEntry: null,
 
   _setSaveButtonVisible(visible = true) {
     const btn = document.getElementById('save-inventory-btn');
@@ -40,11 +41,125 @@ const InventoryManager = {
     };
   },
   getAll() {
-    return Storage.get(STORAGE_KEYS.INVENTORY) || [];
+    return (Storage.get(STORAGE_KEYS.INVENTORY) || []).map(normalizeInventoryItem);
   },
 
   getByCoffeeId(coffeeId) {
-    return this.getAll().find((i) => i.coffeeId === coffeeId);
+    const item = this.getAll().find((i) => i.coffeeId === coffeeId);
+    return item ? normalizeInventoryItem(item) : undefined;
+  },
+
+  getStageQuantity(item, stageKey) {
+    const stage = INVENTORY_PIPELINE_STAGES[stageKey];
+    if (!stage) return 0;
+    if (stage.isPackaged) return getPackagedUnitsTotal(item.packagedUnits);
+    return item[stage.field] || 0;
+  },
+
+  addStageEntry(coffeeId, stageKey, payload) {
+    const stage = INVENTORY_PIPELINE_STAGES[stageKey];
+    const coffee = CoffeeManager.getById(coffeeId);
+    const item = this.getByCoffeeId(coffeeId);
+    if (!stage || !coffee || !item) return false;
+
+    const {
+      quantity,
+      cost = 0,
+      packaging = '250g',
+      suppliers = {}
+    } = payload;
+
+    const session = Auth.getSession();
+    let changes = {};
+    let auditDetails = {
+      coffeeName: coffee.name,
+      coffeeId,
+      stage: stage.label,
+      stageKey,
+      costPerUnit: cost,
+      supplierName: null
+    };
+
+    if (stage.isPackaged) {
+      const qty = Math.max(0, parseInt(String(quantity), 10) || 0);
+      if (qty <= 0) {
+        Toast.show('Ingrese una cantidad válida de unidades', 'danger');
+        return false;
+      }
+      const nextUnits = { ...item.packagedUnits };
+      nextUnits[packaging] = (nextUnits[packaging] || 0) + qty;
+      changes = { packagedUnits: nextUnits };
+      auditDetails = {
+        ...auditDetails,
+        packaging,
+        quantity: qty,
+        unit: 'uds',
+        totalCost: qty * cost,
+        supplierId: suppliers.empacada || null,
+        supplierName: SupplierManager.getName(suppliers.empacada)
+      };
+    } else {
+      const kg = parseFloat(quantity);
+      if (!kg || kg <= 0) {
+        Toast.show('Ingrese una cantidad válida en kg', 'danger');
+        return false;
+      }
+      changes = { [stage.field]: (item[stage.field] || 0) + kg };
+      const primarySupplier = stage.supplierServices[0];
+      auditDetails = {
+        ...auditDetails,
+        kg,
+        quantity: kg,
+        unit: 'kg',
+        costPerKg: cost,
+        totalCost: kg * cost,
+        supplierId: suppliers[primarySupplier] || null,
+        supplierName: SupplierManager.getName(suppliers[primarySupplier])
+      };
+    }
+
+    this.update(coffeeId, changes, {
+      action: stage.auditAction,
+      entity: coffee.name,
+      details: auditDetails
+    });
+
+    const purchases = Storage.get(STORAGE_KEYS.PURCHASES) || [];
+    purchases.push({
+      id: Storage.generateId(),
+      coffeeId,
+      stageKey,
+      kg: stage.isPackaged ? undefined : auditDetails.kg,
+      packaging: stage.isPackaged ? packaging : undefined,
+      units: stage.isPackaged ? auditDetails.quantity : undefined,
+      costPerKg: stage.isPackaged ? undefined : cost,
+      costPerUnit: stage.isPackaged ? cost : undefined,
+      totalCost: auditDetails.totalCost,
+      stockType: stageKey,
+      supplierId: auditDetails.supplierId,
+      userId: session?.userId,
+      userName: session?.name,
+      date: new Date().toISOString()
+    });
+    Storage.set(STORAGE_KEYS.PURCHASES, purchases);
+
+    Notifications.add(`Entrada registrada: ${stage.shortLabel} · ${coffee.name}`, 'success', {
+      section: 'inventory', entityId: coffeeId, action: 'purchase'
+    });
+    return true;
+  },
+
+  addPurchase(coffeeId, kg, cost, supplierIds = {}) {
+    const coffee = CoffeeManager.getById(coffeeId);
+    if (!coffee) return;
+    const stageKey = getInventoryStageForCoffeeState(coffee.state);
+    const suppliers = typeof supplierIds === 'object' ? supplierIds : { compra: supplierIds };
+    return this.addStageEntry(coffeeId, stageKey, { quantity: kg, cost, suppliers });
+  },
+
+  addRoastedPurchase(coffeeId, kg, cost, supplierIds = {}) {
+    const suppliers = typeof supplierIds === 'object' ? supplierIds : { tostion: supplierIds };
+    return this.addStageEntry(coffeeId, 'roasted', { quantity: kg, cost, suppliers });
   },
 
   update(coffeeId, changes, auditMeta = null, options = {}) {
@@ -67,116 +182,12 @@ const InventoryManager = {
     return inventory[index];
   },
 
-  addPurchase(coffeeId, kg, cost, supplierIds = {}) {
-    const coffee = CoffeeManager.getById(coffeeId);
-    if (coffee?.state === 'tostado') {
-      return this.addRoastedPurchase(coffeeId, kg, cost, supplierIds);
-    }
-
-    const item = this.getByCoffeeId(coffeeId);
-    const coffee = CoffeeManager.getById(coffeeId);
-    if (!item || !coffee) return;
-
-    const coffeeSupplierId = typeof supplierIds === 'string'
-      ? supplierIds
-      : (supplierIds.compra || supplierIds.coffee || null);
-    const transportSupplierId = typeof supplierIds === 'object' ? (supplierIds.transporte || null) : null;
-
-    const newKg = item.greenKg + kg;
-    this.update(coffeeId, { greenKg: newKg }, {
-      action: 'purchase',
-      entity: coffee.name,
-      details: {
-        coffeeName: coffee.name,
-        coffeeId,
-        kg,
-        costPerKg: cost,
-        supplierId: coffeeSupplierId,
-        supplierName: SupplierManager.getName(coffeeSupplierId),
-        transportSupplierId,
-        transportSupplierName: SupplierManager.getName(transportSupplierId)
-      }
-    });
-
-    const purchases = Storage.get(STORAGE_KEYS.PURCHASES) || [];
-    const session = Auth.getSession();
-    purchases.push({
-      id: Storage.generateId(),
-      coffeeId,
-      kg,
-      costPerKg: cost,
-      totalCost: kg * cost,
-      supplierId: coffeeSupplierId,
-      transportSupplierId,
-      userId: session?.userId,
-      userName: session?.name,
-      date: new Date().toISOString()
-    });
-    Storage.set(STORAGE_KEYS.PURCHASES, purchases);
-
-    Notifications.add(`Compra registrada: ${kg}kg por ${session?.name || 'usuario'}`, 'success', {
-      section: 'inventory', entityId: coffeeId, action: 'purchase'
-    });
-    EmailService.sendNotification('Nueva Compra de Café',
-      `Se registró una compra de ${kg}kg de café por ${session?.name || 'usuario'}. Costo: ${formatCurrency(kg * cost)}`);
-  },
-
-  addRoastedPurchase(coffeeId, kg, cost, supplierIds = {}) {
-    const item = this.getByCoffeeId(coffeeId);
-    const coffee = CoffeeManager.getById(coffeeId);
-    if (!item || !coffee) return;
-
-    const coffeeSupplierId = typeof supplierIds === 'string'
-      ? supplierIds
-      : (supplierIds.compra || supplierIds.coffee || null);
-    const transportSupplierId = typeof supplierIds === 'object' ? (supplierIds.transporte || null) : null;
-
-    this.update(coffeeId, { roastedKg: item.roastedKg + kg }, {
-      action: 'purchase_roasted',
-      entity: coffee.name,
-      details: {
-        coffeeName: coffee.name,
-        coffeeId,
-        kg,
-        costPerKg: cost,
-        stockType: 'roasted',
-        supplierId: coffeeSupplierId,
-        supplierName: SupplierManager.getName(coffeeSupplierId),
-        transportSupplierId,
-        transportSupplierName: SupplierManager.getName(transportSupplierId)
-      }
-    });
-
-    const purchases = Storage.get(STORAGE_KEYS.PURCHASES) || [];
-    const session = Auth.getSession();
-    purchases.push({
-      id: Storage.generateId(),
-      coffeeId,
-      kg,
-      costPerKg: cost,
-      totalCost: kg * cost,
-      stockType: 'roasted',
-      supplierId: coffeeSupplierId,
-      transportSupplierId,
-      userId: session?.userId,
-      userName: session?.name,
-      date: new Date().toISOString()
-    });
-    Storage.set(STORAGE_KEYS.PURCHASES, purchases);
-
-    Notifications.add(`Café tostado agregado: ${kg}kg por ${session?.name || 'usuario'}`, 'success', {
-      section: 'inventory', entityId: coffeeId, action: 'purchase'
-    });
-    EmailService.sendNotification('Entrada de Café Tostado',
-      `Se registraron ${kg}kg de café tostado (${coffee.name}) por ${session?.name || 'usuario'}. Costo: ${formatCurrency(kg * cost)}`);
-  },
-
   processRoasting(coffeeId, greenKg, supplierId = null, activeSteps = ['tostion']) {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
 
-    if (coffee.state === 'tostado') {
-      Toast.show('Este café está registrado como tostado. Use "Agregar Café Tostado" para sumar inventario.', 'warning');
+    if (!isGreenCoffeeState(coffee.state)) {
+      Toast.show('Use "Entrada por etapa" para cafés que no están en verde/pergamino.', 'warning');
       return;
     }
 
@@ -214,8 +225,8 @@ const InventoryManager = {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
 
-    if (coffee.state === 'tostado') {
-      Toast.show('Este café ya está en estado tostado. No requiere lote de transformación.', 'warning');
+    if (coffee.state !== 'verde' && coffee.state !== 'pergamino') {
+      Toast.show('Este café ya está en estado procesado. Use "Entrada por etapa".', 'warning');
       return;
     }
 
@@ -274,10 +285,17 @@ const InventoryManager = {
     const item = this.getByCoffeeId(coffeeId);
     if (!coffee || !item) return;
 
-    if (!['greenKg', 'roastedKg'].includes(field)) {
+    if (!['greenKg', 'roastedKg', 'selectedKg', 'groundKg'].includes(field)) {
       Toast.show('Campo de inventario no válido', 'danger');
       return;
     }
+
+    const fieldLabels = {
+      greenKg: 'Café verde',
+      roastedKg: 'Café tostado',
+      selectedKg: 'Café seleccionado',
+      groundKg: 'Café molido'
+    };
 
     const parsed = parseFloat(newValue);
     if (Number.isNaN(parsed) || parsed < 0) {
@@ -291,7 +309,7 @@ const InventoryManager = {
       return;
     }
 
-    const fieldLabel = field === 'greenKg' ? 'Café verde' : 'Café tostado';
+    const fieldLabel = fieldLabels[field] || field;
     this.update(coffeeId, { [field]: parsed }, {
       action: 'adjust',
       entity: coffee.name,
@@ -318,7 +336,10 @@ const InventoryManager = {
     if (!item || !coffee) return;
 
     const threshold = item.minStockKg || settings.lowStockThreshold;
-    const stockKg = coffee.state === 'tostado' ? item.roastedKg : item.greenKg;
+    const stageKey = getInventoryStageForCoffeeState(coffee.state);
+    const stockKg = stageKey === 'packaged'
+      ? getPackagedUnitsTotal(item.packagedUnits)
+      : (item[INVENTORY_PIPELINE_STAGES[stageKey]?.field] ?? item.greenKg);
     if (stockKg > threshold) {
       if (item.lastLowStockAlertAt) {
         this.update(coffeeId, { lastLowStockAlertAt: null }, null, { skipStockCheck: true });
@@ -332,13 +353,14 @@ const InventoryManager = {
 
     this.update(coffeeId, { lastLowStockAlertAt: new Date().toISOString() }, null, { skipStockCheck: true });
 
+    const stageLabel = INVENTORY_PIPELINE_STAGES[stageKey]?.shortLabel || coffee.state;
     Notifications.add(
-      `⚠️ Stock bajo: ${coffee.name} (${formatNumber(stockKg)}kg ${coffee.state === 'tostado' ? 'tostado' : 'verde'} restantes)`,
+      `⚠️ Stock bajo: ${coffee.name} (${formatNumber(stockKg)} ${stageKey === 'packaged' ? 'uds' : 'kg'} ${stageLabel} restantes)`,
       'warning',
       { section: 'inventory', entityId: coffeeId, action: 'purchase' }
     );
     EmailService.sendNotification('Alerta de Stock Bajo',
-      `El café "${coffee.name}" tiene solo ${formatNumber(stockKg)}kg ${coffee.state === 'tostado' ? 'tostado' : 'verde'} en inventario. Se recomienda realizar una nueva entrada.`);
+      `El café "${coffee.name}" tiene solo ${formatNumber(stockKg)} ${stageKey === 'packaged' ? 'unidades' : 'kg'} (${stageLabel}) en inventario. Se recomienda registrar una nueva entrada.`);
   },
 
   checkAllLowStock() {
@@ -361,17 +383,49 @@ const InventoryManager = {
       return;
     }
 
+    const pipelineBar = `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-title">Entrada por Etapa del Proceso</span>
+        </div>
+        <p class="form-hint" style="margin-bottom:12px">Registre café en cualquier punto: llegada, tostión, selección, molienda o empaque.</p>
+        <div class="selection-grid">
+          ${Object.entries(INVENTORY_PIPELINE_STAGES).map(([key, stage]) => `
+            <button type="button" class="selection-btn pipeline-entry-btn" onclick="InventoryManager.showStageEntryForm(null, '${key}')">
+              <span style="font-size:1.4rem">${stage.icon}</span>
+              <strong>${stage.shortLabel}</strong>
+              <small style="opacity:0.75;display:block;margin-top:4px">${stage.label}</small>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
     const cardsHtml = inventory.map((item) => {
       const coffee = coffees.find((c) => c.id === item.coffeeId);
       if (!coffee) return '';
 
-      const isLow = (coffee.state === 'tostado' ? item.roastedKg : item.greenKg)
-        <= (item.minStockKg ?? settings.lowStockThreshold ?? 0);
+      const stageKey = getInventoryStageForCoffeeState(coffee.state);
+      const primaryStock = stageKey === 'packaged'
+        ? getPackagedUnitsTotal(item.packagedUnits)
+        : item[INVENTORY_PIPELINE_STAGES[stageKey]?.field] ?? 0;
+      const isLow = primaryStock <= (item.minStockKg ?? settings.lowStockThreshold ?? 0);
       const stateLabel = COFFEE_STATES[coffee.state]?.label || coffee.state;
-      const mermaInfo = isRoastedCoffeeState(coffee.state)
-        ? { totalLossPercent: '0', details: [] }
-        : ProductionCosts.getMermaDetails(1, coffee.state);
-      const isRoasted = isRoastedCoffeeState(coffee.state);
+      const mermaInfo = isGreenCoffeeState(coffee.state)
+        ? ProductionCosts.getMermaDetails(1, coffee.state)
+        : { totalLossPercent: '0', details: [] };
+
+      const stageStats = Object.entries(INVENTORY_PIPELINE_STAGES).map(([key, stage]) => {
+        const val = stage.isPackaged
+          ? formatPackagedUnitsSummary(item.packagedUnits)
+          : `${formatNumber(item[stage.field] || 0)} kg`;
+        return `
+          <div class="inventory-stage-stat">
+            <div class="stat-label">${stage.icon} ${stage.shortLabel}</div>
+            <div class="stat-value inventory-stat" style="font-size:1rem">${val}</div>
+          </div>
+        `;
+      }).join('');
 
       return `
         <div class="card inventory-card">
@@ -382,35 +436,22 @@ const InventoryManager = {
             </div>
             ${isLow ? '<span class="badge badge-danger">Stock Bajo</span>' : '<span class="badge badge-success">OK</span>'}
           </div>
-          <div class="inventory-stats">
-            <div style="${isRoasted ? 'opacity:0.45' : ''}">
-              <div class="stat-label">Café Verde</div>
-              <div class="stat-value inventory-stat">${formatNumber(item.greenKg)} kg</div>
-            </div>
-            <div>
-              <div class="stat-label">Café Tostado</div>
-              <div class="stat-value inventory-stat">${formatNumber(item.roastedKg)} kg</div>
-            </div>
-            <div>
-              <div class="stat-label">${isRoasted ? 'Estado' : 'Merma Total'}</div>
-              <div class="stat-value inventory-stat">${isRoasted ? 'Tostado' : `${mermaInfo.totalLossPercent}%`}</div>
-            </div>
-          </div>
-          ${isRoasted ? '' : `
+          <div class="inventory-pipeline-stats">${stageStats}</div>
+          ${isGreenCoffeeState(coffee.state) ? `
           <div class="cost-breakdown" style="margin-bottom:16px">
-            <h4 style="margin-bottom:8px;font-size:0.9rem">Mermas de Producción</h4>
+            <h4 style="margin-bottom:8px;font-size:0.9rem">Mermas estimadas (desde verde)</h4>
             ${mermaInfo.details.map((d) => `
               <div class="cost-row">
                 <span class="cost-label">${d.name} (${d.percent}%)</span>
                 <span class="cost-value">-${formatNumber(d.lossKg * 100)}g por kg</span>
               </div>
-            `).join('')}
-          </div>`}
+            `).join('') || '<p class="form-hint">Sin mermas configuradas</p>'}
+          </div>` : ''}
           <div class="action-buttons">
-            <button class="btn btn-sm btn-primary" onclick="InventoryManager.showPurchaseForm('${coffee.id}')">${isRoasted ? 'Agregar Café Tostado' : 'Registrar Compra'}</button>
-            ${isRoasted ? '' : `
-            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showRoastForm('${coffee.id}')">Registrar Tostión</button>
-            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote con Proveedores</button>`}
+            <button class="btn btn-sm btn-primary" onclick="InventoryManager.showStageEntryForm('${coffee.id}')">+ Entrada por Etapa</button>
+            ${isGreenCoffeeState(coffee.state) ? `
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showRoastForm('${coffee.id}')">Transformar (Tostión)</button>
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote con Proveedores</button>` : ''}
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.setBatchFilter('${coffee.id}')">Ver Lotes</button>
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showAdjustForm('${coffee.id}')">Ajustar Stock</button>
           </div>
@@ -419,6 +460,7 @@ const InventoryManager = {
     }).join('');
 
     container.innerHTML = `
+      ${pipelineBar}
       <div class="grid-auto inventory-grid">${cardsHtml}</div>
       <div class="section" style="margin-top:32px">
         <div class="section-header">
@@ -547,43 +589,156 @@ const InventoryManager = {
   },
 
   showPurchaseForm(coffeeId) {
-    this._setSaveButtonVisible(true);
     const coffee = CoffeeManager.getById(coffeeId);
-    const defaults = ProductionCosts.get().defaultSuppliers || {};
-    const coffeeSupplierId = coffee?.supplierId || CoffeeManager.resolveSupplierId(coffee) || defaults.compra || '';
-    const isRoasted = isRoastedCoffeeState(coffee?.state);
-    const modal = document.getElementById('inventory-modal');
-    document.getElementById('inventory-modal-title').textContent = isRoasted
-      ? `Agregar Café Tostado — ${coffee.name}`
-      : `Compra — ${coffee.name}`;
+    const stageKey = coffee ? getInventoryStageForCoffeeState(coffee.state) : 'green';
+    this.showStageEntryForm(coffeeId, stageKey);
+  },
 
-    document.getElementById('inventory-form').innerHTML = `
-      <input type="hidden" id="inv-coffee-id" value="${coffeeId}">
-      <input type="hidden" id="inv-action" value="purchase">
-      ${isRoasted ? `
-        <p class="form-hint" style="margin-bottom:16px">
-          Este café está en estado <strong>Café Tostado</strong>. La entrada se suma directamente al inventario tostado (sin transformación).
-        </p>
-      ` : ''}
-      <div class="form-row">
-        <div class="form-group">
-          <label>Cantidad (kg${isRoasted ? ' tostado' : ''})</label>
-          <input type="number" class="form-control" id="inv-kg" step="0.1" required>
+  showStageEntryForm(coffeeId = null, stageKey = null) {
+    this._setSaveButtonVisible(true);
+    const coffees = CoffeeManager.getAll();
+    const defaults = ProductionCosts.get().defaultSuppliers || {};
+    const modal = document.getElementById('inventory-modal');
+
+    if (coffees.length === 0) {
+      Toast.show('Primero agregue cafés al catálogo', 'warning');
+      return;
+    }
+
+    const coffee = coffeeId ? CoffeeManager.getById(coffeeId) : null;
+    const resolvedStage = stageKey
+      || (coffee ? getInventoryStageForCoffeeState(coffee.state) : 'green');
+    const stage = INVENTORY_PIPELINE_STAGES[resolvedStage];
+    if (!stage) return;
+
+    this._pendingStageEntry = { coffeeId: coffee?.id || null, stageKey: resolvedStage };
+
+    document.getElementById('inventory-modal-title').textContent = coffee
+      ? `Entrada — ${stage.shortLabel} · ${coffee.name}`
+      : `Entrada por Etapa — ${stage.label}`;
+
+    const coffeeOptions = coffees.map((c) => {
+      const stageForCoffee = getInventoryStageForCoffeeState(c.state);
+      const stageLabel = INVENTORY_PIPELINE_STAGES[stageForCoffee]?.shortLabel || c.state;
+      return `<option value="${c.id}" ${coffee?.id === c.id ? 'selected' : ''}>${c.name} (${stageLabel})</option>`;
+    }).join('');
+
+    const stageButtons = Object.entries(INVENTORY_PIPELINE_STAGES).map(([key, s]) => `
+      <button type="button" class="selection-btn stage-pick-btn ${key === resolvedStage ? 'active' : ''}"
+        data-stage="${key}" title="${s.label}">
+        <span style="font-size:1.2rem">${s.icon}</span>
+        <strong>${s.shortLabel}</strong>
+      </button>
+    `).join('');
+
+    const supplierFields = (sk) => {
+      const st = INVENTORY_PIPELINE_STAGES[sk];
+      if (!st) return '';
+      return st.supplierServices.map((serviceKey) => `
+        <div class="form-group stage-supplier-field" data-service="${serviceKey}">
+          <label>${getProcessSupplierLabel(serviceKey)}${serviceKey === 'transporte' ? ' (opcional)' : ''}</label>
+          ${SupplierManager.renderSelect(serviceKey, {
+            id: `inv-supplier-${serviceKey}`,
+            selectedId: serviceKey === 'compra' && coffee
+              ? (coffee.supplierId || CoffeeManager.resolveSupplierId(coffee) || defaults.compra || '')
+              : (defaults[serviceKey] || ''),
+            placeholder: serviceKey === 'transporte' ? 'Sin transporte externo...' : 'Seleccionar proveedor...'
+          })}
         </div>
-        <div class="form-group">
-          <label>Costo por Kg${isRoasted ? ' (tostado)' : ''}</label>
-          <input type="number" class="form-control" id="inv-cost" value="${coffee.pricePerKg}">
+      `).join('');
+    };
+
+    const packagedFields = `
+      <div class="form-group stage-packaged-field" style="display:none">
+        <label>Tamaño de empaque</label>
+        <div class="selection-grid" id="inv-packaging-grid">
+          ${Object.entries(PACKAGING_SIZES).map(([key, val]) => `
+            <button type="button" class="selection-btn ${key === '250g' ? 'active' : ''}" data-value="${key}">${val.label}</button>
+          `).join('')}
         </div>
-      </div>
-      <div class="form-group">
-        <label>Proveedor de Café</label>
-        ${SupplierManager.renderSelect('compra', { id: 'inv-supplier-coffee', selectedId: coffeeSupplierId })}
-      </div>
-      <div class="form-group">
-        <label>Proveedor Logístico (opcional)</label>
-        ${SupplierManager.renderSelect('transporte', { id: 'inv-supplier-transport', selectedId: defaults.transporte || '', placeholder: 'Sin transporte externo...' })}
+        <input type="hidden" id="inv-packaging" value="250g">
       </div>
     `;
+
+    document.getElementById('inventory-form').innerHTML = `
+      <input type="hidden" id="inv-action" value="stage_entry">
+      <input type="hidden" id="inv-stage-key" value="${resolvedStage}">
+      <p class="form-hint" style="margin-bottom:16px">
+        Registre café en cualquier etapa: llegada, tostión, selección, molienda o empaque.
+      </p>
+      <div class="form-group">
+        <label>Café</label>
+        <select class="form-control" id="inv-coffee-id" required>
+          <option value="">Seleccionar café...</option>
+          ${coffeeOptions}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Etapa del proceso</label>
+        <div class="selection-grid" id="inv-stage-grid">${stageButtons}</div>
+      </div>
+      <div id="inv-stage-description" class="form-hint" style="margin-bottom:12px">${stage.label}</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label id="inv-quantity-label">Cantidad (${stage.unit})</label>
+          <input type="number" class="form-control" id="inv-quantity" step="${stage.isPackaged ? '1' : '0.1'}" min="0" required>
+        </div>
+        <div class="form-group">
+          <label id="inv-cost-label">${stage.costLabel}</label>
+          <input type="number" class="form-control" id="inv-cost" value="${coffee?.pricePerKg || ''}" min="0">
+        </div>
+      </div>
+      ${packagedFields}
+      <div id="inv-supplier-fields">${supplierFields(resolvedStage)}</div>
+    `;
+
+    const renderStageUI = (sk) => {
+      const st = INVENTORY_PIPELINE_STAGES[sk];
+      if (!st) return;
+      document.getElementById('inv-stage-key').value = sk;
+      document.getElementById('inv-stage-description').textContent = st.label;
+      document.getElementById('inv-quantity-label').textContent = `Cantidad (${st.unit})`;
+      document.getElementById('inv-cost-label').textContent = st.costLabel;
+      const qtyInput = document.getElementById('inv-quantity');
+      qtyInput.step = st.isPackaged ? '1' : '0.1';
+      qtyInput.value = '';
+      document.querySelector('.stage-packaged-field')?.style.setProperty('display', st.isPackaged ? '' : 'none');
+      document.getElementById('inv-supplier-fields').innerHTML = supplierFields(sk);
+      this._pendingStageEntry = { ...this._pendingStageEntry, stageKey: sk };
+    };
+
+    document.getElementById('inv-stage-grid')?.querySelectorAll('.stage-pick-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.stage-pick-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderStageUI(btn.dataset.stage);
+      });
+    });
+
+    const packagingGrid = document.getElementById('inv-packaging-grid');
+    packagingGrid?.querySelectorAll('.selection-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        packagingGrid.querySelectorAll('.selection-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('inv-packaging').value = btn.dataset.value;
+      });
+    });
+
+    document.getElementById('inv-coffee-id')?.addEventListener('change', (e) => {
+      const selected = CoffeeManager.getById(e.target.value);
+      if (!selected) return;
+      const suggestedStage = getInventoryStageForCoffeeState(selected.state);
+      document.querySelectorAll('.stage-pick-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.stage === suggestedStage);
+      });
+      renderStageUI(suggestedStage);
+      const costInput = document.getElementById('inv-cost');
+      if (costInput && selected.pricePerKg) costInput.value = selected.pricePerKg;
+    });
+
+    if (stage.isPackaged) {
+      document.querySelector('.stage-packaged-field')?.style.setProperty('display', '');
+    }
 
     modal.classList.add('active');
   },
@@ -693,8 +848,10 @@ const InventoryManager = {
       <div class="form-group">
         <label>Tipo de stock</label>
         <div class="selection-grid" id="inv-adjust-field">
-          <button type="button" class="selection-btn active" data-value="greenKg">Café Verde (${formatNumber(item.greenKg)} kg)</button>
-          <button type="button" class="selection-btn" data-value="roastedKg">Café Tostado (${formatNumber(item.roastedKg)} kg)</button>
+          <button type="button" class="selection-btn active" data-value="greenKg">🌱 Verde (${formatNumber(item.greenKg)} kg)</button>
+          <button type="button" class="selection-btn" data-value="roastedKg">🔥 Tostado (${formatNumber(item.roastedKg)} kg)</button>
+          <button type="button" class="selection-btn" data-value="selectedKg">✨ Seleccionado (${formatNumber(item.selectedKg)} kg)</button>
+          <button type="button" class="selection-btn" data-value="groundKg">⚙️ Molido (${formatNumber(item.groundKg)} kg)</button>
         </div>
         <input type="hidden" id="inv-field" value="greenKg">
       </div>
@@ -710,12 +867,18 @@ const InventoryManager = {
 
     const fieldContainer = document.getElementById('inv-adjust-field');
     const fieldHidden = document.getElementById('inv-field');
+    const fieldValues = {
+      greenKg: item.greenKg,
+      roastedKg: item.roastedKg,
+      selectedKg: item.selectedKg,
+      groundKg: item.groundKg
+    };
     fieldContainer?.querySelectorAll('.selection-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         fieldContainer.querySelectorAll('.selection-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         fieldHidden.value = btn.dataset.value;
-        const current = btn.dataset.value === 'greenKg' ? item.greenKg : item.roastedKg;
+        const current = fieldValues[btn.dataset.value] ?? 0;
         document.getElementById('inv-new-value').placeholder = `Actual: ${formatNumber(current)} kg`;
       });
     });
@@ -726,9 +889,34 @@ const InventoryManager = {
 
   saveFromForm() {
     const action = document.getElementById('inv-action').value;
-    const coffeeId = document.getElementById('inv-coffee-id').value;
+    const coffeeIdEl = document.getElementById('inv-coffee-id');
+    const coffeeId = coffeeIdEl?.value;
 
-    if (action === 'purchase') {
+    if (action === 'stage_entry') {
+      if (!coffeeId) {
+        Toast.show('Seleccione un café', 'danger');
+        return;
+      }
+      const stageKey = document.getElementById('inv-stage-key')?.value;
+      const stage = INVENTORY_PIPELINE_STAGES[stageKey];
+      if (!stage) {
+        Toast.show('Etapa no válida', 'danger');
+        return;
+      }
+      const quantity = document.getElementById('inv-quantity')?.value;
+      const cost = parseFloat(document.getElementById('inv-cost')?.value) || 0;
+      const suppliers = {};
+      stage.supplierServices.forEach((serviceKey) => {
+        const el = document.getElementById(`inv-supplier-${serviceKey}`);
+        if (el?.value) suppliers[serviceKey] = el.value;
+      });
+      const payload = { quantity, cost, suppliers };
+      if (stage.isPackaged) {
+        payload.packaging = document.getElementById('inv-packaging')?.value || '250g';
+      }
+      const ok = this.addStageEntry(coffeeId, stageKey, payload);
+      if (!ok) return;
+    } else if (action === 'purchase') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       const cost = parseFloat(document.getElementById('inv-cost').value);
       if (!kg || kg <= 0) {

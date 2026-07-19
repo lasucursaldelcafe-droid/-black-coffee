@@ -1,5 +1,9 @@
 const AUDIT_ACTIONS = {
   purchase: 'Compra',
+  purchase_roasted: 'Entrada tostado',
+  purchase_selected: 'Entrada seleccionado',
+  purchase_ground: 'Entrada molido',
+  purchase_packaged: 'Entrada empacado',
   roast: 'Tostión',
   production_batch: 'Lote de producción',
   adjust: 'Ajuste manual',
@@ -75,6 +79,10 @@ const AuditLog = {
   getActionIcon(action) {
     const icons = {
       purchase: '📥',
+      purchase_roasted: '🔥',
+      purchase_selected: '✨',
+      purchase_ground: '⚙️',
+      purchase_packaged: '📦',
       roast: '🔥',
       production_batch: '⚙️',
       adjust: '✏️',
@@ -92,9 +100,15 @@ const AuditLog = {
     const d = entry.details || {};
     switch (entry.action) {
       case 'purchase':
-        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg)} kg verde${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg${d.stage ? ` (${d.stage})` : ' verde'}${d.costPerKg || d.costPerUnit ? ` · ${formatCurrency(d.costPerKg || d.costPerUnit)}/${d.unit === 'uds' ? 'ud' : 'kg'}` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'purchase_roasted':
-        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg)} kg tostado${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg tostado${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_selected':
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg seleccionado${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_ground':
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg molido${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_packaged':
+        return `${d.coffeeName || entry.entity}: +${d.quantity || 0} uds ${d.packaging || ''}${d.costPerUnit ? ` · ${formatCurrency(d.costPerUnit)}/ud` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'roast':
         return `${d.coffeeName || entry.entity}: ${formatNumber(d.greenKg)} kg verde → ${formatNumber(d.roastedKg)} kg tostado${d.supplierName ? ` · ${d.supplierName}` : ''}`;
       case 'production_batch':

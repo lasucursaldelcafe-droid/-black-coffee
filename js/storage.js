@@ -355,6 +355,9 @@ function getServiceRateUnitLabel(serviceKey) {
 }
 
 function getFullPackSteps(coffeeState) {
+  if (coffeeState === 'molido' || coffeeState === 'seleccionado') {
+    return ['empacada'];
+  }
   if (coffeeState === 'tostado') {
     return ['seleccion', 'empacada'];
   }
@@ -540,17 +543,122 @@ function getQuotationLineItems(quotation) {
 }
 
 const COFFEE_STATES = {
-  verde: { label: 'Café Verde', mermas: ['greenSelection', 'tostion', 'seleccion'] },
-  pergamino: { label: 'Café Pergamino', mermas: ['trilla', 'greenSelection', 'tostion', 'seleccion'] },
+  verde: {
+    label: 'Café Verde',
+    description: 'Llegada en verde — inventario verde',
+    mermas: ['greenSelection', 'tostion', 'seleccion']
+  },
+  pergamino: {
+    label: 'Café Pergamino',
+    description: 'Llegada en pergamino — inventario verde',
+    mermas: ['trilla', 'greenSelection', 'tostion', 'seleccion']
+  },
   tostado: {
     label: 'Café Tostado',
-    description: 'Ya transformado — las entradas van directo al inventario tostado',
+    description: 'Entrada directa a inventario tostado',
     mermas: ['seleccion']
+  },
+  seleccionado: {
+    label: 'Café Seleccionado',
+    description: 'Post-tostión — inventario seleccionado',
+    mermas: []
+  },
+  molido: {
+    label: 'Café Molido',
+    description: 'Listo para empacar — inventario molido',
+    mermas: []
   }
 };
 
+const INVENTORY_PIPELINE_STAGES = {
+  green: {
+    field: 'greenKg',
+    label: 'Llegada — Verde / Pergamino',
+    shortLabel: 'Verde',
+    icon: '🌱',
+    unit: 'kg',
+    costLabel: 'Costo por kg',
+    supplierServices: ['compra', 'transporte'],
+    coffeeStates: ['verde', 'pergamino'],
+    auditAction: 'purchase'
+  },
+  roasted: {
+    field: 'roastedKg',
+    label: 'Tostión',
+    shortLabel: 'Tostado',
+    icon: '🔥',
+    unit: 'kg',
+    costLabel: 'Costo por kg tostado',
+    supplierServices: ['tostion'],
+    coffeeStates: ['tostado'],
+    auditAction: 'purchase_roasted'
+  },
+  selected: {
+    field: 'selectedKg',
+    label: 'Selección Post-Tostión',
+    shortLabel: 'Seleccionado',
+    icon: '✨',
+    unit: 'kg',
+    costLabel: 'Costo por kg',
+    supplierServices: ['seleccion'],
+    coffeeStates: ['seleccionado'],
+    auditAction: 'purchase_selected'
+  },
+  ground: {
+    field: 'groundKg',
+    label: 'Molienda',
+    shortLabel: 'Molido',
+    icon: '⚙️',
+    unit: 'kg',
+    costLabel: 'Costo por kg molido',
+    supplierServices: ['molienda'],
+    coffeeStates: ['molido'],
+    auditAction: 'purchase_ground'
+  },
+  packaged: {
+    field: 'packagedUnits',
+    label: 'Empacado',
+    shortLabel: 'Empacado',
+    icon: '📦',
+    unit: 'uds',
+    isPackaged: true,
+    costLabel: 'Costo por unidad',
+    supplierServices: ['empacada'],
+    coffeeStates: [],
+    auditAction: 'purchase_packaged'
+  }
+};
+
+function normalizeInventoryItem(item) {
+  if (!item) return item;
+  return {
+    ...item,
+    greenKg: item.greenKg ?? 0,
+    roastedKg: item.roastedKg ?? 0,
+    selectedKg: item.selectedKg ?? 0,
+    groundKg: item.groundKg ?? 0,
+    packagedUnits: item.packagedUnits && typeof item.packagedUnits === 'object' ? item.packagedUnits : {}
+  };
+}
+
+function getInventoryStageForCoffeeState(state) {
+  const entry = Object.entries(INVENTORY_PIPELINE_STAGES).find(([, cfg]) => cfg.coffeeStates?.includes(state));
+  return entry ? entry[0] : 'green';
+}
+
+function getPackagedUnitsTotal(packagedUnits) {
+  return Object.values(normalizePackagingMix(packagedUnits || {})).reduce((sum, qty) => sum + qty, 0);
+}
+
+function formatPackagedUnitsSummary(packagedUnits) {
+  const mix = normalizePackagingMix(packagedUnits || {});
+  const entries = Object.entries(mix);
+  if (!entries.length) return '0 uds';
+  return entries.map(([size, qty]) => `${qty} × ${PACKAGING_SIZES[size]?.label || size}`).join(' · ');
+}
+
 function isRoastedCoffeeState(state) {
-  return state === 'tostado';
+  return state === 'tostado' || state === 'seleccionado' || state === 'molido';
 }
 
 function isGreenCoffeeState(state) {

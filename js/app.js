@@ -1,5 +1,6 @@
 const App = {
   currentSection: 'dashboard',
+  _navOptions: null,
 
   init() {
     Auth.init();
@@ -65,7 +66,7 @@ const App = {
           if (action === 'edit' && entityId) SupplierManager.edit(entityId);
           break;
         case 'inventory':
-          if (action === 'purchase' && entityId) InventoryManager.showPurchaseForm(entityId);
+          if (action === 'purchase' && entityId) InventoryManager.showStageEntryForm(entityId);
           else if (action === 'roast' && entityId) InventoryManager.showRoastForm(entityId);
           break;
         case 'sales':
@@ -128,10 +129,26 @@ const App = {
   },
 
   bindNavigation() {
+    this.restoreNavState();
+
+    document.querySelectorAll('.nav-section-toggle').forEach((toggle) => {
+      toggle.addEventListener('click', () => {
+        const section = toggle.closest('.nav-section--collapsible');
+        if (!section) return;
+        section.classList.toggle('expanded');
+        toggle.setAttribute('aria-expanded', section.classList.contains('expanded') ? 'true' : 'false');
+        this.saveNavState();
+      });
+    });
+
     document.querySelectorAll('.nav-item').forEach(item => {
       item.addEventListener('click', () => {
         const section = item.dataset.section;
-        if (section) this.navigateTo(section);
+        if (!section) return;
+        this.navigateTo(section, {
+          inventoryStage: item.dataset.inventoryStage || null,
+          openForm: item.dataset.openForm === 'true'
+        });
       });
     });
 
@@ -206,11 +223,47 @@ const App = {
     });
   },
 
-  navigateTo(section) {
+  saveNavState() {
+    try {
+      const expanded = [...document.querySelectorAll('.nav-section--collapsible.expanded')]
+        .map((el) => el.dataset.navSection)
+        .filter(Boolean);
+      localStorage.setItem('bca_nav_sections', JSON.stringify(expanded));
+    } catch {
+      /* ignore storage errors */
+    }
+  },
+
+  restoreNavState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('bca_nav_sections') || 'null');
+      document.querySelectorAll('.nav-section--collapsible').forEach((el) => {
+        const key = el.dataset.navSection;
+        if (Array.isArray(saved)) {
+          el.classList.toggle('expanded', saved.includes(key));
+        } else {
+          el.classList.add('expanded');
+        }
+        const toggle = el.querySelector('.nav-section-toggle');
+        if (toggle) {
+          toggle.setAttribute('aria-expanded', el.classList.contains('expanded') ? 'true' : 'false');
+        }
+      });
+    } catch {
+      document.querySelectorAll('.nav-section--collapsible').forEach((el) => el.classList.add('expanded'));
+    }
+  },
+
+  navigateTo(section, options = {}) {
     this.currentSection = section;
+    this._navOptions = options;
 
     document.querySelectorAll('.nav-item').forEach(item => {
-      item.classList.toggle('active', item.dataset.section === section);
+      const isSection = item.dataset.section === section;
+      const isStage = options.inventoryStage
+        ? item.dataset.inventoryStage === options.inventoryStage
+        : !item.dataset.inventoryStage;
+      item.classList.toggle('active', isSection && (section !== 'inventory' || !options.inventoryStage || isStage));
     });
 
     document.querySelectorAll('.page-section').forEach(s => {
@@ -234,6 +287,12 @@ const App = {
     document.querySelector('.sidebar')?.classList.remove('open');
     document.getElementById('sidebar-backdrop')?.classList.remove('active');
     this.renderSection(section);
+
+    if (section === 'inventory' && options.openForm && options.inventoryStage) {
+      setTimeout(() => {
+        InventoryManager.showStageEntryForm(null, options.inventoryStage);
+      }, 120);
+    }
   },
 
   renderSection(section) {

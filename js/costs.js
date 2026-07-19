@@ -71,6 +71,18 @@ const ProductionCosts = {
         }
       };
     }
+    if (coffeeState === 'seleccionado' || coffeeState === 'molido') {
+      return {
+        roastedKg: greenKg,
+        mermaDetails: {
+          details: [],
+          inputKg: greenKg,
+          outputKg: greenKg,
+          totalLossKg: 0,
+          totalLossPercent: '0'
+        }
+      };
+    }
 
     let remaining = greenKg;
     const details = [];
@@ -161,7 +173,7 @@ const ProductionCosts = {
     const roastedKgNeeded = pkg.grams / 1000;
 
     let greenKgNeeded = roastedKgNeeded;
-    if (coffee.state === 'tostado') {
+    if (coffee.state === 'tostado' || coffee.state === 'seleccionado' || coffee.state === 'molido') {
       greenKgNeeded = roastedKgNeeded;
     } else if (activeSteps.some((s) => ['tostion', 'seleccion', 'trilla', 'greenSelection'].includes(s))) {
       const { roastedKg } = this.calculateGreenToRoasted(1, coffee.state, activeSteps);
@@ -194,7 +206,10 @@ const ProductionCosts = {
 
         breakdown.administrative.push({
           key: 'compra',
-          label: coffee.state === 'tostado' ? 'Compra de Café Tostado' : 'Compra de Café',
+          label: coffee.state === 'tostado' ? 'Compra de Café Tostado'
+            : coffee.state === 'seleccionado' ? 'Compra de Café Seleccionado'
+            : coffee.state === 'molido' ? 'Compra de Café Molido'
+            : 'Compra de Café',
           cost: coffeeCost,
           detail: `${formatNumber(greenKgNeeded, 3)} kg × ${formatCurrency(coffee.pricePerKg)}`
         });

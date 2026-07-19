@@ -1,4 +1,4 @@
-const DATA_VERSION = 14;
+const DATA_VERSION = 15;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 
@@ -105,6 +105,10 @@ const DataSeed = {
       this.migrateV13ToV14();
       return;
     }
+    if (fromVersion === 14) {
+      this.migrateV14ToV15();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -184,6 +188,15 @@ const DataSeed = {
     if (!Storage.get(STORAGE_KEYS.PROCESS_TEMPLATES)) {
       Storage.set(STORAGE_KEYS.PROCESS_TEMPLATES, []);
     }
+  },
+
+  migrateV14ToV15() {
+    const inventory = (Storage.get(STORAGE_KEYS.INVENTORY) || []).map((item) => normalizeInventoryItem({
+      ...item,
+      selectedKg: item.selectedKg ?? 0,
+      groundKg: item.groundKg ?? 0
+    }));
+    Storage.set(STORAGE_KEYS.INVENTORY, inventory);
   },
 
   backfillLocalSyncMeta() {
@@ -521,6 +534,8 @@ const DataSeed = {
         coffeeId: coffee.id,
         greenKg: 0,
         roastedKg: 0,
+        selectedKg: 0,
+        groundKg: 0,
         packagedUnits: {},
         minStockKg: 0,
         lastUpdated: new Date().toISOString()
