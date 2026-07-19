@@ -164,6 +164,7 @@ const App = {
         if (!section) return;
         this.navigateTo(section, {
           inventoryStage: item.dataset.inventoryStage || null,
+          inventoryTransfer: item.dataset.inventoryTransfer || null,
           openForm: item.dataset.openForm === 'true'
         });
       });
@@ -311,6 +312,12 @@ const App = {
       }, 120);
     }
 
+    if (section === 'inventory' && options.inventoryTransfer) {
+      setTimeout(() => {
+        InventoryManager.showTransformForm(null, options.inventoryTransfer);
+      }, 120);
+    }
+
     PWA.syncMobileNavActive(section);
   },
 
@@ -392,6 +399,19 @@ const App = {
         <p>⚙️ <strong>Configuración inicial pendiente.</strong>
         Complete los datos básicos para desbloquear inventario, cotizaciones y más.
         <button type="button" class="btn btn-sm btn-primary" style="margin-left:8px" onclick="SetupWizard.open({force:true})">Continuar configuración</button></p>
+      </div>`);
+    }
+    if (pendingQuotations > 0) {
+      alerts.push(`<div class="card" style="border-color:var(--warning);margin-bottom:16px">
+        <p>📋 <strong>${pendingQuotations}</strong> cotización(es) pendientes de seguimiento.
+        <a href="#" onclick="App.navigateTo('quotations');return false">Ver cotizaciones</a></p>
+      </div>`);
+    }
+    const pendingPayments = SalesManager.getReportSummary(sales).pendingPayment;
+    if (pendingPayments > 0) {
+      alerts.push(`<div class="card" style="border-color:var(--warning);margin-bottom:16px">
+        <p>💵 <strong>${pendingPayments}</strong> venta(s) pendientes de pago.
+        <a href="#" onclick="App.navigateTo('sales');return false">Ver ventas</a></p>
       </div>`);
     }
     if (lowStockCount > 0) {

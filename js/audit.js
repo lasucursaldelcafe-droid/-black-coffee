@@ -11,9 +11,13 @@ const AUDIT_ACTIONS = {
   delete_quotation: 'Eliminación de cotización',
   delete_supplier: 'Eliminación de proveedor',
   update_inventory: 'Actualización de inventario',
-  sale: 'Venta registrada',
-  delete_sale: 'Eliminación de venta'
-};
+  transfer_green_roasted: 'Transformación · Tostión',
+  transfer_roasted_selected: 'Transformación · Selección',
+  transfer_selected_ground: 'Transformación · Molienda',
+  transfer_ground_packaged: 'Transformación · Empacado',
+  quotation_status: 'Estado cotización',
+  convert_quotation: 'Cotización → Venta',
+  payment_received: 'Pago recibido',
 
 const AuditLog = {
   getAll() {
@@ -91,7 +95,14 @@ const AuditLog = {
       delete_supplier: '🗑️',
       update_inventory: '📦',
       sale: '💰',
-      delete_sale: '🗑️'
+      delete_sale: '🗑️',
+      transfer_green_roasted: '🔥',
+      transfer_roasted_selected: '✨',
+      transfer_selected_ground: '⚙️',
+      transfer_ground_packaged: '📦',
+      quotation_status: '📋',
+      convert_quotation: '🔄',
+      payment_received: '💵'
     };
     return icons[action] || '📝';
   },
@@ -133,6 +144,20 @@ const AuditLog = {
         return `${d.coffeeName || entry.entity}: ${d.quantity} × ${d.packaging || ''} · ${formatCurrency(d.totalRevenue || 0)} · Margen ${formatNumber(d.profitMargin || 0, 1)}% · Vendió: ${d.soldBy || entry.userName}`;
       case 'delete_sale':
         return `Venta eliminada: ${d.coffeeName || entry.entity} (${d.quantity} uds)`;
+      case 'transfer_green_roasted':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg verde → ${formatNumber(d.outputKg)} kg tostado${d.mermaKg ? ` (merma ${formatNumber(d.mermaKg)} kg)` : ''}${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'transfer_roasted_selected':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg tostado → ${formatNumber(d.outputKg)} kg seleccionado${d.mermaKg ? ` (merma ${formatNumber(d.mermaKg)} kg)` : ''}${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}`;
+      case 'transfer_selected_ground':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg seleccionado → ${formatNumber(d.outputKg)} kg molido${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}`;
+      case 'transfer_ground_packaged':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg molido → ${d.outputUnits} uds ${PACKAGING_SIZES[d.packaging]?.label || d.packaging || ''}${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}`;
+      case 'quotation_status':
+        return `${d.number || entry.entity}: ${d.fromStatus || '—'} → ${d.toStatus || '—'}`;
+      case 'convert_quotation':
+        return `${d.number || entry.entity} → venta ${d.saleId ? 'registrada' : ''} · ${formatCurrency(d.totalPrice || 0)}`;
+      case 'payment_received':
+        return `${d.reference || entry.entity}: ${formatCurrency(d.amount || 0)}${d.notes ? ` · ${d.notes}` : ''}`;
       default:
         return d.message || entry.entity || '';
     }

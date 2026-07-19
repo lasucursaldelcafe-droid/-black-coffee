@@ -231,6 +231,209 @@ const InventoryManager = {
     return result;
   },
 
+  recordMovement(payload) {
+    const purchases = Storage.get(STORAGE_KEYS.PURCHASES) || [];
+    const session = Auth.getSession();
+    purchases.unshift({
+      id: Storage.generateId(),
+      type: 'transfer',
+      ...payload,
+      userId: session?.userId,
+      userName: session?.name,
+      date: new Date().toISOString()
+    });
+    if (purchases.length > 500) purchases.length = 500;
+    Storage.set(STORAGE_KEYS.PURCHASES, purchases);
+  },
+
+  calculateTransferOutput(transferKey, inputQty, coffee) {
+    const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
+    const costs = ProductionCosts.get();
+    if (!transfer) return null;
+
+    if (transferKey === 'green_to_roasted') {
+      const result = ProductionCosts.calculateGreenToRoasted(inputQty, coffee.state, ['tostion']);
+      return {
+        outputKg: result.roastedKg,
+        mermaKg: inputQty - result.roastedKg,
+        mermaDetails: result.mermaDetails
+      };
+    }
+
+    if (transfer.isPackaged) {
+      return { outputUnits: inputQty, outputKg: null, mermaKg: 0 };
+    }
+
+    let outputKg = inputQty;
+    if (transfer.mermaKey) {
+      outputKg = applyMermaToKg(inputQty, transfer.mermaKey, costs);
+    }
+    return {
+      outputKg,
+      mermaKg: inputQty - outputKg,
+      mermaDetails: null
+    };
+  },
+
+  calculateTransferCost(transferKey, inputQty, options = {}) {
+    const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
+    if (!transfer?.serviceKey) return 0;
+    const { supplierId, packaging = '250g', clientProvidesPackaging = false } = options;
+
+    if (transfer.isPackaged) {
+      const units = inputQty;
+      const breakdown = ProductionCosts.getPackagingEntryCosts(packaging, supplierId, { clientProvidesPackaging });
+      const material = clientProvidesPackaging ? 0 : (options.materialCost ?? breakdown.materialCost);
+      const labor = options.laborCost ?? breakdown.laborCost;
+      return units * (material + labor);
+    }
+
+    if (transfer.serviceKey === 'molienda') {
+      const rate = SupplierManager.getEffectiveServiceRate('molienda', supplierId, packaging);
+      const lbs = inputQty * 2.20462;
+      return lbs * rate;
+    }
+
+    const rate = SupplierManager.getEffectiveServiceRate(transfer.serviceKey, supplierId, packaging);
+    return inputQty * rate;
+  },
+
+  processStageTransfer(coffeeId, transferKey, inputQty, options = {}) {
+    const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
+    const coffee = CoffeeManager.getById(coffeeId);
+    const item = this.getByCoffeeId(coffeeId);
+    if (!transfer || !coffee || !item) return false;
+
+    const {
+      supplierId = null,
+      packaging = '250g',
+      clientProvidesPackaging = false,
+      materialCost,
+      laborCost,
+      notes = ''
+    } = options;
+
+    if (transfer.requiresGreenCoffee && !isGreenCoffeeState(coffee.state)) {
+      Toast.show('Este café no está en verde/pergamino. Use entrada por etapa si llegó procesado.', 'warning');
+      return false;
+    }
+
+    if (transfer.isPackaged) {
+      const units = Math.max(0, parseInt(String(inputQty), 10) || 0);
+      if (units <= 0) {
+        Toast.show('Ingrese unidades válidas', 'danger');
+        return false;
+      }
+      const grams = PACKAGING_SIZES[packaging]?.grams || 250;
+      const kgNeeded = (units * grams) / 1000;
+      if ((item.groundKg || 0) < kgNeeded) {
+        Toast.show(`Stock molido insuficiente (necesita ${formatNumber(kgNeeded)} kg, hay ${formatNumber(item.groundKg)} kg)`, 'danger');
+        return false;
+      }
+
+      const nextUnits = { ...item.packagedUnits };
+      nextUnits[packaging] = (nextUnits[packaging] || 0) + units;
+      const processCost = this.calculateTransferCost(transferKey, units, {
+        supplierId, packaging, clientProvidesPackaging, materialCost, laborCost
+      });
+
+      this.update(coffeeId, {
+        groundKg: item.groundKg - kgNeeded,
+        packagedUnits: nextUnits
+      }, {
+        action: transfer.auditAction,
+        entity: coffee.name,
+        details: {
+          coffeeName: coffee.name,
+          coffeeId,
+          transferKey,
+          inputKg: kgNeeded,
+          outputUnits: units,
+          packaging,
+          mermaKg: 0,
+          processCost,
+          supplierId,
+          supplierName: SupplierManager.getName(supplierId),
+          notes
+        }
+      });
+
+      this.recordMovement({
+        coffeeId,
+        transferKey,
+        fromStage: transfer.fromStage,
+        toStage: transfer.toStage,
+        inputKg: kgNeeded,
+        outputUnits: units,
+        packaging,
+        processCost,
+        supplierId,
+        notes
+      });
+
+      Notifications.add(`Empacado: ${units} uds · ${coffee.name}`, 'success', {
+        section: 'inventory', entityId: coffeeId
+      });
+      return true;
+    }
+
+    const inputKg = parseFloat(inputQty);
+    if (!inputKg || inputKg <= 0) {
+      Toast.show('Ingrese una cantidad válida', 'danger');
+      return false;
+    }
+
+    const available = item[transfer.fromField] || 0;
+    if (available < inputKg) {
+      Toast.show(`Stock insuficiente en ${INVENTORY_PIPELINE_STAGES[transfer.fromStage]?.shortLabel || transfer.fromStage} (${formatNumber(available)} kg)`, 'danger');
+      return false;
+    }
+
+    const output = this.calculateTransferOutput(transferKey, inputKg, coffee);
+    const outputKg = output.outputKg;
+    const processCost = this.calculateTransferCost(transferKey, inputKg, { supplierId, packaging });
+
+    const changes = {
+      [transfer.fromField]: available - inputKg,
+      [transfer.toField]: (item[transfer.toField] || 0) + outputKg
+    };
+
+    this.update(coffeeId, changes, {
+      action: transfer.auditAction,
+      entity: coffee.name,
+      details: {
+        coffeeName: coffee.name,
+        coffeeId,
+        transferKey,
+        inputKg,
+        outputKg,
+        mermaKg: output.mermaKg,
+        processCost,
+        supplierId,
+        supplierName: SupplierManager.getName(supplierId),
+        notes
+      }
+    });
+
+    this.recordMovement({
+      coffeeId,
+      transferKey,
+      fromStage: transfer.fromStage,
+      toStage: transfer.toStage,
+      inputKg,
+      outputKg,
+      mermaKg: output.mermaKg,
+      processCost,
+      supplierId,
+      notes
+    });
+
+    Notifications.add(`${transfer.label} completada · ${coffee.name}`, 'info', {
+      section: 'inventory', entityId: coffeeId
+    });
+    return true;
+  },
+
   registerProductionBatch(coffeeId, greenKg, processSuppliers = {}) {
     const coffee = CoffeeManager.getById(coffeeId);
     if (!coffee) return;
@@ -403,8 +606,19 @@ const InventoryManager = {
           ${Object.entries(INVENTORY_PIPELINE_STAGES).map(([key, stage]) => `
             <button type="button" class="selection-btn pipeline-entry-btn" onclick="InventoryManager.showStageEntryForm(null, '${key}')">
               <span style="font-size:1.4rem">${stage.icon}</span>
-              <strong>${stage.shortLabel}</strong>
-              <small style="opacity:0.75;display:block;margin-top:4px">${stage.label}</small>
+              <strong>+ ${stage.shortLabel}</strong>
+              <small style="opacity:0.75;display:block;margin-top:4px">Entrada · ${stage.label}</small>
+            </button>
+          `).join('')}
+        </div>
+        <h4 style="margin:20px 0 8px;font-size:0.95rem">Transformar stock (trazabilidad)</h4>
+        <p class="form-hint" style="margin-bottom:12px">Mueva café entre etapas con mermas y costos — igual que tostar, pero para selección, molienda y empaque.</p>
+        <div class="selection-grid">
+          ${Object.values(INVENTORY_STAGE_TRANSFERS).map((t) => `
+            <button type="button" class="selection-btn pipeline-transform-btn" onclick="InventoryManager.showTransformForm(null, '${t.key}')">
+              <span style="font-size:1.4rem">${t.icon}</span>
+              <strong>${t.shortLabel}</strong>
+              <small style="opacity:0.75;display:block;margin-top:4px">${t.label}</small>
             </button>
           `).join('')}
         </div>
@@ -458,12 +672,16 @@ const InventoryManager = {
             `).join('') || '<p class="form-hint">Sin mermas configuradas</p>'}
           </div>` : ''}
           <div class="action-buttons">
-            <button class="btn btn-sm btn-primary" onclick="InventoryManager.showStageEntryForm('${coffee.id}')">+ Entrada por Etapa</button>
+            <button class="btn btn-sm btn-primary" onclick="InventoryManager.showStageEntryForm('${coffee.id}')">+ Entrada</button>
+            ${getAvailableTransfersForItem(item).map((t) => `
+              <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showTransformForm('${coffee.id}', '${t.key}')" title="${t.label}">
+                ${t.icon} ${t.shortLabel}
+              </button>
+            `).join('')}
             ${isGreenCoffeeState(coffee.state) ? `
-            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showRoastForm('${coffee.id}')">Transformar (Tostión)</button>
-            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote con Proveedores</button>` : ''}
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showProductionBatchForm('${coffee.id}')">Lote Proveedores</button>` : ''}
             <button class="btn btn-sm btn-secondary" onclick="InventoryManager.setBatchFilter('${coffee.id}')">Ver Lotes</button>
-            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showAdjustForm('${coffee.id}')">Ajustar Stock</button>
+            <button class="btn btn-sm btn-secondary" onclick="InventoryManager.showAdjustForm('${coffee.id}')">Ajustar</button>
           </div>
         </div>
       `;
@@ -887,42 +1105,179 @@ const InventoryManager = {
   },
 
   showRoastForm(coffeeId) {
+    this.showTransformForm(coffeeId, 'green_to_roasted');
+  },
+
+  showTransformForm(coffeeId = null, transferKey = 'green_to_roasted') {
     this._setSaveButtonVisible(true);
-    const coffee = CoffeeManager.getById(coffeeId);
-    const item = this.getByCoffeeId(coffeeId);
+    const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
+    if (!transfer) return;
+
+    const coffees = CoffeeManager.getAll();
+    if (coffees.length === 0) {
+      Toast.show('Primero agregue cafés al catálogo', 'warning');
+      return;
+    }
+
+    const coffee = coffeeId ? CoffeeManager.getById(coffeeId) : null;
+    const item = coffee ? this.getByCoffeeId(coffee.id) : null;
     const defaults = ProductionCosts.get().defaultSuppliers || {};
     const modal = document.getElementById('inventory-modal');
-    document.getElementById('inventory-modal-title').textContent = `Tostión - ${coffee.name}`;
+
+    document.getElementById('inventory-modal-title').textContent = coffee
+      ? `${transfer.label} · ${coffee.name}`
+      : `Transformar — ${transfer.label}`;
+
+    const coffeeOptions = coffees.map((c) => {
+      const it = this.getByCoffeeId(c.id);
+      const stock = transfer.isPackaged
+        ? `${formatNumber(it?.groundKg || 0)} kg molido`
+        : `${formatNumber(it?.[transfer.fromField] || 0)} kg ${INVENTORY_PIPELINE_STAGES[transfer.fromStage]?.shortLabel || ''}`;
+      return `<option value="${c.id}" ${coffee?.id === c.id ? 'selected' : ''}>${c.name} (${stock})</option>`;
+    }).join('');
+
+    const stockHint = item
+      ? (transfer.isPackaged
+        ? `Stock molido disponible: <strong>${formatNumber(item.groundKg)} kg</strong>`
+        : `Stock ${INVENTORY_PIPELINE_STAGES[transfer.fromStage]?.shortLabel || ''}: <strong>${formatNumber(item[transfer.fromField] || 0)} kg</strong>`)
+      : '';
+
+    const packagedBlock = transfer.isPackaged ? `
+      <div class="form-group">
+        <label>Tamaño de empaque</label>
+        <div class="selection-grid" id="inv-packaging-grid">
+          ${Object.entries(PACKAGING_SIZES).map(([key, val]) => `
+            <button type="button" class="selection-btn ${key === '250g' ? 'active' : ''}" data-value="${key}">${val.label}</button>
+          `).join('')}
+        </div>
+        <input type="hidden" id="inv-packaging" value="250g">
+      </div>
+      <div class="form-group">
+        <label class="toggle-group" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="inv-client-packaging">
+          <span>Cliente aporta empaque</span>
+        </label>
+      </div>
+      <div class="form-row">
+        <div class="form-group" id="inv-material-cost-group">
+          <label>Material / ud</label>
+          <input type="number" class="form-control" id="inv-packaging-material-cost" min="0" step="1">
+        </div>
+        <div class="form-group">
+          <label>MO empacada / ud</label>
+          <input type="number" class="form-control" id="inv-packaging-labor-cost" min="0" step="1">
+        </div>
+      </div>
+      <div id="inv-packaging-cost-preview" class="cost-breakdown" style="margin-bottom:12px"></div>
+    ` : '';
 
     document.getElementById('inventory-form').innerHTML = `
-      <input type="hidden" id="inv-coffee-id" value="${coffeeId}">
-      <input type="hidden" id="inv-action" value="roast">
-      <p style="margin-bottom:16px;color:var(--text-secondary)">Stock verde disponible: <strong>${formatNumber(item.greenKg)} kg</strong></p>
+      <input type="hidden" id="inv-action" value="stage_transfer">
+      <input type="hidden" id="inv-transfer-key" value="${transferKey}">
+      <p class="form-hint" style="margin-bottom:16px">
+        Transformación manual con trazabilidad: descuenta stock de origen, aplica mermas y registra costos.
+        ${stockHint ? `<br>${stockHint}` : ''}
+      </p>
       <div class="form-group">
-        <label>Cantidad a Tostar (kg verde)</label>
-        <input type="number" class="form-control" id="inv-kg" step="0.1" max="${item.greenKg}" required>
+        <label>Café</label>
+        <select class="form-control" id="inv-coffee-id" required>
+          <option value="">Seleccionar café...</option>
+          ${coffeeOptions}
+        </select>
       </div>
       <div class="form-group">
-        <label>Tostador</label>
-        ${SupplierManager.renderSelect('tostion', { id: 'inv-supplier-roast', selectedId: defaults.tostion || '' })}
+        <label>${transfer.isPackaged ? 'Unidades a empacar' : `Cantidad de entrada (${transfer.unit})`}</label>
+        <input type="number" class="form-control" id="inv-transfer-qty" step="${transfer.isPackaged ? '1' : '0.1'}" min="0" required
+          ${item && !transfer.isPackaged ? `max="${item[transfer.fromField] || 0}"` : ''}>
       </div>
-      <div id="roast-preview" style="margin-top:16px"></div>
+      <div class="form-group">
+        <label>${getProcessSupplierLabel(transfer.serviceKey)}</label>
+        ${SupplierManager.renderSelect(transfer.serviceKey, {
+          id: `inv-supplier-${transfer.serviceKey}`,
+          selectedId: defaults[transfer.serviceKey] || ''
+        })}
+      </div>
+      ${packagedBlock}
+      <div class="form-group">
+        <label>Notas (opcional)</label>
+        <textarea class="form-control" id="inv-transfer-notes" rows="2" placeholder="Lote, referencia, observaciones..."></textarea>
+      </div>
+      <div id="transfer-preview" style="margin-top:16px"></div>
     `;
 
-    document.getElementById('inv-kg')?.addEventListener('input', (e) => {
-      const kg = parseFloat(e.target.value);
-      if (kg > 0) {
-        const result = ProductionCosts.calculateGreenToRoasted(kg, coffee.state, ['tostion']);
-        document.getElementById('roast-preview').innerHTML = `
-          <div class="cost-breakdown">
-            <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(kg)} kg verde</span></div>
-            <div class="cost-row"><span class="cost-label">Salida estimada</span><span>${formatNumber(result.roastedKg)} kg tostado</span></div>
-            <div class="cost-row"><span class="cost-label">Merma total</span><span>${formatNumber(kg - result.roastedKg)} kg</span></div>
-          </div>`;
+    const refreshPreview = () => {
+      const cid = document.getElementById('inv-coffee-id')?.value;
+      const qty = parseFloat(document.getElementById('inv-transfer-qty')?.value);
+      const preview = document.getElementById('transfer-preview');
+      if (!preview || !cid || !qty || qty <= 0) {
+        if (preview) preview.innerHTML = '';
+        return;
       }
-    });
+      const c = CoffeeManager.getById(cid);
+      if (!c) return;
+
+      if (transfer.isPackaged) {
+        const packaging = document.getElementById('inv-packaging')?.value || '250g';
+        const grams = PACKAGING_SIZES[packaging]?.grams || 250;
+        const kgNeeded = (qty * grams) / 1000;
+        const supplierId = document.getElementById(`inv-supplier-${transfer.serviceKey}`)?.value || null;
+        const clientProvidesPackaging = document.getElementById('inv-client-packaging')?.checked === true;
+        const cost = this.calculateTransferCost(transferKey, qty, { supplierId, packaging, clientProvidesPackaging });
+        preview.innerHTML = `
+          <div class="cost-breakdown">
+            <div class="cost-row"><span class="cost-label">Café molido requerido</span><span>${formatNumber(kgNeeded)} kg</span></div>
+            <div class="cost-row"><span class="cost-label">Unidades empacadas</span><span>${qty} × ${PACKAGING_SIZES[packaging]?.label || packaging}</span></div>
+            <div class="cost-row"><span class="cost-label">Costo proceso estimado</span><span>${formatCurrency(cost)}</span></div>
+          </div>`;
+        return;
+      }
+
+      const output = this.calculateTransferOutput(transferKey, qty, c);
+      const supplierId = document.getElementById(`inv-supplier-${transfer.serviceKey}`)?.value || null;
+      const cost = this.calculateTransferCost(transferKey, qty, { supplierId });
+      preview.innerHTML = `
+        <div class="cost-breakdown">
+          <div class="cost-row"><span class="cost-label">Entrada</span><span>${formatNumber(qty)} kg</span></div>
+          <div class="cost-row"><span class="cost-label">Salida estimada</span><span>${formatNumber(output.outputKg)} kg</span></div>
+          ${output.mermaKg > 0 ? `<div class="cost-row"><span class="cost-label">Merma</span><span>${formatNumber(output.mermaKg)} kg</span></div>` : ''}
+          <div class="cost-row"><span class="cost-label">Costo proceso estimado</span><span>${formatCurrency(cost)}</span></div>
+        </div>`;
+    };
+
+    document.getElementById('inv-coffee-id')?.addEventListener('change', refreshPreview);
+    document.getElementById('inv-transfer-qty')?.addEventListener('input', refreshPreview);
+    document.getElementById(`inv-supplier-${transfer.serviceKey}`)?.addEventListener('change', refreshPreview);
+
+    if (transfer.isPackaged) {
+      this._packagingCostBound = false;
+      document.getElementById('inv-packaging-grid')?.querySelectorAll('.selection-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.getElementById('inv-packaging-grid').querySelectorAll('.selection-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('inv-packaging').value = btn.dataset.value;
+          this.getPackagingCostFromForm();
+          refreshPreview();
+        });
+      });
+      document.getElementById('inv-client-packaging')?.addEventListener('change', () => {
+        document.getElementById('inv-material-cost-group').style.display =
+          document.getElementById('inv-client-packaging')?.checked ? 'none' : '';
+        this.getPackagingCostFromForm();
+        refreshPreview();
+      });
+      ['inv-packaging-material-cost', 'inv-packaging-labor-cost'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('input', refreshPreview);
+      });
+      const supplierId = defaults.empacada || '';
+      const breakdown = ProductionCosts.getPackagingEntryCosts('250g', supplierId, { clientProvidesPackaging: false });
+      document.getElementById('inv-packaging-material-cost').value = breakdown.materialCost;
+      document.getElementById('inv-packaging-labor-cost').value = breakdown.laborCost;
+      this.bindPackagingCostEvents();
+      this.getPackagingCostFromForm();
+    }
 
     modal.classList.add('active');
+    refreshPreview();
   },
 
   showProductionBatchForm(coffeeId) {
@@ -1075,6 +1430,28 @@ const InventoryManager = {
 
       const ok = this.addStageEntry(coffeeId, stageKey, payload);
       if (!ok) return;
+    } else if (action === 'stage_transfer') {
+      const transferKey = document.getElementById('inv-transfer-key')?.value;
+      const transfer = INVENTORY_STAGE_TRANSFERS[transferKey];
+      if (!coffeeId || !transfer) {
+        Toast.show('Datos de transformación incompletos', 'danger');
+        return;
+      }
+      const qty = document.getElementById('inv-transfer-qty')?.value;
+      const supplierId = document.getElementById(`inv-supplier-${transfer.serviceKey}`)?.value || null;
+      const notes = document.getElementById('inv-transfer-notes')?.value?.trim() || '';
+      const options = { supplierId, notes };
+
+      if (transfer.isPackaged) {
+        const packagedCosts = this.getPackagingCostFromForm();
+        options.packaging = packagedCosts.packaging;
+        options.clientProvidesPackaging = packagedCosts.clientProvidesPackaging;
+        options.materialCost = packagedCosts.materialCost;
+        options.laborCost = packagedCosts.laborCost;
+      }
+
+      const ok = this.processStageTransfer(coffeeId, transferKey, qty, options);
+      if (!ok) return;
     } else if (action === 'purchase') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       const cost = parseFloat(document.getElementById('inv-cost').value);
@@ -1093,7 +1470,7 @@ const InventoryManager = {
         return;
       }
       const supplierId = document.getElementById('inv-supplier-roast')?.value || null;
-      this.processRoasting(coffeeId, kg, supplierId);
+      this.processStageTransfer(coffeeId, 'green_to_roasted', kg, { supplierId });
     } else if (action === 'production_batch') {
       const kg = parseFloat(document.getElementById('inv-kg').value);
       if (!kg || kg <= 0) {

@@ -1,4 +1,4 @@
-const DATA_VERSION = 16;
+const DATA_VERSION = 17;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 const FACTORY_RESET_V16_FLAG = 'bca_factory_reset_v16_done';
@@ -204,9 +204,35 @@ const DataSeed = {
       this.migrateV15ToV16();
       return;
     }
+    if (fromVersion === 16) {
+      this.migrateV16ToV17();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
+  },
+
+  migrateV16ToV17() {
+    const quotations = (Storage.get(STORAGE_KEYS.QUOTATIONS) || []).map((q) => ({
+      ...q,
+      status: q.status || 'pending',
+      paymentStatus: q.paymentStatus || (q.status === 'paid' ? 'paid' : 'pending_payment')
+    }));
+    Storage.set(STORAGE_KEYS.QUOTATIONS, quotations);
+
+    const sales = (Storage.get(STORAGE_KEYS.SALES) || []).map((s) => ({
+      ...s,
+      paymentStatus: s.paymentStatus || 'paid',
+      packagedUnitsUsed: s.packagedUnitsUsed || 0
+    }));
+    Storage.set(STORAGE_KEYS.SALES, sales);
+
+    const purchases = (Storage.get(STORAGE_KEYS.PURCHASES) || []).map((p) => ({
+      ...p,
+      type: p.type || 'entry'
+    }));
+    Storage.set(STORAGE_KEYS.PURCHASES, purchases);
   },
 
   migrateV15ToV16() {

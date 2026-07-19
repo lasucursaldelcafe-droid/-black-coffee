@@ -51,6 +51,7 @@ const SalesManager = {
       sale.userId = session?.userId;
       sale.userName = session?.name || 'Usuario desconocido';
       if (!sale.soldAt) sale.soldAt = sale.createdAt;
+      if (!sale.paymentStatus) sale.paymentStatus = 'pending_payment';
       sales.push(sale);
     } else {
       const index = sales.findIndex((s) => s.id === sale.id);
@@ -68,7 +69,9 @@ const SalesManager = {
       profit: sale.profit,
       profitMargin: sale.profitMargin,
       soldBy: sale.userName,
-      roastedKg: sale.roastedKgUsed
+      roastedKg: sale.roastedKgUsed,
+      paymentStatus: SALE_PAYMENT_STATUSES[sale.paymentStatus]?.label || sale.paymentStatus,
+      quotationNumber: sale.quotationNumber || null
     });
 
     Notifications.add(
@@ -80,6 +83,62 @@ const SalesManager = {
     EmailService.sendSaleNotification(sale);
 
     return sale;
+  },
+
+  getPaymentBadge(status) {
+    const cfg = SALE_PAYMENT_STATUSES[status] || SALE_PAYMENT_STATUSES.pending_payment;
+    return `<span class="badge badge-${cfg.badge}">${cfg.label}</span>`;
+  },
+
+  markAsPaid(saleId, paymentNotes = '') {
+    const sale = this.getById(saleId);
+    if (!sale) return null;
+    const updated = {
+      ...sale,
+      paymentStatus: 'paid',
+      paidAt: new Date().toISOString(),
+      paymentNotes: paymentNotes || sale.paymentNotes || ''
+    };
+    this.save(updated);
+
+    if (sale.quotationId) {
+      const q = QuotationManager.getById(sale.quotationId);
+      if (q && q.status !== 'converted') {
+        QuotationManager.markPaid(sale.quotationId, paymentNotes);
+      }
+    }
+
+    AuditLog.log('payment_received', sale.quotationNumber || sale.coffeeName, {
+      reference: sale.quotationNumber || sale.id,
+      amount: sale.totalRevenue,
+      notes: paymentNotes
+    });
+
+    Notifications.add(`Pago registrado: ${sale.clientName} · ${formatCurrency(sale.totalRevenue)}`, 'success', {
+      section: 'sales', entityId: saleId
+    });
+    return updated;
+  },
+
+  deductInventoryForSale(coffeeId, packaging, quantity, options = {}) {
+    const item = InventoryManager.getByCoffeeId(coffeeId);
+    if (!item) return { ok: true };
+
+    if (options.deductPackaged) {
+      const available = item.packagedUnits?.[packaging] || 0;
+      if (available < quantity) {
+        return {
+          ok: false,
+          message: `Stock empacado insuficiente (${available} uds ${PACKAGING_SIZES[packaging]?.label || packaging}, necesita ${quantity})`
+        };
+      }
+      const nextUnits = { ...item.packagedUnits };
+      nextUnits[packaging] = available - quantity;
+      InventoryManager.update(coffeeId, { packagedUnits: nextUnits }, null, { skipStockCheck: true });
+      return { ok: true, packagedUnitsDeducted: quantity };
+    }
+
+    return { ok: true };
   },
 
   registerSale(data) {
@@ -98,7 +157,15 @@ const SalesManager = {
     );
 
     const item = InventoryManager.getByCoffeeId(data.coffeeId);
-    if (item && metrics.roastedKgUsed > item.roastedKg) {
+    const deductPackaged = data.deductPackaged === true;
+
+    if (deductPackaged) {
+      const packCheck = this.deductInventoryForSale(data.coffeeId, data.packaging, data.quantity, { deductPackaged: true });
+      if (!packCheck.ok) {
+        Toast.show(packCheck.message, 'danger');
+        return null;
+      }
+    } else if (item && metrics.roastedKgUsed > item.roastedKg) {
       Toast.show(
         `Stock tostado insuficiente (disponible: ${formatNumber(item.roastedKg)} kg, necesario: ${formatNumber(metrics.roastedKgUsed)} kg)`,
         'danger'
@@ -122,19 +189,25 @@ const SalesManager = {
       totalCost: metrics.totalCost,
       profit: metrics.profit,
       profitMargin: metrics.profitMargin,
-      roastedKgUsed: metrics.roastedKgUsed,
+      roastedKgUsed: deductPackaged ? 0 : metrics.roastedKgUsed,
+      packagedUnitsUsed: deductPackaged ? data.quantity : 0,
       productionMode: data.costOptions?.productionMode || 'full_pack',
       grindType: data.costOptions?.grindType || 'grano',
       labels: data.costOptions?.labels || ['small'],
       notes: data.notes || '',
       soldAt: data.soldAt || new Date().toISOString(),
       userId: session?.userId,
-      userName: session?.name || 'Usuario desconocido'
+      userName: session?.name || 'Usuario desconocido',
+      quotationId: data.quotationId || null,
+      quotationNumber: data.quotationNumber || null,
+      paymentStatus: data.paymentStatus || 'pending_payment',
+      paidAt: data.paidAt || null,
+      paymentNotes: data.paymentNotes || ''
     };
 
     this.save(sale);
 
-    if (item) {
+    if (item && !deductPackaged && metrics.roastedKgUsed > 0) {
       InventoryManager.update(data.coffeeId, {
         roastedKg: Math.max(0, item.roastedKg - metrics.roastedKgUsed)
       });
@@ -148,10 +221,16 @@ const SalesManager = {
     if (!sale) return;
 
     const item = InventoryManager.getByCoffeeId(sale.coffeeId);
-    if (item && sale.roastedKgUsed) {
-      InventoryManager.update(sale.coffeeId, {
-        roastedKg: item.roastedKg + sale.roastedKgUsed
-      });
+    if (item) {
+      if (sale.packagedUnitsUsed > 0 && sale.packaging) {
+        const nextUnits = { ...item.packagedUnits };
+        nextUnits[sale.packaging] = (nextUnits[sale.packaging] || 0) + sale.packagedUnitsUsed;
+        InventoryManager.update(sale.coffeeId, { packagedUnits: nextUnits });
+      } else if (sale.roastedKgUsed) {
+        InventoryManager.update(sale.coffeeId, {
+          roastedKg: item.roastedKg + sale.roastedKgUsed
+        });
+      }
     }
 
     Storage.deleteFromList(STORAGE_KEYS.SALES, id);
@@ -181,8 +260,16 @@ const SalesManager = {
     const totalProfit = list.reduce((sum, s) => sum + s.profit, 0);
     const totalUnits = list.reduce((sum, s) => sum + s.quantity, 0);
     const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    const pendingPayment = list.filter((s) => s.paymentStatus !== 'paid').length;
+    const paidCount = list.filter((s) => s.paymentStatus === 'paid').length;
+    const pendingAmount = list
+      .filter((s) => s.paymentStatus !== 'paid')
+      .reduce((sum, s) => sum + s.totalRevenue, 0);
 
-    return { totalRevenue, totalCost, totalProfit, totalUnits, avgMargin, count: list.length };
+    return {
+      totalRevenue, totalCost, totalProfit, totalUnits, avgMargin,
+      count: list.length, pendingPayment, paidCount, pendingAmount
+    };
   },
 
   renderDashboard(container) {
@@ -200,12 +287,12 @@ const SalesManager = {
           <div class="stat-label">Ingresos Totales</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" style="color:var(--success)">${formatCurrency(summary.totalProfit)}</div>
-          <div class="stat-label">Utilidad Total</div>
+          <div class="stat-value" style="color:var(--warning)">${summary.pendingPayment}</div>
+          <div class="stat-label">Pendientes de pago (${formatCurrency(summary.pendingAmount)})</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">${formatNumber(summary.avgMargin, 1)}%</div>
-          <div class="stat-label">Margen Promedio</div>
+          <div class="stat-value" style="color:var(--success)">${formatCurrency(summary.totalProfit)}</div>
+          <div class="stat-label">Utilidad · ${summary.paidCount} pagadas</div>
         </div>
       </div>
     `;
@@ -242,6 +329,8 @@ const SalesManager = {
                 <th>Costo</th>
                 <th>Utilidad</th>
                 <th>Margen</th>
+                <th>Pago</th>
+                <th>Cotización</th>
                 <th>Vendió</th>
                 <th></th>
               </tr>
@@ -264,6 +353,11 @@ const SalesManager = {
                       ${formatNumber(s.profitMargin, 1)}%
                     </span>
                   </td>
+                  <td>
+                    ${this.getPaymentBadge(s.paymentStatus || 'pending_payment')}
+                    ${s.paymentStatus !== 'paid' ? `<button class="btn btn-sm btn-success" style="margin-left:4px" onclick="SalesManager.markAsPaid('${s.id}');App.renderSection('sales')">✓ Pago</button>` : ''}
+                  </td>
+                  <td>${s.quotationNumber ? `<span class="badge badge-neutral">${s.quotationNumber}</span>` : '—'}</td>
                   <td>${s.userName}</td>
                   <td>
                     <button class="btn btn-sm btn-danger" onclick="SalesManager.confirmDelete('${s.id}')">Eliminar</button>
@@ -348,6 +442,26 @@ const SalesManager = {
       </div>
 
       <div class="form-group">
+        <label>Estado de pago</label>
+        <div class="selection-grid" id="sale-payment-status">
+          ${Object.entries(SALE_PAYMENT_STATUSES).map(([key, val]) => `
+            <button type="button" class="selection-btn ${key === 'pending_payment' ? 'active' : ''}" data-value="${key}">${val.label}</button>
+          `).join('')}
+        </div>
+        <input type="hidden" id="sale-payment-status-value" value="pending_payment">
+      </div>
+
+      <div class="form-group">
+        <label>Descontar de inventario</label>
+        <div class="selection-grid" id="sale-deduct-mode">
+          <button type="button" class="selection-btn active" data-value="packaged">Empacado (uds)</button>
+          <button type="button" class="selection-btn" data-value="roasted">Tostado (kg)</button>
+        </div>
+        <input type="hidden" id="sale-deduct-mode-value" value="packaged">
+        <p class="form-hint">Use <strong>Empacado</strong> cuando el producto ya está en bolsas; <strong>Tostado</strong> para venta a granel.</p>
+      </div>
+
+      <div class="form-group">
         <label>Notas</label>
         <textarea class="form-control" id="sale-notes" rows="2" placeholder="Observaciones de la venta..."></textarea>
       </div>
@@ -363,6 +477,8 @@ const SalesManager = {
   bindFormEvents() {
     this.bindSingleSelect('sale-packaging', 'sale-packaging-value');
     this.bindSingleSelect('sale-grind', 'sale-grind-value');
+    this.bindSingleSelect('sale-payment-status', 'sale-payment-status-value');
+    this.bindSingleSelect('sale-deduct-mode', 'sale-deduct-mode-value');
 
     ['sale-coffee', 'sale-quantity', 'sale-unit-price'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', () => this.updatePreview());
@@ -456,6 +572,8 @@ const SalesManager = {
     }
 
     const soldAt = saleDate ? new Date(`${saleDate}T12:00:00`).toISOString() : new Date().toISOString();
+    const paymentStatus = document.getElementById('sale-payment-status-value')?.value || 'pending_payment';
+    const deductMode = document.getElementById('sale-deduct-mode-value')?.value || 'packaged';
 
     const sale = this.registerSale({
       coffeeId,
@@ -465,7 +583,10 @@ const SalesManager = {
       unitPrice,
       soldAt,
       notes,
-      costOptions: this.getFormCostOptions()
+      paymentStatus,
+      paidAt: paymentStatus === 'paid' ? soldAt : null,
+      costOptions: this.getFormCostOptions(),
+      deductPackaged: deductMode === 'packaged'
     });
 
     if (!sale) return;

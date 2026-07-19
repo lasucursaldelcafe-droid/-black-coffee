@@ -38,7 +38,8 @@ const QuotationManager = {
       quotation.id = Storage.generateId();
       quotation.number = `COT-${String(quotations.length + 1).padStart(4, '0')}`;
       quotation.createdAt = new Date().toISOString();
-      quotation.status = 'pending';
+      quotation.status = quotation.status || 'pending';
+      quotation.paymentStatus = quotation.paymentStatus || 'pending_payment';
       quotations.push(quotation);
     } else {
       const index = quotations.findIndex((q) => q.id === quotation.id);
@@ -51,6 +52,129 @@ const QuotationManager = {
     });
     EmailService.sendQuotation(quotation);
     return quotation;
+  },
+
+  updateStatus(id, status, extra = {}) {
+    const q = this.getById(id);
+    if (!q) return null;
+    const prev = q.status;
+    const updated = {
+      ...q,
+      status,
+      ...extra,
+      statusUpdatedAt: new Date().toISOString()
+    };
+    const list = this.getAll().map((item) => (item.id === id ? updated : item));
+    Storage.set(STORAGE_KEYS.QUOTATIONS, list);
+
+    AuditLog.log('quotation_status', q.number, {
+      number: q.number,
+      clientName: q.clientName,
+      fromStatus: QUOTATION_STATUSES[prev]?.label || prev,
+      toStatus: QUOTATION_STATUSES[status]?.label || status
+    });
+
+    Notifications.add(`Cotización ${q.number}: ${QUOTATION_STATUSES[status]?.label || status}`, 'info', {
+      section: 'quotations', entityId: id, action: 'view'
+    });
+    return updated;
+  },
+
+  markPendingPayment(id) {
+    return this.updateStatus(id, 'pending_payment');
+  },
+
+  markPaid(id, paymentNotes = '') {
+    if (paymentNotes === '' && typeof window !== 'undefined') {
+      const input = window.prompt('Notas de pago (opcional):', '');
+      if (input === null) return null;
+      paymentNotes = input;
+    }
+    const q = this.updateStatus(id, 'paid', {
+      paymentStatus: 'paid',
+      paidAt: new Date().toISOString(),
+      paymentNotes
+    });
+    if (q) {
+      AuditLog.log('payment_received', q.number, {
+        reference: q.number,
+        amount: q.totalPrice,
+        notes: paymentNotes
+      });
+    }
+    return q;
+  },
+
+  markCancelled(id) {
+    return this.updateStatus(id, 'cancelled');
+  },
+
+  convertToSale(id) {
+    const q = this.getById(id);
+    if (!q) return null;
+    if (q.status === 'converted' && q.saleId) {
+      Toast.show('Esta cotización ya fue convertida a venta', 'warning');
+      return SalesManager.getById(q.saleId);
+    }
+    if (q.status === 'cancelled') {
+      Toast.show('No se puede convertir una cotización cancelada', 'danger');
+      return null;
+    }
+
+    const lineItems = getQuotationLineItems(q);
+    if (lineItems.length === 0) {
+      Toast.show('La cotización no tiene líneas de producto', 'danger');
+      return null;
+    }
+
+    const primaryLine = lineItems[0];
+    const packaging = primaryLine.packaging || q.packaging || '250g';
+    const quantity = q.quantity || primaryLine.quantity || 1;
+    const unitPrice = primaryLine.unitPrice || q.unitPrice || 0;
+
+    const sale = SalesManager.registerSale({
+      coffeeId: q.coffeeId,
+      clientId: q.clientId,
+      packaging,
+      quantity,
+      unitPrice,
+      notes: q.notes ? `Desde cotización ${q.number}. ${q.notes}` : `Desde cotización ${q.number}`,
+      quotationId: q.id,
+      quotationNumber: q.number,
+      paymentStatus: q.status === 'paid' || q.paymentStatus === 'paid' ? 'paid' : 'pending_payment',
+      paidAt: q.paidAt || null,
+      costOptions: {
+        productionMode: q.productionMode || 'full_pack',
+        labels: q.labels || parseLabelSelection(q.label),
+        grindType: q.grindType || 'grano',
+        maquilaSteps: q.maquilaSteps || [],
+        clientProvidesCoffee: q.clientProvidesCoffee,
+        clientProvidesPackaging: q.clientProvidesPackaging
+      },
+      deductPackaged: true
+    });
+
+    if (!sale) return null;
+
+    this.updateStatus(id, 'converted', {
+      saleId: sale.id,
+      convertedAt: new Date().toISOString()
+    });
+
+    AuditLog.log('convert_quotation', q.number, {
+      number: q.number,
+      saleId: sale.id,
+      totalPrice: q.totalPrice,
+      clientName: q.clientName
+    });
+
+    Toast.show(`Cotización ${q.number} convertida a venta`, 'success');
+    return sale;
+  },
+
+  getStatusBadge(status) {
+    const cfg = QUOTATION_STATUSES[status] || QUOTATION_STATUSES.pending;
+    return `<span class="badge badge-${cfg.badge}">${cfg.label}</span>`;
   },
 
   createForCoffee(coffeeId) {
@@ -873,6 +997,7 @@ const QuotationManager = {
               <th>Costo Int.</th>
               <th>Utilidad</th>
               <th>Margen</th>
+              <th>Estado</th>
               <th>Fecha</th>
               <th>Acciones</th>
             </tr>
@@ -898,11 +1023,15 @@ const QuotationManager = {
                     ${formatNumber(metrics.profitMargin, 1)}%
                   </span>
                 </td>
+                <td>${this.getStatusBadge(q.status || 'pending')}</td>
                 <td>${formatDate(q.createdAt)}</td>
                 <td>
                   <div class="action-buttons">
-                    <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF Cliente</button>
+                    <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF</button>
                     <button class="btn btn-sm btn-secondary" onclick="QuotationManager.view('${q.id}')">Ver</button>
+                    ${q.status !== 'converted' && q.status !== 'cancelled' ? `
+                      <button class="btn btn-sm btn-success" onclick="QuotationManager.convertToSale('${q.id}');App.renderSection('quotations')">→ Venta</button>
+                    ` : ''}
                     <button class="btn btn-sm btn-secondary" onclick="QuotationManager.viewInternal('${q.id}')">Costos</button>
                     <button class="btn btn-sm btn-danger" onclick="QuotationManager.confirmDelete('${q.id}')">Eliminar</button>
                   </div>
@@ -923,7 +1052,17 @@ const QuotationManager = {
     document.getElementById('quotation-view-content').innerHTML = this.renderClientQuotationHTML(q);
     const footer = modal.querySelector('.modal-footer');
     if (footer) {
+      const status = q.status || 'pending';
+      const statusActions = status !== 'converted' && status !== 'cancelled' ? `
+        ${status === 'pending' ? `<button class="btn btn-secondary" onclick="QuotationManager.markPendingPayment('${q.id}');QuotationManager.view('${q.id}')">Marcar pendiente de pago</button>` : ''}
+        ${status === 'pending_payment' ? `<button class="btn btn-success" onclick="QuotationManager.markPaid('${q.id}');QuotationManager.view('${q.id}')">Marcar pagada</button>` : ''}
+        ${status === 'paid' || status === 'pending_payment' || status === 'pending' ? `<button class="btn btn-primary" onclick="QuotationManager.convertToSale('${q.id}');document.getElementById('quotation-view-modal').classList.remove('active');App.renderSection('quotations')">Convertir a venta</button>` : ''}
+        <button class="btn btn-danger btn-sm" onclick="QuotationManager.markCancelled('${q.id}');QuotationManager.view('${q.id}')">Cancelar</button>
+      ` : (q.saleId ? `<button class="btn btn-secondary" onclick="App.navigateTo('sales')">Ver ventas</button>` : '');
+
       footer.innerHTML = `
+        <div style="margin-right:auto">${this.getStatusBadge(status)}</div>
+        ${statusActions}
         <button class="btn btn-danger" onclick="QuotationManager.confirmDelete('${q.id}')">Eliminar</button>
         <button class="btn btn-secondary" onclick="QuotationManager.viewInternal('${q.id}')">Análisis interno</button>
         <button class="btn btn-secondary" data-modal-close>Cerrar</button>

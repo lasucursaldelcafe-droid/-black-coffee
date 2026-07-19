@@ -499,6 +499,96 @@ const CLIENT_TYPES = {
   distribuidor: { label: 'Distribuidor', multiplier: 0.75 }
 };
 
+const QUOTATION_STATUSES = {
+  pending: { label: 'Pendiente', badge: 'neutral' },
+  pending_payment: { label: 'Pendiente de pago', badge: 'warning' },
+  paid: { label: 'Pagada', badge: 'success' },
+  converted: { label: 'Convertida a venta', badge: 'success' },
+  cancelled: { label: 'Cancelada', badge: 'danger' }
+};
+
+const SALE_PAYMENT_STATUSES = {
+  pending_payment: { label: 'Pendiente de pago', badge: 'warning' },
+  paid: { label: 'Pagada', badge: 'success' }
+};
+
+/** Transferencias manuales entre etapas de inventario (deduce origen, suma destino) */
+const INVENTORY_STAGE_TRANSFERS = {
+  green_to_roasted: {
+    key: 'green_to_roasted',
+    label: 'Tostión',
+    shortLabel: 'Tostar',
+    icon: '🔥',
+    fromStage: 'green',
+    toStage: 'roasted',
+    fromField: 'greenKg',
+    toField: 'roastedKg',
+    unit: 'kg',
+    serviceKey: 'tostion',
+    mermaSteps: ['tostion'],
+    auditAction: 'transfer_green_roasted',
+    requiresGreenCoffee: true
+  },
+  roasted_to_selected: {
+    key: 'roasted_to_selected',
+    label: 'Selección Post-Tostión',
+    shortLabel: 'Seleccionar',
+    icon: '✨',
+    fromStage: 'roasted',
+    toStage: 'selected',
+    fromField: 'roastedKg',
+    toField: 'selectedKg',
+    unit: 'kg',
+    serviceKey: 'seleccion',
+    mermaKey: 'seleccion',
+    auditAction: 'transfer_roasted_selected'
+  },
+  selected_to_ground: {
+    key: 'selected_to_ground',
+    label: 'Molienda',
+    shortLabel: 'Moler',
+    icon: '⚙️',
+    fromStage: 'selected',
+    toStage: 'ground',
+    fromField: 'selectedKg',
+    toField: 'groundKg',
+    unit: 'kg',
+    serviceKey: 'molienda',
+    auditAction: 'transfer_selected_ground'
+  },
+  ground_to_packaged: {
+    key: 'ground_to_packaged',
+    label: 'Empacado',
+    shortLabel: 'Empacar',
+    icon: '📦',
+    fromStage: 'ground',
+    toStage: 'packaged',
+    fromField: 'groundKg',
+    toField: 'packagedUnits',
+    unit: 'uds',
+    serviceKey: 'empacada',
+    isPackaged: true,
+    auditAction: 'transfer_ground_packaged'
+  }
+};
+
+function getAvailableTransfersForItem(item) {
+  if (!item) return [];
+  return Object.values(INVENTORY_STAGE_TRANSFERS).filter((transfer) => {
+    if (transfer.isPackaged) {
+      return (item.groundKg || 0) > 0;
+    }
+    const available = item[transfer.fromField] || 0;
+    return available > 0;
+  });
+}
+
+function applyMermaToKg(inputKg, mermaKey, costs) {
+  if (!mermaKey || !inputKg) return inputKg;
+  const pct = costs?.mermas?.[mermaKey] || 0;
+  return inputKg * (1 - pct / 100);
+}
+
 const PACKAGING_SIZES = {
   '250g': { label: '250 gramos', grams: 250 },
   '500g': { label: '500 gramos', grams: 500 },
