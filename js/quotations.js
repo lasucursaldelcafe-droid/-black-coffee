@@ -11,8 +11,7 @@ const QuotationManager = {
     const quotation = this.getById(id);
     if (!quotation) return;
 
-    const quotations = this.getAll().filter((q) => q.id !== id);
-    Storage.set(STORAGE_KEYS.QUOTATIONS, quotations);
+    Storage.deleteFromList(STORAGE_KEYS.QUOTATIONS, id);
 
     AuditLog.log('delete_quotation', quotation.number, {
       number: quotation.number,

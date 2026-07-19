@@ -92,11 +92,10 @@ const CoffeeManager = {
     const coffee = this.getById(id);
     if (!coffee) return;
 
-    const coffees = this.getAll().filter((c) => c.id !== id);
-    Storage.set(STORAGE_KEYS.COFFEES, coffees);
+    Storage.deleteFromList(STORAGE_KEYS.COFFEES, id);
 
     const inventory = (Storage.get(STORAGE_KEYS.INVENTORY) || []).filter((i) => i.coffeeId !== id);
-    Storage.set(STORAGE_KEYS.INVENTORY, inventory);
+    Storage.set(STORAGE_KEYS.INVENTORY, inventory, { immediate: true });
 
     AuditLog.log('delete_coffee', coffee.name, { coffeeName: coffee.name, coffeeId: id });
     Notifications.add(`Café "${coffee.name}" eliminado`, 'warning', { section: 'coffees' });

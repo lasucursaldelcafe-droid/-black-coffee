@@ -28,8 +28,7 @@ const ClientManager = {
   },
 
   delete(id) {
-    const clients = this.getAll().filter(c => c.id !== id);
-    Storage.set(STORAGE_KEYS.CLIENTS, clients);
+    Storage.deleteFromList(STORAGE_KEYS.CLIENTS, id);
     Notifications.add('Cliente eliminado', 'warning', { section: 'clients' });
   },
 

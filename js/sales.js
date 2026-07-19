@@ -154,8 +154,7 @@ const SalesManager = {
       });
     }
 
-    const sales = this.getAll().filter((s) => s.id !== id);
-    Storage.set(STORAGE_KEYS.SALES, sales);
+    Storage.deleteFromList(STORAGE_KEYS.SALES, id);
 
     AuditLog.log('delete_sale', sale.coffeeName, {
       coffeeName: sale.coffeeName,

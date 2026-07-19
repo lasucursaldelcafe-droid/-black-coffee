@@ -1,10 +1,11 @@
-const DATA_VERSION = 9;
+const DATA_VERSION = 10;
 const DATA_VERSION_KEY = 'bca_data_version';
 const SUPPLIER_TEMPLATES_FLAG = 'bca_supplier_templates_initialized';
 
 const DataSeed = {
   init() {
     this.repairStorage();
+    this.purgeDeletedFromStorage();
     const storedVersion = Storage.get(DATA_VERSION_KEY);
     if (storedVersion !== DATA_VERSION) {
       this.migrate(storedVersion);
@@ -17,7 +18,6 @@ const DataSeed = {
     this.seedClients();
     this.seedSuppliers();
     this.seedInventory();
-    this.ensureTransformationSuppliersOnce();
     this.linkCoffeeSuppliers();
   },
 
@@ -85,6 +85,10 @@ const DataSeed = {
       this.migrateV8ToV9();
       return;
     }
+    if (fromVersion === 9) {
+      this.migrateV9ToV10();
+      return;
+    }
     if (fromVersion !== DATA_VERSION) {
       console.warn(`Migración desconocida desde versión ${fromVersion}`);
     }
@@ -132,15 +136,10 @@ const DataSeed = {
   },
 
   migrateV8ToV9() {
-    // Marca plantillas como ya aplicadas; evita reinsertar proveedores borrados en cada F5
     Storage.set(SUPPLIER_TEMPLATES_FLAG, true);
   },
 
-  ensureTransformationSuppliersOnce() {
-    if (Storage.get(SUPPLIER_TEMPLATES_FLAG)) {
-      return;
-    }
-    this.ensureTransformationSuppliers();
+  migrateV9ToV10() {
     Storage.set(SUPPLIER_TEMPLATES_FLAG, true);
   },
 
@@ -374,6 +373,9 @@ const DataSeed = {
 
     templates.forEach((template) => {
       const serviceKey = template.services[0];
+      if (Storage.isSupplierServiceDismissed(serviceKey)) {
+        return;
+      }
       const exists = suppliers.some((s) =>
         s.services?.includes(serviceKey) || (serviceKey === 'transporte' && s.category === 'logistics')
       );

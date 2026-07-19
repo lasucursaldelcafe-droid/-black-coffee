@@ -295,8 +295,16 @@ const SupplierManager = {
 
   delete(id) {
     const supplier = this.getById(id);
-    const suppliers = this.getAll().filter((s) => s.id !== id);
-    Storage.set(STORAGE_KEYS.SUPPLIERS, suppliers);
+    const dismissServices = [];
+    if (supplier?.services?.length) {
+      dismissServices.push(...supplier.services);
+    } else if (supplier?.category === 'logistics') {
+      dismissServices.push('transporte');
+    }
+
+    Storage.deleteFromList(STORAGE_KEYS.SUPPLIERS, id, {
+      dismissSupplierServices: dismissServices
+    });
 
     if (supplier) {
       const coffees = CoffeeManager.getAll().map((coffee) => (

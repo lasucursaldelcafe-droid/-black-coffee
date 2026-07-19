@@ -1,5 +1,7 @@
 const LOCAL_SYNC_META_KEY = 'bca_local_sync_meta';
 const DEVICE_ID_KEY = 'bca_device_id';
+const DELETED_RECORDS_KEY = 'bca_deleted_records';
+const DISMISSED_SUPPLIER_SERVICES_KEY = 'bca_dismissed_supplier_services';
 
 const STORAGE_KEYS = {
   USERS: 'bca_users',
@@ -16,14 +18,110 @@ const STORAGE_KEYS = {
   SETTINGS: 'bca_settings',
   COSTS_CHECKED: 'bca_costs_checked_date',
   AUDIT_LOG: 'bca_audit_log',
-  PRODUCTION_BATCHES: 'bca_production_batches'
+  PRODUCTION_BATCHES: 'bca_production_batches',
+  DELETED_RECORDS: DELETED_RECORDS_KEY,
+  DISMISSED_SUPPLIER_SERVICES: DISMISSED_SUPPLIER_SERVICES_KEY
 };
 
+const TOMBSTONE_LIST_KEYS = new Set([
+  STORAGE_KEYS.COFFEES,
+  STORAGE_KEYS.CLIENTS,
+  STORAGE_KEYS.SUPPLIERS,
+  STORAGE_KEYS.QUOTATIONS,
+  STORAGE_KEYS.SALES,
+  STORAGE_KEYS.INVENTORY,
+  STORAGE_KEYS.PURCHASES,
+  STORAGE_KEYS.PRODUCTION_BATCHES,
+  STORAGE_KEYS.NOTIFICATIONS
+]);
+
 const Storage = {
-  get(key) {
+  getRaw(key) {
     try {
       const data = localStorage.getItem(key);
       return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  getDeletedIds(key) {
+    const tomb = this.getRaw(DELETED_RECORDS_KEY) || {};
+    return new Set(tomb[key] || []);
+  },
+
+  recordDeletion(key, id) {
+    if (!id) return;
+
+    const tomb = this.getRaw(DELETED_RECORDS_KEY) || {};
+    if (!tomb[key]) tomb[key] = [];
+    if (tomb[key].includes(id)) return;
+
+    tomb[key] = [...tomb[key], id].slice(-500);
+    localStorage.setItem(DELETED_RECORDS_KEY, JSON.stringify(tomb));
+    this.markLocalWrite(DELETED_RECORDS_KEY);
+
+    if (typeof FirebaseSync !== 'undefined') {
+      FirebaseSync.queuePush(DELETED_RECORDS_KEY, tomb);
+      if (FirebaseSync.isEnabled()) {
+        FirebaseSync.pushKeyNow(DELETED_RECORDS_KEY).catch(() => {});
+      }
+    }
+  },
+
+  filterDeleted(key, items) {
+    if (!Array.isArray(items)) return items;
+    const deleted = this.getDeletedIds(key);
+    if (deleted.size === 0) return items;
+    return items.filter((item) => !item?.id || !deleted.has(item.id));
+  },
+
+  dismissSupplierService(serviceKey) {
+    if (!serviceKey) return;
+    const list = this.getRaw(DISMISSED_SUPPLIER_SERVICES_KEY) || [];
+    if (list.includes(serviceKey)) return;
+    const next = [...list, serviceKey];
+    this.set(DISMISSED_SUPPLIER_SERVICES_KEY, next, { immediate: true });
+  },
+
+  isSupplierServiceDismissed(serviceKey) {
+    return (this.getRaw(DISMISSED_SUPPLIER_SERVICES_KEY) || []).includes(serviceKey);
+  },
+
+  deleteFromList(key, id, options = {}) {
+    this.recordDeletion(key, id);
+
+    (options.dismissSupplierServices || []).forEach((serviceKey) => {
+      this.dismissSupplierService(serviceKey);
+    });
+
+    const items = (this.getRaw(key) || []).filter((item) => item.id !== id);
+    this.set(key, items, { immediate: true });
+    return items;
+  },
+
+  compactDeleted(key) {
+    const raw = this.getRaw(key);
+    if (!Array.isArray(raw)) return;
+    const filtered = this.filterDeleted(key, raw);
+    if (filtered.length === raw.length) return;
+    localStorage.setItem(key, JSON.stringify(filtered));
+    this.markLocalWrite(key);
+  },
+
+  purgeDeletedFromStorage() {
+    TOMBSTONE_LIST_KEYS.forEach((key) => this.compactDeleted(key));
+  },
+
+  get(key) {
+    try {
+      const data = localStorage.getItem(key);
+      if (!data) return null;
+      const parsed = JSON.parse(data);
+      if (TOMBSTONE_LIST_KEYS.has(key) && Array.isArray(parsed)) {
+        return this.filterDeleted(key, parsed);
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -54,12 +152,21 @@ const Storage = {
   },
 
   setRemote(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
+    let next = value;
+    if (TOMBSTONE_LIST_KEYS.has(key) && Array.isArray(value)) {
+      next = this.filterDeleted(key, value);
+    }
+    localStorage.setItem(key, JSON.stringify(next));
   },
 
   set(key, value, options = {}) {
+    let next = value;
+    if (TOMBSTONE_LIST_KEYS.has(key) && Array.isArray(value)) {
+      next = this.filterDeleted(key, value);
+    }
+
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      localStorage.setItem(key, JSON.stringify(next));
     } catch (error) {
       console.error(`No se pudo guardar ${key}:`, error);
       throw new Error('No hay espacio suficiente para guardar los datos en este navegador.');
@@ -69,7 +176,16 @@ const Storage = {
 
     this.markLocalWrite(key);
     if (typeof FirebaseSync !== 'undefined') {
-      FirebaseSync.queuePush(key, value);
+      if (options.immediate) {
+        FirebaseSync.queuePush(key, next);
+        if (FirebaseSync.isEnabled()) {
+          FirebaseSync.pushKeyNow(key).catch((error) => {
+            console.warn(`Sync inmediato fallo para ${key}:`, error.message);
+          });
+        }
+      } else {
+        FirebaseSync.queuePush(key, next);
+      }
     }
   },
 

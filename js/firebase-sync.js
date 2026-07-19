@@ -1,7 +1,13 @@
 const FIREBASE_COLLECTION = 'bca_data';
 const FIREBASE_SYNC_EXCLUDED = new Set([STORAGE_KEYS.SESSION, STORAGE_KEYS.USERS, DEVICE_ID_KEY, LOCAL_SYNC_META_KEY]);
 const FIREBASE_SYNC_KEYS = Object.values(STORAGE_KEYS).filter((key) => !FIREBASE_SYNC_EXCLUDED.has(key));
-const FIREBASE_META_KEYS = ['bca_data_version', 'bca_email_queue'];
+const FIREBASE_META_KEYS = [
+  'bca_data_version',
+  'bca_email_queue',
+  'bca_deleted_records',
+  'bca_dismissed_supplier_services',
+  'bca_supplier_templates_initialized'
+];
 
 const FirebaseSync = {
   enabled: false,
@@ -19,6 +25,7 @@ const FirebaseSync = {
   _offlinePushKeys: new Set(),
   _unsubscribe: null,
   _listenerReady: false,
+  _localBootstrapped: false,
 
   isEnabled() {
     return this.enabled && this.ready;
@@ -109,14 +116,22 @@ const FirebaseSync = {
     this.updateStatusElement();
     await this._flushOfflinePushes();
     this._listenerReady = true;
-    this.setupRealtimeListener();
     return true;
   },
 
   _runBackgroundSync() {
-    // Modo local-first: solo respaldar en la nube, nunca sobrescribir local al arrancar
+    // Local primero: subir cambios ANTES de escuchar la nube (evita revivir borrados)
+    this._localBootstrapped = false;
     this.pushAllLocal()
-      .then(() => this.restoreFromCloudIfEmpty())
+      .then(() => {
+        this._localBootstrapped = true;
+        return this.restoreFromCloudIfEmpty();
+      })
+      .then(() => {
+        if (!this._unsubscribe) {
+          this.setupRealtimeListener();
+        }
+      })
       .catch((error) => {
         console.warn('Respaldo en segundo plano:', error.message);
         this.lastError = error.message || 'Error al respaldar';
@@ -169,7 +184,7 @@ const FirebaseSync = {
       const remote = doc.data();
       if (this._isEmptyPayload(remote?.payload)) continue;
 
-      Storage.setRemote(key, remote.payload);
+      Storage.setRemote(key, this._sanitizeRemotePayload(key, remote.payload));
       restored += 1;
     }
 
@@ -219,7 +234,7 @@ const FirebaseSync = {
 
         if (!localPayload && remote?.payload !== undefined) {
           if (!this._isEmptyPayload(remote.payload)) {
-            Storage.setRemote(key, remote.payload);
+            Storage.setRemote(key, this._sanitizeRemotePayload(key, remote.payload));
             pulled += 1;
           }
           return;
@@ -233,7 +248,7 @@ const FirebaseSync = {
         }
 
         if (this._shouldApplyRemote(key, localPayload, remote)) {
-          Storage.setRemote(key, remote.payload);
+          Storage.setRemote(key, this._sanitizeRemotePayload(key, remote.payload));
           pulled += 1;
         } else {
           keysToPush.push(key);
@@ -282,7 +297,8 @@ const FirebaseSync = {
     keys.forEach((key) => {
       const raw = localStorage.getItem(key);
       if (!raw) return;
-      const payload = JSON.parse(raw);
+      let payload = JSON.parse(raw);
+      payload = this._sanitizeRemotePayload(key, payload);
       const ref = this.db.collection(FIREBASE_COLLECTION).doc(this.getDocId(key));
       batch.set(ref, {
         key,
@@ -336,14 +352,16 @@ const FirebaseSync = {
           const lastPush = this._lastPushedAt[key] || 0;
           if (Date.now() - lastPush < 1500) return;
 
-          const localRaw = localStorage.getItem(key);
-          const localPayload = localRaw ? JSON.parse(localRaw) : null;
+        const localRaw = localStorage.getItem(key);
+        const localPayload = localRaw
+          ? this._sanitizeRemotePayload(key, JSON.parse(localRaw))
+          : null;
 
           if (!remote?.payload && remote?.payload !== null) return;
 
           if (!localPayload || this._shouldApplyRemote(key, localPayload, remote)) {
             this._suppressRemote = true;
-            Storage.setRemote(key, remote.payload);
+            Storage.setRemote(key, this._sanitizeRemotePayload(key, remote.payload));
             this._suppressRemote = false;
             changed = true;
           }
@@ -387,13 +405,18 @@ const FirebaseSync = {
     }, 100);
   },
 
+  pushKeyNow(key) {
+    return this._pushKeyNow(key);
+  },
+
   async _pushKeyNow(key) {
     if (!this.db) return;
 
     const raw = localStorage.getItem(key);
     if (!raw) return;
 
-    const payload = JSON.parse(raw);
+    let payload = JSON.parse(raw);
+    payload = this._sanitizeRemotePayload(key, payload);
     const now = Date.now();
 
     await this.db.collection(FIREBASE_COLLECTION).doc(this.getDocId(key)).set({
@@ -467,7 +490,20 @@ const FirebaseSync = {
     return Math.max(metaTs, contentTs, pushedTs);
   },
 
+  _sanitizeRemotePayload(key, payload) {
+    if (typeof Storage === 'undefined') return payload;
+    if (Array.isArray(payload)) {
+      return Storage.filterDeleted(key, payload);
+    }
+    return payload;
+  },
+
   _shouldApplyRemote(key, localPayload, remote) {
+    const localRaw = localStorage.getItem(key);
+    if (localRaw && !this._localBootstrapped) {
+      return false;
+    }
+
     const localUpdated = this._getLocalUpdatedAt(key, localPayload);
     const remoteUpdated = remote?.updatedAt || 0;
 
@@ -477,6 +513,20 @@ const FirebaseSync = {
 
     if (this._isEmptyPayload(remote?.payload) && !this._isEmptyPayload(localPayload)) {
       return false;
+    }
+
+    if (Array.isArray(localPayload) && Array.isArray(remote?.payload) && remote.payload.length > localPayload.length) {
+      const localIds = new Set(localPayload.map((item) => item?.id).filter(Boolean));
+      const resurrected = remote.payload.filter((item) => item?.id && !localIds.has(item.id));
+      if (resurrected.length > 0) {
+        const deleted = typeof Storage !== 'undefined' ? Storage.getDeletedIds(key) : new Set();
+        if (resurrected.every((item) => deleted.has(item.id))) {
+          return false;
+        }
+        if (localUpdated > 0) {
+          return false;
+        }
+      }
     }
 
     return true;
