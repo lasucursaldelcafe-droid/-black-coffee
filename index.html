@@ -4,11 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BCA">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Black Coffee Administration — gestión de café de especialidad">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>Black Coffee Administration — Iniciar Sesión</title>
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/mobile.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
 </head>
 <body>
@@ -45,12 +53,29 @@
             Reparar acceso
           </button>
         </div>
+
+        <div class="login-pwa-card" id="pwa-install-card"></div>
       </div>
     </div>
   </div>
 
-  <script src="js/storage.js"></script>
-  <script src="js/auth.js"></script>
+  <div class="modal-overlay" id="pwa-instructions-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Instalar App Móvil BCA</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="pwa-instructions-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>window.BCA_BUILD = '19';</script>
+  <script src="js/storage.js?v=19"></script>
+  <script src="js/auth.js?v=19"></script>
+  <script src="js/pwa.js?v=19"></script>
   <script>
     Auth.init();
 
@@ -81,6 +106,14 @@
         document.getElementById('login-error').classList.add('show');
       }
     });
+
+    document.querySelectorAll('.modal-close, [data-modal-close]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.modal-overlay')?.classList.remove('active');
+      });
+    });
+
+    PWA.init();
   </script>
 </body>
 </html>

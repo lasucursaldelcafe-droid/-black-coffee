@@ -1,0 +1,219 @@
+/* Mobile PWA — bottom nav, install UI, standalone tweaks */
+
+.pwa-install-banner {
+  position: sticky;
+  top: 0;
+  z-index: 150;
+  background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+  border-bottom: 1px solid var(--border-color);
+  padding: 10px 12px;
+  padding-top: max(10px, env(safe-area-inset-top));
+}
+
+.pwa-install-banner[hidden] {
+  display: none !important;
+}
+
+.pwa-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.pwa-banner-icon {
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.pwa-banner-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8rem;
+}
+
+.pwa-banner-text strong {
+  font-size: 0.85rem;
+}
+
+.pwa-banner-text span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pwa-banner-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.pwa-install-card-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.pwa-install-icon img {
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+}
+
+.pwa-install-copy {
+  flex: 1;
+  min-width: 200px;
+}
+
+.pwa-platform-badges {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pwa-install-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+@media (min-width: 600px) {
+  .pwa-install-actions {
+    width: auto;
+    min-width: 160px;
+  }
+}
+
+.pwa-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pwa-status-icon {
+  font-size: 1.8rem;
+}
+
+.pwa-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.pwa-steps li {
+  margin-bottom: 8px;
+}
+
+/* Bottom navigation — mobile & standalone */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 120;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-color);
+  padding: 6px 8px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  justify-content: space-around;
+  align-items: stretch;
+  gap: 4px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  min-height: 52px;
+  padding: 4px 2px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+}
+
+.mobile-nav-item .mobile-nav-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.mobile-nav-item.active {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.mobile-nav-item:active {
+  transform: scale(0.96);
+}
+
+@media (max-width: 768px), (display-mode: standalone) {
+  .mobile-bottom-nav {
+    display: flex;
+  }
+
+  .page-content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar-footer {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+.pwa-standalone .menu-toggle {
+  display: flex;
+}
+
+.pwa-standalone .top-header {
+  padding-top: max(8px, env(safe-area-inset-top));
+}
+
+/* Login page mobile install card */
+.login-pwa-card {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.login-pwa-card .pwa-install-card-inner {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.login-pwa-card .pwa-install-actions {
+  width: 100%;
+}
+
+.login-pwa-card .pwa-install-actions .btn {
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  .pwa-banner-content {
+    flex-wrap: wrap;
+  }
+
+  .pwa-banner-text {
+    flex: 1 1 calc(100% - 56px);
+  }
+}

@@ -28,7 +28,20 @@ const App = {
       this.checkProductionCostsModal();
       Notifications.updateBadge();
 
-      this.navigateTo('dashboard');
+      PWA.init();
+      PWA.bindMobileNav();
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const sectionParam = urlParams.get('section');
+      const stageParam = urlParams.get('stage');
+      if (sectionParam) {
+        this.navigateTo(sectionParam, {
+          inventoryStage: stageParam,
+          openForm: urlParams.get('openForm') === 'true'
+        });
+      } else {
+        this.navigateTo('dashboard');
+      }
 
       FirebaseSync.startInBackground().finally(() => {
         InventoryManager.checkAllLowStock();
@@ -293,6 +306,8 @@ const App = {
         InventoryManager.showStageEntryForm(null, options.inventoryStage);
       }, 120);
     }
+
+    PWA.syncMobileNavActive(section);
   },
 
   renderSection(section) {
@@ -441,6 +456,8 @@ const App = {
       <button class="btn btn-primary" onclick="SalesManager.create()">Registrar Venta</button>
       <button class="btn btn-secondary" onclick="QuotationManager.create()">Nueva Cotización</button>
       <button class="btn btn-secondary" onclick="App.navigateTo('cost-engine')">Costeo Interno</button>
+      <button class="btn btn-secondary" onclick="App.navigateTo('inventory')">Inventario</button>
+      ${typeof PWA !== 'undefined' && !PWA.isStandalone() ? `<button class="btn btn-secondary" onclick="PWA.promptInstall()">📲 Instalar App</button>` : ''}
       <button class="btn btn-secondary" onclick="CoffeeManager.create()">Agregar Café</button>
       <button class="btn btn-secondary" onclick="ClientManager.create()">Agregar Cliente</button>
     `;
@@ -482,6 +499,10 @@ const App = {
     const container = document.getElementById('settings-form');
 
     container.innerHTML = `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">App Móvil (iOS y Android)</span></div>
+        <div id="pwa-install-card-settings"></div>
+      </div>
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Identidad Visual</span></div>
         <div class="form-group">
@@ -583,6 +604,7 @@ const App = {
 
     document.getElementById('save-settings-btn')?.addEventListener('click', () => this.saveSettings());
     document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
+    PWA.renderInstallCard('pwa-install-card-settings');
 
     document.getElementById('export-backup-btn')?.addEventListener('click', () => {
       BackupManager.download();
