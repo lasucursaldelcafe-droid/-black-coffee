@@ -1,13 +1,4 @@
 #Requires -Version 5.1
-# Instala dependencias + abre todos los enlaces. Sin preguntas.
-
-$Raiz = Split-Path -Parent $PSScriptRoot
-Set-Location $Raiz
-
-Write-Host ''
-Write-Host 'PASO 1/2 - Instalacion automatica...' -ForegroundColor Cyan
-& (Join-Path $PSScriptRoot 'INSTALAR-AUTOMATICO.ps1')
-
-Write-Host ''
-Write-Host 'PASO 2/2 - Abriendo enlaces...' -ForegroundColor Cyan
-& (Join-Path $PSScriptRoot 'ABRIR-TODO.ps1')
+Import-Module (Join-Path $PSScriptRoot 'BCA\BCA.psm1') -Force -DisableNameChecking
+Install-BCAProject
+Open-BCAEnlaces

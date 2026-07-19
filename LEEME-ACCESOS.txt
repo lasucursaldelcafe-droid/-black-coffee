@@ -1,26 +1,32 @@
-BLACK COFFEE ADMINISTRATION — ACCESOS DE UN CLIC
-================================================
+BLACK COFFEE - MODULO POWERSHELL (Windows)
+==========================================
 
-Si NO tienes la carpeta del proyecto:
-  1. Doble clic en: DESCARGAR-PROYECTO.bat
-     (clona en Documentos\BlackCoffeeAdmin y crea iconos en el Escritorio)
+Carpeta del proyecto:
+  C:\Users\LENOVO\Documents\BlackCoffeeAdmin
 
-Si YA tienes la carpeta del proyecto:
+CARGAR MODULO (copiar y pegar en PowerShell):
+  cd C:\Users\LENOVO\Documents\BlackCoffeeAdmin
+  Import-Module .\scripts\BCA\BCA.psm1 -Force
 
-  ABRIR-ENLACES.bat      → Abre app, Firebase, GitHub, Resend en el navegador
-  INSTALAR-Y-ABRIR.bat   → Instala todo + abre enlaces
-  DESCARGAR-PROYECTO.bat → Clonar/actualizar + accesos en Escritorio
+COMANDOS DISPONIBLES:
+  Open-BCAEnlaces          -> Abre todas las paginas web
+  Install-BCAProject       -> Instala todo (Node, Firebase, secretos)
+  Start-BCASetup -OpenLinks -> Descarga/actualiza + iconos + abrir
+  Get-BCAConfig            -> Ver rutas y URLs
+  Sync-BCARepository       -> git pull
 
-Desde PowerShell (cualquier carpeta):
-  irm https://raw.githubusercontent.com/lasucursaldelcafe-droid/-black-coffee/main/scripts/DESCARGAR-PROYECTO.ps1 | iex
+CLI RAPIDA:
+  .\scripts\bca.ps1 abrir
+  .\scripts\bca.ps1 instalar
+  .\scripts\bca.ps1 setup
 
-Desde Python (si tienes Python):
-  python scripts\abrir_enlaces.py
+DOBLE CLIC (sin PowerShell):
+  ABRIR-ENLACES.bat
+  INSTALAR-Y-ABRIR.bat
 
-App en vivo:
-  https://lasucursaldelcafe-droid.github.io/-black-coffee/
+Iconos en Escritorio:
+  BCA - Abrir enlaces
+  BCA - Instalar y abrir
+  BCA - Consola PowerShell
 
-Correo notificaciones:
-  ghostspecialtycoffee@gmail.com
-
-Más detalle: docs\RUTAS_ACCESO.md
+Documentacion: scripts\BCA\README.md
