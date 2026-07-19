@@ -230,7 +230,9 @@ const FirebaseSync = {
       this.getAllSyncKeys().forEach((key) => {
         const localRaw = localStorage.getItem(key);
         const remote = remoteByKey.get(key);
-        const localPayload = localRaw ? JSON.parse(localRaw) : null;
+        const localPayload = localRaw
+          ? this._sanitizeRemotePayload(key, JSON.parse(localRaw))
+          : null;
 
         if (!localPayload && remote?.payload !== undefined) {
           if (!this._isEmptyPayload(remote.payload)) {
