@@ -97,6 +97,8 @@ function Get-BCAConfig {
         RepoName      = $script:BCAConfig.RepoName
         FirebaseProject = $script:BCAConfig.FirebaseProject
         AppUrl        = $script:BCAConfig.AppUrl
+        AppLoginUrl   = $script:BCAConfig.AppLoginUrl
+        AppPlatformUrl = $script:BCAConfig.AppPlatformUrl
         NotificationEmail = $script:BCAConfig.NotificationEmail
         Links         = $links
     }
@@ -633,6 +635,15 @@ function Test-BCAUrlReachable {
 
         [int]$TimeoutSec = 30
     )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return [pscustomobject]@{
+            Url    = $Url
+            Ok     = $false
+            Status = 0
+            Error  = 'URL vacia'
+        }
+    }
 
     try {
         $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $TimeoutSec
