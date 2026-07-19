@@ -226,6 +226,14 @@ const QuotationManager = {
         </div>
       </div>
 
+      <div id="quot-compare-section" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" class="btn btn-secondary" id="quot-compare-internal-btn">
+          Comparar con costeo interno
+        </button>
+        <span class="form-hint" style="margin:0">Contraste esta cotización con su costo real de empresa</span>
+      </div>
+      <div id="quot-internal-comparison" style="display:none"></div>
+
       <div id="quotation-preview-area" style="margin-top:20px"></div>
     `;
 
@@ -425,6 +433,10 @@ const QuotationManager = {
     document.getElementById('quot-suppliers-fields')?.addEventListener('change', () => {
       this.updatePackagingMixRates();
       this.updatePreview();
+    });
+
+    document.getElementById('quot-compare-internal-btn')?.addEventListener('click', () => {
+      CostEngine.showQuotationComparison();
     });
   },
 
@@ -706,6 +718,11 @@ const QuotationManager = {
 
     const displayQty = options.productionMode === 'maquila' ? pricing.totalQuantity : quantity;
     preview.innerHTML = this.renderBreakdownHTML(pricing, labels, margin, displayQty);
+
+    const comp = document.getElementById('quot-internal-comparison');
+    if (comp?.style.display !== 'none' && comp.innerHTML.trim()) {
+      CostEngine.showQuotationComparison();
+    }
   },
 
   saveFromForm() {

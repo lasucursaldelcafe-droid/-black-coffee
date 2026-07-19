@@ -752,6 +752,241 @@ const CostEngine = {
     this.render(document.getElementById('cost-engine-container'));
   },
 
+  findReferenceScenario(coffeeId, productionMode) {
+    const scenarios = this.getScenarios();
+    const sameMode = scenarios.filter((s) => s.coffeeId === coffeeId && s.productionMode === productionMode);
+    if (sameMode.length) {
+      return sameMode.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))[0];
+    }
+    const sameCoffee = scenarios.filter((s) => s.coffeeId === coffeeId && s.productionMode === 'full_pack');
+    if (sameCoffee.length) {
+      return sameCoffee.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))[0];
+    }
+    return scenarios.find((s) => s.productionMode === 'full_pack')
+      || scenarios.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))[0]
+      || null;
+  },
+
+  computeLiveInternalBaseline(coffee, packaging, labels, margin, grindType) {
+    const options = {
+      productionMode: 'full_pack',
+      maquilaSteps: [],
+      clientProvidesCoffee: false,
+      clientProvidesPackaging: false,
+      grindType: grindType || 'grano'
+    };
+    const pricing = ProductionCosts.calculateSellingPrice(
+      coffee, packaging, margin, 'final', labels, options
+    );
+    return {
+      source: 'live',
+      label: 'Full Pack interno (calculado)',
+      unitCost: pricing.totalCost,
+      unitPrice: pricing.finalPrice,
+      profitMargin: margin,
+      revenueMargin: marginOnRevenueFromMarkup(margin),
+      productionMode: 'full_pack',
+      packaging
+    };
+  },
+
+  extractQuoteMetrics(pricing, options, margin, quantity = 1) {
+    const isMix = options.productionMode === 'maquila';
+    const unitCost = isMix
+      ? (pricing.totalCost / (pricing.totalQuantity || 1))
+      : pricing.totalCost;
+    const unitPrice = isMix ? pricing.avgUnitPrice : pricing.finalPrice;
+    const qty = isMix ? pricing.totalQuantity : quantity;
+    const totalCost = isMix ? pricing.totalCost : pricing.totalCost * qty;
+    const totalPrice = isMix ? pricing.totalPrice : unitPrice * qty;
+    return { unitCost, unitPrice, totalCost, totalPrice, quantity: qty, margin };
+  },
+
+  compareFromQuotationForm() {
+    const coffeeId = document.getElementById('quot-coffee')?.value;
+    const clientId = document.getElementById('quot-client')?.value;
+    if (!coffeeId || !clientId) {
+      Toast.show('Seleccione cliente y café primero', 'warning');
+      return null;
+    }
+
+    const coffee = CoffeeManager.getById(coffeeId);
+    const client = ClientManager.getById(clientId);
+    if (!coffee || !client) return null;
+
+    const options = QuotationManager.getQuoteOptions();
+    const packaging = document.getElementById('quot-packaging-value')?.value || '250g';
+    const labels = QuotationManager.getSelectedLabels();
+    const margin = clampProfitMargin(document.getElementById('quot-margin-value')?.value || PROFIT_MARGIN_DEFAULT);
+    const quantity = parseInt(document.getElementById('quot-quantity')?.value || '1', 10);
+    const processSuppliers = QuotationManager.getProcessSuppliersFromForm();
+    const pricing = QuotationManager.buildPricingPreview(
+      coffee, client, options, processSuppliers, packaging, labels, margin, quantity
+    );
+
+    if (!pricing) {
+      Toast.show('Complete las cantidades por presentación', 'warning');
+      return null;
+    }
+
+    const quote = {
+      label: `Cotización (${PRODUCTION_MODES[options.productionMode]?.label || options.productionMode})`,
+      clientName: client.name,
+      coffeeName: coffee.name,
+      productionMode: options.productionMode,
+      ...this.extractQuoteMetrics(pricing, options, margin, quantity)
+    };
+
+    const refPackaging = options.productionMode === 'maquila'
+      ? (Object.keys(normalizePackagingMix(QuotationManager.getPackagingMixFromForm()))[0] || packaging)
+      : packaging;
+
+    const saved = this.findReferenceScenario(coffeeId, options.productionMode);
+    let internal;
+    if (saved) {
+      internal = {
+        source: 'memory',
+        label: `Memoria: ${saved.name}`,
+        unitCost: saved.unitCost,
+        unitPrice: saved.unitPrice,
+        profitMargin: saved.profitMargin,
+        revenueMargin: saved.revenueMargin || marginOnRevenueFromMarkup(saved.profitMargin),
+        productionMode: saved.productionMode,
+        packaging: saved.packaging || refPackaging,
+        scenarioId: saved.id
+      };
+    } else {
+      internal = this.computeLiveInternalBaseline(coffee, refPackaging, labels.length ? labels : ['small'], margin, options.grindType);
+    }
+
+    const costDiff = quote.unitCost - internal.unitCost;
+    const priceDiff = quote.unitPrice - internal.unitPrice;
+    const costPct = internal.unitCost > 0 ? ((costDiff / internal.unitCost) * 100).toFixed(1) : '—';
+    const marginDiff = quote.margin - internal.profitMargin;
+
+    return { quote, internal, costDiff, priceDiff, costPct, marginDiff };
+  },
+
+  renderComparisonHTML(data) {
+    if (!data) return '';
+    const { quote, internal, costDiff, priceDiff, costPct, marginDiff } = data;
+    const costColor = costDiff > 0 ? 'var(--danger)' : costDiff < 0 ? 'var(--success)' : 'inherit';
+    const priceColor = priceDiff > 0 ? 'var(--success)' : priceDiff < 0 ? 'var(--danger)' : 'inherit';
+
+    return `
+      <div class="cost-breakdown" style="margin-top:12px;border:1px solid var(--border-color);border-radius:8px;padding:16px">
+        <h4 style="margin-bottom:4px">Comparación con Costeo Interno</h4>
+        <p class="form-hint" style="margin-bottom:12px">
+          ${quote.coffeeName} · ${quote.clientName}
+        </p>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Métrica</th>
+                <th>Esta cotización</th>
+                <th>${internal.label}</th>
+                <th>Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Costo / unidad</td>
+                <td>${formatCurrency(quote.unitCost)}</td>
+                <td>${formatCurrency(internal.unitCost)}</td>
+                <td style="color:${costColor}">${costDiff >= 0 ? '+' : ''}${formatCurrency(costDiff)} (${costPct}%)</td>
+              </tr>
+              <tr>
+                <td>Precio / unidad</td>
+                <td>${formatCurrency(quote.unitPrice)}</td>
+                <td>${formatCurrency(internal.unitPrice)}</td>
+                <td style="color:${priceColor}">${priceDiff >= 0 ? '+' : ''}${formatCurrency(priceDiff)}</td>
+              </tr>
+              <tr>
+                <td>Margen sobre costo</td>
+                <td>${quote.margin}%</td>
+                <td>${internal.profitMargin}%</td>
+                <td>${marginDiff >= 0 ? '+' : ''}${marginDiff} pp</td>
+              </tr>
+              <tr>
+                <td>Margen sobre ingreso</td>
+                <td>${marginOnRevenueFromMarkup(quote.margin)}%</td>
+                <td>${internal.revenueMargin}%</td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="form-hint" style="margin-top:12px">
+          ${internal.source === 'memory'
+            ? 'Referencia tomada de memoria guardada. Actualícela en Costeo Interno si cambiaron costos.'
+            : 'Sin escenario guardado: se comparó contra Full Pack interno calculado en vivo.'}
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button type="button" class="btn btn-sm btn-primary" id="quot-save-comparison-btn">Guardar análisis en memoria</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="App.navigateTo('cost-engine');document.getElementById('quotation-modal')?.classList.remove('active')">Abrir Costeo Interno</button>
+        </div>
+      </div>
+    `;
+  },
+
+  showQuotationComparison() {
+    const container = document.getElementById('quot-internal-comparison');
+    if (!container) return;
+
+    const data = this.compareFromQuotationForm();
+    if (!data) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = this.renderComparisonHTML(data);
+
+    container.querySelector('#quot-save-comparison-btn')?.addEventListener('click', () => {
+      this.saveQuotationComparisonToMemory(data);
+    });
+  },
+
+  saveQuotationComparisonToMemory(data) {
+    const { quote, internal, costDiff, priceDiff } = data;
+    const options = QuotationManager.getQuoteOptions();
+    const coffeeId = document.getElementById('quot-coffee')?.value;
+
+    const note = [
+      `Comparación cotización vs ${internal.label}`,
+      `Costo cotización: ${formatCurrency(quote.unitCost)}/ud vs interno: ${formatCurrency(internal.unitCost)}/ud (${costDiff >= 0 ? '+' : ''}${formatCurrency(costDiff)})`,
+      `Precio cotización: ${formatCurrency(quote.unitPrice)}/ud vs interno: ${formatCurrency(internal.unitPrice)}/ud (${priceDiff >= 0 ? '+' : ''}${formatCurrency(priceDiff)})`,
+      `Margen cotización: ${quote.margin}%`
+    ].join('. ');
+
+    this.saveScenario({
+      name: `Cotización ${quote.clientName} — ${quote.coffeeName}`,
+      notes: note,
+      coffeeId,
+      coffeeName: quote.coffeeName,
+      productionMode: quote.productionMode,
+      packaging: options.productionMode === 'full_pack' ? (document.getElementById('quot-packaging-value')?.value || '250g') : null,
+      packagingMix: options.productionMode === 'maquila' ? normalizePackagingMix(QuotationManager.getPackagingMixFromForm()) : null,
+      quantity: quote.quantity,
+      profitMargin: quote.margin,
+      unitCost: quote.unitCost,
+      unitPrice: quote.unitPrice,
+      totalCost: quote.totalCost,
+      totalPrice: quote.totalPrice,
+      revenueMargin: marginOnRevenueFromMarkup(quote.margin),
+      grindType: options.grindType,
+      maquilaSteps: options.maquilaSteps,
+      clientProvidesCoffee: options.clientProvidesCoffee,
+      clientProvidesPackaging: options.clientProvidesPackaging,
+      comparedToScenarioId: internal.scenarioId || null,
+      comparedToLabel: internal.label
+    });
+
+    Toast.show('Análisis guardado en memoria activa', 'success');
+  },
+
   renderTemplatesTab(container) {
     const templates = this.getTemplates();
 
