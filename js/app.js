@@ -27,7 +27,7 @@ const App = {
       }
 
       if (typeof SetupWizard !== 'undefined') {
-        SetupWizard.init();
+        SetupWizard.init({ deferOpen: true });
       }
 
       this.bindNavigation();
@@ -53,12 +53,16 @@ const App = {
         this.navigateTo('dashboard');
       }
 
+      await SyncHub.startInBackground();
+      SyncHub.updateStatusElement();
+      this.renderSyncAlert();
+      InventoryManager.checkAllLowStock();
+
+      if (typeof SetupWizard !== 'undefined') {
+        SetupWizard.afterSyncBootstrap();
+      }
+
       FirebaseSync.startInBackground();
-      SyncHub.startInBackground().finally(() => {
-        SyncHub.updateStatusElement();
-        this.renderSyncAlert();
-        InventoryManager.checkAllLowStock();
-      });
     } catch (error) {
       console.error('Bootstrap falló:', error);
       Toast?.show('No se pudo cargar los datos. Use Configuración o repare el acceso.', 'danger');
