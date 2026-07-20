@@ -10,6 +10,59 @@ const PDFGenerator = {
     });
   },
 
+  getLogoFormat(dataUrl) {
+    const match = dataUrl.match(/^data:image\/(\w+);/i);
+    const ext = (match?.[1] || 'png').toLowerCase();
+    if (ext === 'jpg' || ext === 'jpeg') return 'JPEG';
+    if (ext === 'png') return 'PNG';
+    return 'PNG';
+  },
+
+  fitLogoDimensions(naturalWidth, naturalHeight, maxWidthMm, maxHeightMm) {
+    const ratio = naturalWidth / naturalHeight;
+    let width = maxWidthMm;
+    let height = width / ratio;
+    if (height > maxHeightMm) {
+      height = maxHeightMm;
+      width = height * ratio;
+    }
+    return { width, height };
+  },
+
+  loadLogoMeta(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        format: this.getLogoFormat(dataUrl)
+      });
+      img.onerror = () => reject(new Error('No se pudo cargar el logo'));
+      img.src = dataUrl;
+    });
+  },
+
+  async addLogoHeader(doc, settings) {
+    if (!settings.logo || typeof settings.logo !== 'string' || !settings.logo.startsWith('data:image/')) {
+      return { headerY: 25, dividerY: 52 };
+    }
+
+    try {
+      const meta = await this.loadLogoMeta(settings.logo);
+      const { width, height } = this.fitLogoDimensions(
+        meta.naturalWidth,
+        meta.naturalHeight,
+        45,
+        22
+      );
+      doc.addImage(settings.logo, meta.format, 20, 12, width, height);
+      const headerY = 12 + height + 6;
+      return { headerY, dividerY: Math.max(headerY + 18, 52) };
+    } catch {
+      return { headerY: 25, dividerY: 52 };
+    }
+  },
+
   async generate(quotation) {
     await this.loadLibrary();
     const { jsPDF } = window.jspdf;
@@ -22,16 +75,18 @@ const PDFGenerator = {
     const packagingLabel = formatPackagingMix(quotation.packagingMix, quotation.packaging, quotation.quantity);
     const lineItems = getQuotationLineItems(quotation);
 
+    const { headerY, dividerY } = await this.addLogoHeader(doc, settings);
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
-    doc.text(settings.companyName, 20, 25);
+    doc.text(settings.companyName, 20, headerY);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(settings.tagline, 20, 32);
+    doc.text(settings.tagline, 20, headerY + 7);
     if (settings.email) {
-      doc.text(settings.email, 20, 38);
+      doc.text(settings.email, 20, headerY + 13);
     }
 
     doc.setTextColor(0);
@@ -46,36 +101,37 @@ const PDFGenerator = {
     doc.text(`Válida hasta: ${formatDate(validUntil)}`, 150, 46);
 
     doc.setDrawColor(200);
-    doc.line(20, 52, 190, 52);
+    doc.line(20, dividerY, 190, dividerY);
 
+    const clientY = dividerY + 10;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text('Cliente:', 20, 62);
+    doc.text('Cliente:', 20, clientY);
     doc.setFont('helvetica', 'normal');
-    doc.text(quotation.clientName, 50, 62);
+    doc.text(quotation.clientName, 50, clientY);
 
     doc.setFont('helvetica', 'bold');
-    doc.text('Producto:', 20, 70);
+    doc.text('Producto:', 20, clientY + 8);
     doc.setFont('helvetica', 'normal');
-    doc.text(quotation.coffeeName, 50, 70);
+    doc.text(quotation.coffeeName, 50, clientY + 8);
     doc.setFontSize(8);
     doc.setTextColor(100);
     const details = doc.splitTextToSize(quotation.coffeeDetails || '', 140);
-    doc.text(details, 50, 76);
+    doc.text(details, 50, clientY + 14);
     doc.setTextColor(0);
     doc.setFontSize(10);
-    doc.text(`Presentación: ${packagingLabel}`, 50, 84 + (details.length - 1) * 4);
-    doc.text(`Preparación: ${grindLabel}`, 50, 90 + (details.length - 1) * 4);
+    doc.text(`Presentación: ${packagingLabel}`, 50, clientY + 20 + (details.length - 1) * 4);
+    doc.text(`Preparación: ${grindLabel}`, 50, clientY + 26 + (details.length - 1) * 4);
     if (quotation.productionMode === 'maquila') {
       const packagingSource = quotation.clientProvidesPackaging !== false
         ? 'Empaque: aportado por el cliente'
         : 'Empaque: aportado por nosotros (material incluido)';
-      doc.text(packagingSource, 50, 96 + (details.length - 1) * 4);
+      doc.text(packagingSource, 50, clientY + 32 + (details.length - 1) * 4);
     }
 
     const tableY = quotation.productionMode === 'maquila'
-      ? 104 + (details.length - 1) * 4
-      : 98 + (details.length - 1) * 4;
+      ? clientY + 40 + (details.length - 1) * 4
+      : clientY + 34 + (details.length - 1) * 4;
     doc.line(20, tableY - 4, 190, tableY - 4);
 
     doc.setFont('helvetica', 'bold');
