@@ -63,9 +63,9 @@ const GasSync = {
   _startPeriodicSync() {
     if (this._periodicTimer) return;
     this._periodicTimer = setInterval(() => {
-      if (!navigator.onLine || document.visibilityState === 'hidden' || this.syncing) return;
+      if (!navigator.onLine || this.syncing) return;
       this.syncAll({ silent: true }).catch(() => {});
-    }, 30000);
+    }, 15000);
   },
 
   _buildLocalDocument() {

@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_VERSION = 'bca-v30';
+const CACHE_VERSION = 'bca-v41';
 
 const PRECACHE_URLS = [
   './',
@@ -16,9 +16,18 @@ const PRECACHE_URLS = [
   './icons/apple-touch-icon.png',
   './icons/icon-maskable-512.png',
   './js/storage.js',
+  './js/sync-shared.js',
+  './js/gas-config.js',
+  './js/cloud-sync-config.js',
+  './js/firebase-http-config.js',
   './js/firebase-config.js',
+  './js/gas-sync.js',
+  './js/firebase-http-sync.js',
   './js/firebase-sync.js',
+  './js/cloud-sync.js',
+  './js/sync-hub.js',
   './js/auth.js',
+  './js/auth-biometric.js',
   './js/audit.js',
   './js/data.js',
   './js/setupWizard.js',
@@ -46,7 +55,8 @@ const NETWORK_ONLY = [
   'googleapis.com',
   'cdn.sheetjs.com',
   'identitytoolkit.googleapis.com',
-  'securetoken.googleapis.com'
+  'securetoken.googleapis.com',
+  'script.google.com'
 ];
 
 self.addEventListener('install', (event) => {
@@ -59,7 +69,11 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key)))
-    ).then(() => self.clients.claim())
+    ).then(() => self.clients.claim()).then(() =>
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: 'BCA_SW_UPDATED' }));
+      })
+    )
   );
 });
 
@@ -88,11 +102,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin === self.location.origin) {
+    const isHtml = url.pathname.endsWith('.html') || request.mode === 'navigate';
     const isVersionedAsset = url.pathname.endsWith('.js')
       || url.pathname.endsWith('.css')
       || url.search.includes('v=');
 
-    if (isVersionedAsset) {
+    if (isHtml || isVersionedAsset) {
       event.respondWith(
         fetch(request)
           .then((response) => {

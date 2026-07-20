@@ -4,6 +4,7 @@ const PWA = {
 
   init() {
     this.registerServiceWorker();
+    this.setupAutoUpdate();
     this.bindInstallPrompt();
     this.renderInstallUI();
     this.updateStandaloneClass();
@@ -34,10 +35,74 @@ const PWA = {
   registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch((error) => {
+      navigator.serviceWorker.register('./sw.js').then((registration) => {
+        this._swRegistration = registration;
+        registration.update().catch(() => {});
+
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'activated' && navigator.serviceWorker.controller) {
+              this.promptReload('Nueva versión de la app lista');
+            }
+          });
+        });
+      }).catch((error) => {
         console.warn('Service worker no registrado:', error.message);
       });
+
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'BCA_SW_UPDATED') {
+          this.promptReload('Actualización instalada');
+        }
+      });
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
     });
+  },
+
+  setupAutoUpdate() {
+    const check = () => this.checkForNewBuild();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this._swRegistration?.update().catch(() => {});
+        check();
+      }
+    });
+    window.addEventListener('focus', check);
+    check();
+    setInterval(check, 2 * 60 * 1000);
+    setInterval(() => this._swRegistration?.update().catch(() => {}), 5 * 60 * 1000);
+  },
+
+  async checkForNewBuild() {
+    if (this._reloadPending) return;
+    try {
+      const response = await fetch(`./app.html?buildCheck=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) return;
+      const html = await response.text();
+      const match = html.match(/BCA_BUILD\s*=\s*['"](\d+)['"]/);
+      const remoteBuild = match?.[1];
+      const localBuild = String(window.BCA_BUILD || '');
+      if (remoteBuild && localBuild && remoteBuild !== localBuild) {
+        this.promptReload(`Actualización disponible (build ${remoteBuild})`);
+      }
+    } catch {
+      /* sin conexión */
+    }
+  },
+
+  promptReload(message) {
+    if (this._reloadPending) return;
+    this._reloadPending = true;
+    Toast?.show(`${message}. Recargando…`, 'info');
+    setTimeout(() => window.location.reload(), 1200);
   },
 
   bindInstallPrompt() {

@@ -223,10 +223,10 @@ const FirebaseSync = {
   _startPeriodicSync() {
     if (this._periodicTimer || !this._isPullEnabled()) return;
     this._periodicTimer = setInterval(() => {
-      if (!this.isEnabled() || !navigator.onLine || document.visibilityState === 'hidden') return;
+      if (!this.isEnabled() || !navigator.onLine) return;
       if (this.syncing) return;
       this.syncAll({ silent: true }).catch(() => {});
-    }, 45000);
+    }, 15000);
   },
 
   getAllSyncKeys() {

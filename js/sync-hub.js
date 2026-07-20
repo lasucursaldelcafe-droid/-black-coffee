@@ -79,9 +79,36 @@ const SyncHub = {
 
     this.ready = Boolean(this.getPrimary());
     await this.forceSync({ silent: true }).catch(() => {});
+    this._bindAutoSyncTriggers();
     this.updateStatusElement();
     window.dispatchEvent(new CustomEvent('bca-sync-status', { detail: { hub: true } }));
     return this.ready;
+  },
+
+  _bindAutoSyncTriggers() {
+    if (this._triggersBound) return;
+    this._triggersBound = true;
+
+    const pullNow = () => {
+      if (!navigator.onLine || this.syncing) return;
+      this.forceSync({ silent: true }).then((result) => {
+        if ((result?.pulled || 0) > 0) {
+          window.dispatchEvent(new CustomEvent('bca-data-changed', { detail: { source: 'auto-sync' } }));
+        }
+      }).catch(() => {});
+    };
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') pullNow();
+    });
+
+    window.addEventListener('focus', pullNow);
+    window.addEventListener('online', pullNow);
+
+    if (this._autoSyncTimer) clearInterval(this._autoSyncTimer);
+    this._autoSyncTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') pullNow();
+    }, 15000);
   },
 
   async forceSync(options = {}) {

@@ -94,10 +94,9 @@ const CloudSync = {
   _startPeriodicSync() {
     if (this._periodicTimer) return;
     this._periodicTimer = setInterval(() => {
-      if (!navigator.onLine || document.visibilityState === 'hidden') return;
-      if (this.syncing) return;
+      if (!navigator.onLine || this.syncing) return;
       this.syncAll({ silent: true }).catch(() => {});
-    }, 45000);
+    }, 15000);
   },
 
   async fetchRemoteDocument() {
