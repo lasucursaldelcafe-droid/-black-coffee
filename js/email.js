@@ -153,7 +153,8 @@ Fecha: ${formatDate(sale.soldAt || sale.createdAt)}
   },
 
   queueEmail(subject, body, type = 'notification') {
-    const emails = Storage.get('bca_email_queue') || [];
+    const raw = Storage.get('bca_email_queue');
+    const emails = Array.isArray(raw) ? raw : [];
     emails.unshift({
       to: this.email,
       subject,
