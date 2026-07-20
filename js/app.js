@@ -346,6 +346,7 @@ const App = {
         const overlay = btn.closest('.modal-overlay');
         overlay?.classList.remove('active');
         if (overlay?.id === 'inventory-modal') closeInventoryModal();
+        if (overlay?.id === 'quotation-modal') QuotationManager._editingQuotationId = null;
       });
     });
 
@@ -354,6 +355,7 @@ const App = {
         if (e.target === overlay) {
           overlay.classList.remove('active');
           if (overlay.id === 'inventory-modal') closeInventoryModal();
+          if (overlay.id === 'quotation-modal') QuotationManager._editingQuotationId = null;
         }
       });
     });
