@@ -660,6 +660,12 @@
     font-size: 0.85rem;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  .section-header .btn-group,
+  .section-header > .btn {
+    width: 100%;
   }
 
   .login-card {

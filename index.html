@@ -24,7 +24,7 @@
     <div class="login-container">
       <div class="login-card">
         <div class="login-logo">
-          <div style="font-size:3rem;margin-bottom:12px">☕</div>
+          <div class="login-logo-icon">☕</div>
           <h1 class="display-title">Black Coffee</h1>
           <p>Administration Platform</p>
         </div>
@@ -50,10 +50,10 @@
             </label>
             <p class="form-hint" style="margin-top:6px">Disponible para todos los usuarios (huella, Face ID o PIN del dispositivo).</p>
           </div>
-          <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:8px">
+          <button type="submit" class="btn btn-primary btn-lg login-submit-btn">
             Iniciar Sesión
           </button>
-          <button type="button" class="btn btn-secondary btn-lg biometric-login-btn" id="biometric-login-btn" style="width:100%;margin-top:8px;display:none">
+          <button type="button" class="btn btn-secondary btn-lg biometric-login-btn login-biometric-btn" id="biometric-login-btn" style="display:none">
             🔐 Iniciar con huella / Face ID
           </button>
         </form>
@@ -63,11 +63,11 @@
           <div id="login-users-list"></div>
         </div>
 
-        <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border-color);text-align:center">
-          <p style="font-size:0.8rem;color:var(--text-muted)">
+        <div class="login-footer">
+          <p>
             Plataforma de gestión integral de café de especialidad
           </p>
-          <button type="button" class="btn btn-sm btn-secondary" id="repair-access-btn" style="margin-top:12px">
+          <button type="button" class="btn btn-sm btn-secondary" id="repair-access-btn">
             Reparar acceso
           </button>
         </div>
@@ -90,11 +90,11 @@
     </div>
   </div>
 
-  <script>window.BCA_BUILD = '41';</script>
-  <script src="js/storage.js?v=41"></script>
-  <script src="js/auth.js?v=41"></script>
-  <script src="js/auth-biometric.js?v=41"></script>
-  <script src="js/pwa.js?v=41"></script>
+  <script>window.BCA_BUILD = '42';</script>
+  <script src="js/storage.js?v=42"></script>
+  <script src="js/auth.js?v=42"></script>
+  <script src="js/auth-biometric.js?v=42"></script>
+  <script src="js/pwa.js?v=42"></script>
   <script>
     Auth.init();
 

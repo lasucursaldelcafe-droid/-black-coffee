@@ -235,8 +235,8 @@ const QuotationManager = {
     const coffees = CoffeeManager.getAll();
     const lineId = this.createCoffeeLineId();
     return `
-      <div class="quot-coffee-line card" data-line-id="${lineId}" style="margin-bottom:12px;padding:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+      <div class="quot-coffee-line card" data-line-id="${lineId}">
+        <div class="quot-coffee-line-header">
           <strong>Café ${index + 1}</strong>
           <button type="button" class="btn btn-sm btn-danger quot-remove-line" ${index === 0 ? 'disabled' : ''} data-line-id="${lineId}">Quitar</button>
         </div>
@@ -246,7 +246,7 @@ const QuotationManager = {
             <option value="">Seleccionar café...</option>
             ${coffees.map((c) => `<option value="${c.id}" ${c.id === coffeeId ? 'selected' : ''}>${c.name} · ${c.process || 'Sin proceso'} · ${COFFEE_STATES[c.state]?.label || c.state || '—'} (${formatCurrency(c.pricePerKg)}/kg)</option>`).join('')}
           </select>
-          <div class="quot-line-info form-hint" style="margin-top:8px"></div>
+          <div class="quot-line-info form-hint"></div>
         </div>
         <div class="quot-line-fullpack-fields">
           <div class="form-group">
@@ -506,11 +506,11 @@ const QuotationManager = {
         </select>
       </div>
 
-      <div class="form-group" style="margin-top:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap">
+      <div class="form-group quot-coffee-lines-section">
+        <div class="quot-coffee-lines-header">
           <div>
-            <label style="margin:0">Cafés en esta cotización</label>
-            <p class="form-hint" style="margin:4px 0 0">Agregue uno o varios cafés; todo queda en una sola cotización.</p>
+            <label>Cafés en esta cotización</label>
+            <p class="form-hint">Agregue uno o varios cafés; todo queda en una sola cotización.</p>
           </div>
           <button type="button" class="btn btn-secondary btn-sm" id="quot-add-coffee-line">+ Agregar otro café</button>
         </div>
@@ -520,7 +520,7 @@ const QuotationManager = {
       <div id="maquila-options" style="display:none">
         <div class="form-group">
           <label>¿El cliente aporta el café?</label>
-          <div class="toggle-group" style="margin-top:8px">
+          <div class="toggle-group toggle-group-spaced">
             <label class="toggle">
               <input type="checkbox" id="quot-client-coffee" checked>
               <span class="toggle-slider"></span>
@@ -530,7 +530,7 @@ const QuotationManager = {
         </div>
         <div class="form-group">
           <label>¿El cliente aporta el empaque?</label>
-          <div class="toggle-group" style="margin-top:8px">
+          <div class="toggle-group toggle-group-spaced">
             <label class="toggle">
               <input type="checkbox" id="quot-client-packaging" checked>
               <span class="toggle-slider"></span>
@@ -540,7 +540,7 @@ const QuotationManager = {
         </div>
         <div class="form-group">
           <label>Servicios de Maquila</label>
-          <p class="form-hint" style="margin-bottom:8px">Seleccione los procesos a realizar. Si el cliente aporta empaque, no se cobra material — solo mano de obra de empacada.</p>
+          <p class="form-hint form-hint-spaced">Seleccione los procesos a realizar. Si el cliente aporta empaque, no se cobra material — solo mano de obra de empacada.</p>
           <div class="selection-grid selection-grid-multi" id="quot-maquila-steps">
             ${Object.entries(TRANSFORMATION_STEPS).map(([key, val]) => `
               <button type="button" class="selection-btn ${['tostion', 'seleccion', 'empacada'].includes(key) ? 'active' : ''}" data-value="${key}">${val.label}</button>
@@ -563,7 +563,7 @@ const QuotationManager = {
       <div id="quot-packaging-maquila" style="display:none">
         <div class="form-group">
           <label>Presentaciones y cantidades (Maquila)</label>
-          <p class="form-hint" style="margin-bottom:12px">
+          <p class="form-hint form-hint-spaced-lg">
             Indique cuántas unidades de cada tamaño. El costo de empacada (mano de obra) se calcula por presentación.
             <span id="quot-packaging-mix-hint"> Material de empaque: aportado por el cliente.</span>
           </p>
@@ -593,7 +593,7 @@ const QuotationManager = {
       <div id="full-pack-labels">
         <div class="form-group">
           <label>Etiquetas</label>
-          <p class="form-hint" style="margin-bottom:8px">Selección múltiple: pequeña, grande o ambas</p>
+          <p class="form-hint form-hint-spaced">Selección múltiple: pequeña, grande o ambas</p>
           <div class="selection-grid selection-grid-multi" id="quot-label">
             <button type="button" class="selection-btn active" data-value="small">Pequeña (${formatCurrency(costs.labels.small)})</button>
             <button type="button" class="selection-btn" data-value="large">Grande (${formatCurrency(costs.labels.large)})</button>
@@ -607,14 +607,14 @@ const QuotationManager = {
           <label id="quot-sale-price-label">Precio total de venta al cliente (COP)</label>
           <input type="number" class="form-control" id="quot-sale-price" min="0" step="100"
             placeholder="Ingrese el precio total al cliente" inputmode="numeric">
-          <p class="form-hint" style="margin-top:8px">
+          <p class="form-hint form-hint-spaced">
             Maquila: un solo café por cotización. El precio es el total del pedido.
           </p>
         </div>
       </div>
 
       <div id="quot-fullpack-margin-summary" class="form-group">
-        <div class="cost-row" style="padding:12px;background:var(--bg-secondary);border-radius:8px">
+        <div class="cost-row margin-summary-box">
           <span class="cost-label">Margen de ganancia calculado (promedio)</span>
           <span id="quot-margin-display" class="badge badge-neutral">—</span>
         </div>
@@ -636,20 +636,20 @@ const QuotationManager = {
       <div id="quot-suppliers-section" style="display:none;margin-top:8px">
         <div class="form-group">
           <label>Proveedores por Proceso</label>
-          <p class="form-hint" style="margin-bottom:8px">Indique dónde se realizará cada etapa (tostador, empacadora, transporte, etc.)</p>
+          <p class="form-hint form-hint-spaced">Indique dónde se realizará cada etapa (tostador, empacadora, transporte, etc.)</p>
           <div id="quot-suppliers-fields"></div>
         </div>
       </div>
 
-      <div id="quot-compare-section" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div id="quot-compare-section" class="quot-compare-section">
         <button type="button" class="btn btn-secondary" id="quot-compare-internal-btn">
           Comparar con costeo interno
         </button>
-        <span class="form-hint" style="margin:0">Contraste esta cotización con su costo real de empresa</span>
+        <span class="form-hint">Contraste esta cotización con su costo real de empresa</span>
       </div>
       <div id="quot-internal-comparison" style="display:none"></div>
 
-      <div id="quotation-preview-area" style="margin-top:20px"></div>
+      <div id="quotation-preview-area" class="quotation-preview-area"></div>
     `;
 
     this.bindQuotationEvents();
@@ -1603,7 +1603,7 @@ const QuotationManager = {
                 </td>
                 <td>${this.getStatusBadge(q.status || 'pending')}</td>
                 <td>${formatDate(q.createdAt)}</td>
-                <td>
+                <td class="table-actions-cell">
                   <div class="action-buttons">
                     <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF</button>
                     <button class="btn btn-sm btn-secondary" onclick="QuotationManager.view('${q.id}')">Ver</button>
@@ -1695,25 +1695,26 @@ const QuotationManager = {
 
     return `
       <div class="quotation-preview">
-        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:30px;flex-wrap:wrap;gap:16px">
-          <div>
-            ${settings.logo ? `<img src="${settings.logo}" style="max-height:50px;margin-bottom:10px">` : ''}
+        <div class="quot-preview-header">
+          <div class="quot-preview-brand">
+            ${settings.logo ? `<img src="${settings.logo}" alt="">` : ''}
             <h2>${settings.companyName}</h2>
-            <p style="color:#666">${settings.tagline}</p>
+            <p>${settings.tagline}</p>
           </div>
-          <div style="text-align:right">
+          <div class="quot-preview-meta">
             <h3>COTIZACIÓN</h3>
             <p><strong>${q.number}</strong></p>
-            <p style="color:#666">${formatDate(q.createdAt)}</p>
-            <p style="color:#666">Válida hasta: ${formatDate(validUntil)}</p>
+            <p>${formatDate(q.createdAt)}</p>
+            <p>Válida hasta: ${formatDate(validUntil)}</p>
           </div>
         </div>
-        <div style="margin-bottom:24px">
+        <div class="quot-preview-body">
           <p><strong>Cliente:</strong> ${q.clientName}</p>
           ${productBlock}
           ${q.productionMode === 'maquila' ? `<p><strong>Empaque:</strong> ${q.clientProvidesPackaging !== false ? 'Aportado por el cliente' : 'Aportado por nosotros (material incluido)'}</p>` : ''}
         </div>
-        <table style="width:100%;margin-bottom:24px">
+        <div class="quot-preview-table">
+        <table>
           <thead>
             <tr>
               <th>Descripción</th>
@@ -1729,7 +1730,7 @@ const QuotationManager = {
             <tr>
               <td>
                 <strong>${line.coffeeName || q.coffeeName}</strong><br>
-                <small style="color:#666">${line.coffeeDetails || q.coffeeDetails} · ${PACKAGING_SIZES[line.packaging]?.label || line.packaging} · ${lineGrind}</small>
+                <small>${line.coffeeDetails || q.coffeeDetails} · ${PACKAGING_SIZES[line.packaging]?.label || line.packaging} · ${lineGrind}</small>
               </td>
               <td>${line.quantity}</td>
               <td>${formatCurrency(line.unitPrice)}</td>
@@ -1739,10 +1740,11 @@ const QuotationManager = {
             }).join('')}
           </tbody>
         </table>
+        </div>
         ${q.notes ? `<p style="margin-bottom:16px"><strong>Notas:</strong> ${q.notes}</p>` : ''}
-        <div style="border-top:2px solid #333;padding-top:16px;text-align:right">
-          <p style="font-size:1.3rem"><strong>TOTAL: ${formatCurrency(q.totalPrice)}</strong></p>
-          <p style="color:#666;font-size:0.85rem;margin-top:4px">Precio por producto entregado · ${mode}</p>
+        <div class="quot-preview-total">
+          <p><strong>TOTAL: ${formatCurrency(q.totalPrice)}</strong></p>
+          <p>Precio por producto entregado · ${mode}</p>
         </div>
       </div>
     `;
