@@ -939,20 +939,21 @@ const App = {
 
     const session = Auth.getSession();
     const user = Auth.getCurrentUser();
-    const supported = await BiometricAuth.isSupported();
+    const info = await BiometricAuth.getSupportInfo();
     const enabled = user ? BiometricAuth.hasCredentialForUser(user.id) : false;
 
-    if (!supported) {
+    if (!info.available) {
       panel.innerHTML = `
-        <p class="form-hint">Este navegador o dispositivo no soporta inicio biométrico (huella / Face ID).</p>
-        <p class="form-hint">Use Chrome o Safari en móvil con HTTPS para activarlo.</p>`;
+        <p class="form-hint">${info.reason}</p>
+        <p class="form-hint">Instale la app como PWA en el móvil (Chrome → Añadir a pantalla de inicio) e intente de nuevo.</p>`;
       return;
     }
 
     panel.innerHTML = `
+      <p class="form-hint" style="margin-bottom:8px">${info.reason}</p>
       <p class="form-hint" style="margin-bottom:12px">
         Sesión actual: <strong>${session?.name || '—'}</strong>.
-        El inicio biométrico está disponible para <strong>todos los usuarios</strong> en este dispositivo.
+        Cada usuario activa su propia huella/Face ID en este dispositivo.
       </p>
       <div class="form-group">
         <span class="badge ${enabled ? 'badge-success' : 'badge-neutral'}">
@@ -968,19 +969,31 @@ const App = {
         </button>
       </div>
       <p class="form-hint" style="margin-top:12px">
-        Cada usuario debe activar su propio inicio biométrico al iniciar sesión con contraseña
-        (marque la casilla en la pantalla de login).
+        Al pulsar activar, el navegador mostrará un diálogo del sistema. Debe aceptarlo para completar el registro.
+        También puede activarlo al iniciar sesión marcando la casilla en la pantalla de login.
       </p>`;
 
     document.getElementById('settings-enable-biometric')?.addEventListener('click', async () => {
-      if (!user) return;
+      if (!user) {
+        Toast.show('Inicie sesión de nuevo', 'warning');
+        return;
+      }
+      const btn = document.getElementById('settings-enable-biometric');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Esperando huella / Face ID...';
+      }
       const result = await BiometricAuth.register(user);
+      if (btn) {
+        btn.textContent = 'Activar huella / Face ID';
+      }
       if (result.success) {
         Toast.show(result.message, 'success');
         this.renderBiometricSettings();
         this.renderUsersPanel();
       } else {
         Toast.show(result.message, 'danger');
+        if (btn) btn.disabled = false;
       }
     });
 
