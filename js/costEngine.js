@@ -276,23 +276,18 @@ const CostEngine = {
           <div class="form-group">
             <label>¿Cómo define su ganancia?</label>
             <div class="selection-grid" id="ce-target-mode">
-              <button type="button" class="selection-btn active" data-value="margin">Margen %</button>
+              <button type="button" class="selection-btn active" data-value="target_price">Precio de venta</button>
               <button type="button" class="selection-btn" data-value="profit_amount">Ganancia $ por unidad</button>
-              <button type="button" class="selection-btn" data-value="target_price">Precio venta objetivo</button>
             </div>
-            <input type="hidden" id="ce-target-mode-value" value="${scenario?.targetMode || 'margin'}">
+            <input type="hidden" id="ce-target-mode-value" value="${scenario?.targetMode === 'profit_amount' ? 'profit_amount' : 'target_price'}">
           </div>
 
           <div class="form-group" id="ce-target-input-wrap">
-            <label id="ce-target-label">Margen de ganancia (%)</label>
-            <input type="number" id="ce-target-value" class="form-control"
-              min="${PROFIT_MARGIN_MIN}" max="${PROFIT_MARGIN_MAX}" step="1"
-              value="${scenario?.targetValue ?? scenario?.profitMargin ?? PROFIT_MARGIN_DEFAULT}">
-            <div class="selection-grid" style="margin-top:8px" id="ce-margin-quick">
-              ${PROFIT_MARGIN_QUICK.map((m) => `
-                <button type="button" class="selection-btn" data-value="${m}">${m}%</button>
-              `).join('')}
-            </div>
+            <label id="ce-target-label">Precio de venta por unidad (COP)</label>
+            <input type="number" id="ce-target-value" class="form-control" min="0" step="100"
+              value="${scenario?.targetValue ?? scenario?.targetPrice ?? ''}"
+              placeholder="Ingrese precio al cliente">
+            <p class="form-hint" style="margin-top:8px">El simulador calcula el % de ganancia a partir de su precio de venta.</p>
           </div>
 
           <div class="form-group">
@@ -356,15 +351,6 @@ const CostEngine = {
       });
     });
 
-    container.querySelector('#ce-margin-quick')?.querySelectorAll('.selection-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.getElementById('ce-target-mode-value').value = 'margin';
-        document.getElementById('ce-target-value').value = btn.dataset.value;
-        this.updateTargetModeUI(container);
-        this.updateSimulatorPreview();
-      });
-    });
-
     ['ce-coffee', 'ce-quantity', 'ce-target-value', 'ce-scenario-name', 'ce-notes'].forEach((id) => {
       container.querySelector(`#${id}`)?.addEventListener('input', () => this.updateSimulatorPreview());
     });
@@ -387,11 +373,9 @@ const CostEngine = {
     container.querySelector('#ce-save-template')?.addEventListener('click', () => this.saveTemplateFromSimulator());
 
     this.updateTargetModeUI(container);
-    if (container.querySelector('#ce-target-mode-value')?.value !== 'margin') {
-      container.querySelectorAll('#ce-target-mode .selection-btn').forEach((b) => {
-        b.classList.toggle('active', b.dataset.value === container.querySelector('#ce-target-mode-value').value);
-      });
-    }
+    container.querySelectorAll('#ce-target-mode .selection-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.value === container.querySelector('#ce-target-mode-value')?.value);
+    });
   },
 
   toggleProductionMode(container) {
@@ -401,25 +385,21 @@ const CostEngine = {
   },
 
   updateTargetModeUI(container) {
-    const mode = container.querySelector('#ce-target-mode-value')?.value || 'margin';
+    const mode = container.querySelector('#ce-target-mode-value')?.value || 'target_price';
     const label = container.querySelector('#ce-target-label');
     const input = container.querySelector('#ce-target-value');
-    const quick = container.querySelector('#ce-margin-quick');
     if (mode === 'profit_amount') {
       label.textContent = 'Ganancia deseada por unidad ($ COP)';
-      input.removeAttribute('min');
-      input.removeAttribute('max');
-      if (quick) quick.style.display = 'none';
-    } else if (mode === 'target_price') {
-      label.textContent = 'Precio de venta objetivo ($ COP)';
-      input.removeAttribute('min');
-      input.removeAttribute('max');
-      if (quick) quick.style.display = 'none';
+      input.placeholder = 'Ej: 5000';
     } else {
-      label.textContent = 'Margen de ganancia (%)';
-      input.min = PROFIT_MARGIN_MIN;
-      input.max = PROFIT_MARGIN_MAX;
-      if (quick) quick.style.display = '';
+      label.textContent = 'Precio de venta por unidad (COP)';
+      input.placeholder = 'Ingrese precio al cliente';
+    }
+    input.removeAttribute('max');
+    if (mode === 'profit_amount') {
+      input.removeAttribute('min');
+    } else {
+      input.min = '0';
     }
   },
 
@@ -436,7 +416,7 @@ const CostEngine = {
     const packaging = document.getElementById('ce-packaging-value')?.value || '250g';
     const labels = parseLabelSelection(document.getElementById('ce-label-value')?.value);
     const quantity = parseInt(document.getElementById('ce-quantity')?.value || '1', 10);
-    const targetMode = document.getElementById('ce-target-mode-value')?.value || 'margin';
+    const targetMode = document.getElementById('ce-target-mode-value')?.value || 'target_price';
     const targetValue = document.getElementById('ce-target-value')?.value;
 
     const costOnly = this.computePricing(coffee, options, packaging, labels, 0, quantity);
@@ -495,7 +475,7 @@ const CostEngine = {
     const packaging = document.getElementById('ce-packaging-value')?.value || '250g';
     const labels = parseLabelSelection(document.getElementById('ce-label-value')?.value);
     const quantity = parseInt(document.getElementById('ce-quantity')?.value || '1', 10);
-    const targetMode = document.getElementById('ce-target-mode-value')?.value || 'margin';
+    const targetMode = document.getElementById('ce-target-mode-value')?.value || 'target_price';
     const targetValue = document.getElementById('ce-target-value')?.value;
     const name = document.getElementById('ce-scenario-name')?.value?.trim()
       || `${coffee.name} · ${options.productionMode === 'maquila' ? 'Maquila' : PACKAGING_SIZES[packaging]?.label}`;
@@ -541,10 +521,25 @@ const CostEngine = {
     const name = prompt('Nombre de la plantilla:', document.getElementById('ce-scenario-name')?.value || 'Plantilla');
     if (!name?.trim()) return;
 
+    const coffeeId = document.getElementById('ce-coffee')?.value;
+    const coffee = CoffeeManager.getById(coffeeId);
     const options = this.buildInternalOptions();
     const packaging = document.getElementById('ce-packaging-value')?.value || '250g';
     const labels = parseLabelSelection(document.getElementById('ce-label-value')?.value);
-    const margin = clampProfitMargin(document.getElementById('ce-target-value')?.value);
+    const quantity = parseInt(document.getElementById('ce-quantity')?.value || '1', 10);
+    const targetMode = document.getElementById('ce-target-mode-value')?.value || 'target_price';
+    const targetValue = document.getElementById('ce-target-value')?.value;
+
+    let defaultMargin = PROFIT_MARGIN_DEFAULT;
+    if (coffee) {
+      const costOnly = this.computePricing(coffee, options, packaging, labels, 0, quantity);
+      if (costOnly) {
+        const unitCost = options.productionMode === 'maquila'
+          ? (costOnly.totalCost / (costOnly.totalQuantity || 1))
+          : costOnly.totalCost;
+        defaultMargin = this.getTargetMargin(unitCost, targetMode, targetValue);
+      }
+    }
 
     this.saveTemplate({
       name: name.trim(),
@@ -556,7 +551,9 @@ const CostEngine = {
       clientProvidesPackaging: options.clientProvidesPackaging,
       packaging,
       labelSizes: labels,
-      defaultMargin: margin
+      defaultMargin,
+      targetMode,
+      targetPrice: targetMode === 'target_price' ? parseFloat(String(targetValue).replace(/[^\d.-]/g, '')) || null : null
     });
   },
 

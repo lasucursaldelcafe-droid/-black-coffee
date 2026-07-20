@@ -217,7 +217,8 @@ const CoffeeManager = {
         <input type="hidden" id="coffee-region" value="${coffee?.region || ''}">
       </div>
       <div class="form-group">
-        <label>Proceso</label>
+        <label>Proceso de beneficio</label>
+        <p class="form-hint" style="margin-bottom:8px">Lavado, Natural, Honey, etc. — identifica el café en cotizaciones y PDF.</p>
         <div class="selection-grid" id="process-selection">
           ${COFFEE_PROCESSES.map(p => `
             <button type="button" class="selection-btn ${coffee?.process === p ? 'active' : ''}" data-value="${p}">${p}</button>
@@ -236,7 +237,7 @@ const CoffeeManager = {
         </div>
       </div>
       <div class="form-group">
-        <label>Estado del Café</label>
+        <label>Estado del grano (define transformaciones y costo)</label>
         <div class="selection-grid" id="state-selection">
           ${Object.entries(COFFEE_STATES).map(([key, val]) => `
             <button type="button" class="selection-btn ${coffee?.state === key ? 'active' : ''}" data-value="${key}" title="${val.description || ''}">
@@ -385,6 +386,16 @@ const CoffeeManager = {
 
     if (!coffee.name || Number.isNaN(coffee.pricePerKg)) {
       Toast.show('Complete los campos obligatorios', 'danger');
+      return;
+    }
+
+    if (!coffee.process) {
+      Toast.show('Seleccione el proceso de beneficio del café', 'danger');
+      return;
+    }
+
+    if (!coffee.state) {
+      Toast.show('Seleccione el estado del grano', 'danger');
       return;
     }
 

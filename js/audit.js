@@ -38,7 +38,8 @@ const AuditLog = {
       createdAt: new Date().toISOString()
     };
 
-    const log = this.getAll();
+    const raw = Storage.get(STORAGE_KEYS.AUDIT_LOG);
+    const log = Array.isArray(raw) ? raw : [];
     log.unshift(entry);
     if (log.length > 200) log.length = 200;
     Storage.set(STORAGE_KEYS.AUDIT_LOG, log);
