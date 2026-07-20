@@ -69,17 +69,10 @@ const GasSync = {
   },
 
   _buildLocalDocument() {
-    const keys = {};
-    const now = Date.now();
-    const deviceId = this.getDeviceId();
-    this.getAllSyncKeys().forEach((key) => {
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-      let payload = JSON.parse(raw);
-      payload = SyncShared.sanitizeRemotePayload(key, payload);
-      keys[key] = { payload, updatedAt: now, deviceId };
-    });
-    return { version: 1, updatedAt: now, deviceId, keys };
+    return SyncShared.buildLocalDocument(
+      () => this.getAllSyncKeys(),
+      () => this.getDeviceId()
+    );
   },
 
   _localRecordCount() {
@@ -174,7 +167,7 @@ const GasSync = {
           ? SyncShared.sanitizeRemotePayload(key, JSON.parse(localRaw))
           : null;
         const localMeta = typeof Storage !== 'undefined' ? Storage.getLocalSyncMeta() : {};
-        const localUpdatedAt = localMeta[key] || 0;
+        const localUpdatedAt = localMeta[key] || SyncShared.getLocalUpdatedAt(key);
 
         const reconcile = SyncShared.reconcilePayload(
           key,
@@ -226,7 +219,7 @@ const GasSync = {
     return result;
   },
 
-  queuePush(key) {
+  queuePush(key, options = {}) {
     if (this._suppressRemote || !this.getAllSyncKeys().includes(key)) return;
     this._pendingPushKeys.add(key);
     if (!navigator.onLine) {
@@ -234,11 +227,17 @@ const GasSync = {
       return;
     }
     clearTimeout(this._writeTimers.all);
-    this._writeTimers.all = setTimeout(() => {
+    const delay = options.immediate ? 0 : 800;
+    const runSync = () => {
       this.syncAll({ silent: true }).catch((e) => {
         this.lastError = e.message;
       });
-    }, 800);
+    };
+    if (options.immediate) {
+      runSync();
+      return;
+    }
+    this._writeTimers.all = setTimeout(runSync, delay);
   },
 
   getLocalDataSummary() {

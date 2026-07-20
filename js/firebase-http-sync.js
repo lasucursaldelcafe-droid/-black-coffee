@@ -71,19 +71,10 @@ const FirebaseHttpSync = {
   },
 
   _buildLocalDocument() {
-    const keys = {};
-    const now = Date.now();
-    const deviceId = Storage.getDeviceId();
-    this.getAllSyncKeys().forEach((key) => {
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-      keys[key] = {
-        payload: SyncShared.sanitizeRemotePayload(key, JSON.parse(raw)),
-        updatedAt: now,
-        deviceId
-      };
-    });
-    return { version: 1, updatedAt: now, deviceId, keys };
+    return SyncShared.buildLocalDocument(
+      () => this.getAllSyncKeys(),
+      () => Storage.getDeviceId()
+    );
   },
 
   async _apiCall(body) {
@@ -119,9 +110,16 @@ const FirebaseHttpSync = {
         const localPayload = localRaw
           ? SyncShared.sanitizeRemotePayload(key, JSON.parse(localRaw))
           : null;
-        const reconcile = SyncShared.reconcilePayload(key, localPayload, {
-          payload: remoteEntry?.payload ?? remoteEntry
-        });
+        const { localUpdatedAt } = SyncShared.getReconcileContext(key, remoteEntry);
+        const reconcile = SyncShared.reconcilePayload(
+          key,
+          localPayload,
+          {
+            payload: remoteEntry?.payload ?? remoteEntry,
+            updatedAt: remoteEntry?.updatedAt
+          },
+          { localUpdatedAt }
+        );
         if (reconcile.changed && reconcile.merged !== null) {
           this._suppressRemote = true;
           SyncShared.applyMergedLocal(key, reconcile.merged);
@@ -156,12 +154,18 @@ const FirebaseHttpSync = {
     return this.syncAll({ silent: false });
   },
 
-  queuePush(key) {
+  queuePush(key, options = {}) {
     if (this._suppressRemote || !this.getAllSyncKeys().includes(key)) return;
     clearTimeout(this._writeTimers.all);
-    this._writeTimers.all = setTimeout(() => {
+    const delay = options.immediate ? 0 : 800;
+    const runSync = () => {
       this.syncAll({ silent: true }).catch(() => {});
-    }, 800);
+    };
+    if (options.immediate) {
+      runSync();
+      return;
+    }
+    this._writeTimers.all = setTimeout(runSync, delay);
   },
 
   getLocalDataSummary() {

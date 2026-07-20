@@ -121,6 +121,32 @@ const SyncHub = {
     const errors = [];
     let best = { pushed: 0, pulled: 0 };
 
+    const finish = (result, backend) => {
+      this.syncing = false;
+      this.lastSyncAt = new Date().toISOString();
+      this.lastError = errors[0] || null;
+      this.ready = Boolean(this.getPrimary());
+      if (!options.silent) {
+        window.dispatchEvent(new CustomEvent('bca-sync-complete', {
+          detail: { ...result, at: this.lastSyncAt, source: backend || 'sync-hub' }
+        }));
+      }
+      this.updateStatusElement();
+      return result;
+    };
+
+    // Google Apps Script es la fuente de verdad — no mezclar pulls de Firebase/GitHub encima
+    if (typeof GasSync !== 'undefined' && GasSync.isConfigured()) {
+      try {
+        const result = await GasSync.syncAll({ silent: options.silent !== false });
+        this.primary = GasSync;
+        this.lastError = null;
+        return finish(result, 'gas');
+      } catch (error) {
+        errors.push(`gas: ${error.message}`);
+      }
+    }
+
     const tryBackend = async (backend, label) => {
       if (!backend) return null;
       try {
@@ -142,31 +168,21 @@ const SyncHub = {
       return null;
     };
 
-    if (typeof GasSync !== 'undefined' && GasSync.isConfigured()) {
-      await tryBackend(GasSync, 'gas');
-    }
-    if (typeof FirebaseHttpSync !== 'undefined' && FirebaseHttpSync.isConfigured()) {
+    if (!this.getPrimary() && typeof FirebaseHttpSync !== 'undefined' && FirebaseHttpSync.isConfigured()) {
       await tryBackend(FirebaseHttpSync, 'firebase-http');
     }
-    await tryBackend(FirebaseSync, 'firebase');
-    await tryBackend(CloudSync, 'github');
-
-    this.syncing = false;
-    this.lastSyncAt = new Date().toISOString();
-    this.lastError = errors[0] || null;
-    this.ready = Boolean(this.getPrimary());
-
-    if (!options.silent) {
-      window.dispatchEvent(new CustomEvent('bca-sync-complete', {
-        detail: { ...best, at: this.lastSyncAt, source: 'sync-hub' }
-      }));
+    if (!this.getPrimary()) {
+      await tryBackend(FirebaseSync, 'firebase');
+    }
+    if (!this.getPrimary()) {
+      await tryBackend(CloudSync, 'github');
     }
 
-    this.updateStatusElement();
     if (errors.length && !this.getPrimary()) {
+      this.syncing = false;
       throw new Error(errors.join(' · '));
     }
-    return best;
+    return finish(best, 'sync-hub-fallback');
   },
 
   async syncAll(options = {}) {
@@ -200,9 +216,14 @@ const SyncHub = {
     return this.forceSync({ silent: false });
   },
 
-  queuePush(key) {
-    if (typeof GasSync !== 'undefined' && GasSync.isConfigured()) GasSync.queuePush(key);
-    if (typeof FirebaseHttpSync !== 'undefined' && FirebaseHttpSync.isConfigured()) FirebaseHttpSync.queuePush(key);
+  queuePush(key, options = {}) {
+    if (typeof GasSync !== 'undefined' && GasSync.isConfigured()) {
+      GasSync.queuePush(key, options);
+      return;
+    }
+    if (typeof FirebaseHttpSync !== 'undefined' && FirebaseHttpSync.isConfigured()) {
+      FirebaseHttpSync.queuePush(key, options);
+    }
     if (typeof FirebaseSync !== 'undefined') FirebaseSync.queuePush(key);
     if (typeof CloudSync !== 'undefined') CloudSync.queuePush(key);
   },

@@ -74,13 +74,19 @@ const Storage = {
     this.markLocalWrite(DELETED_RECORDS_KEY);
 
     if (typeof FirebaseSync !== 'undefined') {
-      FirebaseSync.queuePush(DELETED_RECORDS_KEY, tomb);
-      if (FirebaseSync.isEnabled()) {
-        FirebaseSync.pushKeyNow(DELETED_RECORDS_KEY).catch(() => {});
+      if (typeof SyncHub === 'undefined' || !(typeof GasSync !== 'undefined' && GasSync.isConfigured())) {
+        if (options.immediate) {
+          FirebaseSync.queuePush(DELETED_RECORDS_KEY, tomb);
+          if (FirebaseSync.isEnabled()) {
+            FirebaseSync.pushKeyNow(DELETED_RECORDS_KEY).catch(() => {});
+          }
+        } else {
+          FirebaseSync.queuePush(DELETED_RECORDS_KEY, tomb);
+        }
       }
     }
     if (typeof SyncHub !== 'undefined') {
-      SyncHub.queuePush(DELETED_RECORDS_KEY);
+      SyncHub.queuePush(DELETED_RECORDS_KEY, { immediate: true });
     }
   },
 
@@ -193,7 +199,9 @@ const Storage = {
     if (!navigator.onLine && typeof OfflineSync !== 'undefined') {
       OfflineSync.markPending(key);
     }
-    if (typeof FirebaseSync !== 'undefined') {
+    if (typeof SyncHub !== 'undefined') {
+      SyncHub.queuePush(key, { immediate: Boolean(options.immediate) });
+    } else if (typeof FirebaseSync !== 'undefined') {
       if (options.immediate) {
         FirebaseSync.queuePush(key, next);
         if (FirebaseSync.isEnabled()) {
@@ -205,9 +213,6 @@ const Storage = {
         FirebaseSync.queuePush(key, next);
       }
     }
-    if (typeof SyncHub !== 'undefined') {
-      SyncHub.queuePush(key);
-    }
   },
 
   remove(key) {
@@ -216,11 +221,10 @@ const Storage = {
     if (!navigator.onLine && typeof OfflineSync !== 'undefined') {
       OfflineSync.markPending(key);
     }
-    if (typeof FirebaseSync !== 'undefined') {
-      FirebaseSync.queueDelete(key);
-    }
     if (typeof SyncHub !== 'undefined') {
-      SyncHub.queuePush(key);
+      SyncHub.queuePush(key, { immediate: true });
+    } else if (typeof FirebaseSync !== 'undefined') {
+      FirebaseSync.queueDelete(key);
     }
   },
 

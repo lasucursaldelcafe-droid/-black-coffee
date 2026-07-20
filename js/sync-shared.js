@@ -40,6 +40,62 @@ const SyncShared = {
     return [...this.getSyncKeys(), ...SYNC_META_KEYS];
   },
 
+  getLocalUpdatedAt(key) {
+    if (typeof Storage === 'undefined') return 0;
+    return Storage.getLocalSyncMeta()[key] || 0;
+  },
+
+  buildDocumentEntry(key, payload, deviceId, fallbackNow = Date.now()) {
+    const updatedAt = this.getLocalUpdatedAt(key) || fallbackNow;
+    return {
+      payload: this.sanitizeRemotePayload(key, payload),
+      updatedAt,
+      deviceId
+    };
+  },
+
+  buildLocalDocument(getAllSyncKeys, getDeviceId) {
+    const keys = {};
+    const now = Date.now();
+    const deviceId = getDeviceId();
+    getAllSyncKeys().forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      try {
+        keys[key] = this.buildDocumentEntry(key, JSON.parse(raw), deviceId, now);
+      } catch {
+        /* omit corrupt key */
+      }
+    });
+    return { version: 1, updatedAt: now, deviceId, keys };
+  },
+
+  /** El dispositivo local gana si editó recientemente (evita que nubes secundarias borren datos de PC). */
+  shouldPreferLocal(localUpdatedAt, remoteUpdatedAt, localPayload, remotePayload) {
+    if (localUpdatedAt <= 0) return false;
+    if (this.isEmptyPayload(localPayload)) return false;
+
+    if (!remoteUpdatedAt || remoteUpdatedAt === 0) return true;
+    if (this.isEmptyPayload(remotePayload)) return true;
+
+    // 5 s de tolerancia: latencia de red / reloj no deben pisar una edición local reciente
+    if (localUpdatedAt >= remoteUpdatedAt - 5000) {
+      return localUpdatedAt >= remoteUpdatedAt;
+    }
+    return localUpdatedAt > remoteUpdatedAt;
+  },
+
+  getReconcileContext(key, remoteEntry) {
+    const remotePayload = remoteEntry?.payload ?? remoteEntry;
+    return {
+      remoteEntry: remoteEntry && typeof remoteEntry === 'object' && 'payload' in remoteEntry
+        ? remoteEntry
+        : { payload: remotePayload, updatedAt: remoteEntry?.updatedAt },
+      localUpdatedAt: this.getLocalUpdatedAt(key),
+      remoteUpdatedAt: remoteEntry?.updatedAt || this.extractUpdatedAt(remotePayload)
+    };
+  },
+
   stableStringify(value) {
     return JSON.stringify(value);
   },
@@ -189,8 +245,7 @@ const SyncShared = {
       return { merged: localPayload, changed: false, push: true };
     }
 
-    // Local-first: mientras este dispositivo tenga cambios más recientes, manda él
-    if (localUpdatedAt > 0 && remoteUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
+    if (this.shouldPreferLocal(localUpdatedAt, remoteUpdatedAt, localPayload, remotePayload)) {
       return { merged: localPayload, changed: false, push: true };
     }
 

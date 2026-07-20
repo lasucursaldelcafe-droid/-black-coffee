@@ -293,10 +293,17 @@ const CloudSync = {
         const localPayload = localRaw
           ? SyncShared.sanitizeRemotePayload(key, JSON.parse(localRaw))
           : null;
+        const { localUpdatedAt } = SyncShared.getReconcileContext(key, remoteEntry);
 
-        const result = SyncShared.reconcilePayload(key, localPayload, {
-          payload: remoteEntry?.payload ?? remoteEntry
-        });
+        const result = SyncShared.reconcilePayload(
+          key,
+          localPayload,
+          {
+            payload: remoteEntry?.payload ?? remoteEntry,
+            updatedAt: remoteEntry?.updatedAt
+          },
+          { localUpdatedAt }
+        );
 
         if (result.changed && result.merged !== null) {
           this._applyMergedLocal(key, result.merged);

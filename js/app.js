@@ -66,7 +66,10 @@ const App = {
         SetupWizard.afterSyncBootstrap();
       }
 
-      FirebaseSync.startInBackground();
+      const gasIsPrimary = typeof GasSync !== 'undefined' && GasSync.isConfigured();
+      if (!gasIsPrimary && typeof FirebaseSync !== 'undefined') {
+        FirebaseSync.startInBackground();
+      }
     } catch (error) {
       console.error('Bootstrap falló:', error);
       Toast?.show('No se pudo cargar los datos. Use Configuración o repare el acceso.', 'danger');
