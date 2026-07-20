@@ -190,6 +190,9 @@ const Storage = {
     if (options.fromRemote) return;
 
     this.markLocalWrite(key);
+    if (!navigator.onLine && typeof OfflineSync !== 'undefined') {
+      OfflineSync.markPending(key);
+    }
     if (typeof FirebaseSync !== 'undefined') {
       if (options.immediate) {
         FirebaseSync.queuePush(key, next);
@@ -210,6 +213,9 @@ const Storage = {
   remove(key) {
     localStorage.removeItem(key);
     this.markLocalWrite(key);
+    if (!navigator.onLine && typeof OfflineSync !== 'undefined') {
+      OfflineSync.markPending(key);
+    }
     if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.queueDelete(key);
     }

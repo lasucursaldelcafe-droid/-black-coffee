@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_VERSION = 'bca-v48';
+const CACHE_VERSION = 'bca-v49';
 
 const PRECACHE_URLS = [
   './',
@@ -16,6 +16,7 @@ const PRECACHE_URLS = [
   './icons/apple-touch-icon.png',
   './icons/icon-maskable-512.png',
   './js/storage.js',
+  './js/offline-sync.js',
   './js/sync-shared.js',
   './js/gas-config.js',
   './js/cloud-sync-config.js',

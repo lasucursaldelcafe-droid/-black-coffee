@@ -166,8 +166,11 @@ const SyncShared = {
     return remoteTs >= localTs ? remotePayload : localPayload;
   },
 
-  reconcilePayload(key, localPayload, remoteEntry) {
+  reconcilePayload(key, localPayload, remoteEntry, options = {}) {
     const remotePayload = remoteEntry?.payload ?? remoteEntry;
+    const remoteUpdatedAt = remoteEntry?.updatedAt
+      || this.extractUpdatedAt(remotePayload);
+    const localUpdatedAt = options.localUpdatedAt || 0;
 
     if ((localPayload === null || localPayload === undefined)
       && (remotePayload === null || remotePayload === undefined)) {
@@ -183,6 +186,11 @@ const SyncShared = {
     }
 
     if (remotePayload === null || remotePayload === undefined || !remoteEntry) {
+      return { merged: localPayload, changed: false, push: true };
+    }
+
+    // Local-first: mientras este dispositivo tenga cambios más recientes, manda él
+    if (localUpdatedAt > 0 && remoteUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
       return { merged: localPayload, changed: false, push: true };
     }
 

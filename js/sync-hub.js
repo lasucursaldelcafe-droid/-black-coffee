@@ -91,11 +91,16 @@ const SyncHub = {
 
     const pullNow = () => {
       if (!navigator.onLine || this.syncing) return;
-      this.forceSync({ silent: true }).then((result) => {
-        if ((result?.pulled || 0) > 0) {
-          window.dispatchEvent(new CustomEvent('bca-data-changed', { detail: { source: 'auto-sync' } }));
-        }
-      }).catch(() => {});
+      const flush = typeof OfflineSync !== 'undefined'
+        ? OfflineSync.flushPending()
+        : Promise.resolve();
+      flush.finally(() => {
+        this.forceSync({ silent: true }).then((result) => {
+          if ((result?.pulled || 0) > 0) {
+            window.dispatchEvent(new CustomEvent('bca-data-changed', { detail: { source: 'auto-sync' } }));
+          }
+        }).catch(() => {});
+      });
     };
 
     document.addEventListener('visibilitychange', () => {
@@ -203,6 +208,13 @@ const SyncHub = {
   },
 
   getStatusLabel() {
+    if (!navigator.onLine) {
+      const pending = typeof OfflineSync !== 'undefined' ? OfflineSync.getPendingCount() : 0;
+      const device = typeof OfflineSync !== 'undefined' ? OfflineSync.getDeviceShortId() : 'local';
+      return pending > 0
+        ? `Sin conexión · ${pending} cambio(s) en dispositivo ${device}`
+        : `Sin conexión · datos en dispositivo ${device}`;
+    }
     const p = this.getPrimary();
     if (p?.getStatusLabel) return p.getStatusLabel();
     if (typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready) {

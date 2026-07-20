@@ -41,6 +41,10 @@ const App = {
       PWA.init();
       PWA.bindMobileNav();
 
+      if (typeof OfflineSync !== 'undefined') {
+        OfflineSync.init();
+      }
+
       const urlParams = new URLSearchParams(window.location.search);
       const sectionParam = urlParams.get('section');
       const stageParam = urlParams.get('stage');
@@ -690,7 +694,7 @@ const App = {
 
     container.innerHTML = `
       <div class="card" style="margin-bottom:20px">
-        <div class="card-header"><span class="card-title">App Móvil (iOS y Android)</span></div>
+        <div class="card-header"><span class="card-title">Instalar BCA (Windows, iOS y Android)</span></div>
         <div id="pwa-install-card-settings"></div>
       </div>
       <div class="card" style="margin-bottom:20px">
@@ -881,14 +885,18 @@ const App = {
     const onlineEl = document.getElementById('online-status');
     const refreshOnlineStatus = () => {
       if (!onlineEl) return;
-      onlineEl.textContent = navigator.onLine
-        ? '🟢 En línea — toda la información se sincroniza automáticamente'
-        : '🔴 Sin conexión — los cambios se guardan aquí y se enviarán al reconectar';
+      onlineEl.textContent = typeof OfflineSync !== 'undefined'
+        ? OfflineSync.renderLocalMemoryLine()
+        : (navigator.onLine
+          ? '🟢 En línea — toda la información se sincroniza automáticamente'
+          : '🔴 Sin conexión — los cambios se guardan aquí y se enviarán al reconectar');
       SyncHub.updateStatusElement();
     };
     refreshOnlineStatus();
     window.addEventListener('online', refreshOnlineStatus);
     window.addEventListener('offline', refreshOnlineStatus);
+    window.addEventListener('bca-offline-pending', refreshOnlineStatus);
+    window.addEventListener('bca-sync-complete', refreshOnlineStatus);
   },
 
   saveSettings() {

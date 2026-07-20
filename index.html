@@ -90,11 +90,12 @@
     </div>
   </div>
 
-  <script>window.BCA_BUILD = '48';</script>
-  <script src="js/storage.js?v=48"></script>
-  <script src="js/auth.js?v=48"></script>
-  <script src="js/auth-biometric.js?v=48"></script>
-  <script src="js/pwa.js?v=48"></script>
+  <script>window.BCA_BUILD = '49';</script>
+  <script src="js/storage.js?v=49"></script>
+  <script src="js/offline-sync.js?v=49"></script>
+  <script src="js/auth.js?v=49"></script>
+  <script src="js/auth-biometric.js?v=49"></script>
+  <script src="js/pwa.js?v=49"></script>
   <script>
     Auth.init();
 
@@ -216,6 +217,7 @@
     });
 
     PWA.init();
+    if (typeof OfflineSync !== 'undefined') OfflineSync.init();
     setupBiometricUI();
   </script>
 </body>

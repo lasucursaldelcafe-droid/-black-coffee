@@ -173,10 +173,18 @@ const GasSync = {
         const localPayload = localRaw
           ? SyncShared.sanitizeRemotePayload(key, JSON.parse(localRaw))
           : null;
+        const localMeta = typeof Storage !== 'undefined' ? Storage.getLocalSyncMeta() : {};
+        const localUpdatedAt = localMeta[key] || 0;
 
-        const reconcile = SyncShared.reconcilePayload(key, localPayload, {
-          payload: remoteEntry?.payload ?? remoteEntry
-        });
+        const reconcile = SyncShared.reconcilePayload(
+          key,
+          localPayload,
+          {
+            payload: remoteEntry?.payload ?? remoteEntry,
+            updatedAt: remoteEntry?.updatedAt
+          },
+          { localUpdatedAt }
+        );
 
         if (reconcile.changed && reconcile.merged !== null) {
           this._applyMergedLocal(key, reconcile.merged);
@@ -221,6 +229,10 @@ const GasSync = {
   queuePush(key) {
     if (this._suppressRemote || !this.getAllSyncKeys().includes(key)) return;
     this._pendingPushKeys.add(key);
+    if (!navigator.onLine) {
+      if (typeof OfflineSync !== 'undefined') OfflineSync.markPending(key);
+      return;
+    }
     clearTimeout(this._writeTimers.all);
     this._writeTimers.all = setTimeout(() => {
       this.syncAll({ silent: true }).catch((e) => {

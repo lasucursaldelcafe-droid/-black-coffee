@@ -208,7 +208,70 @@
   width: 100%;
 }
 
+/* Offline mode banner */
+.offline-banner,
+#offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 9998;
+  background: linear-gradient(135deg, #3d2c00 0%, #5c4500 100%);
+  border-bottom: 1px solid #8a6914;
+  padding: 10px 16px;
+}
+
+#offline-banner[hidden] {
+  display: none !important;
+}
+
+.offline-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+
+.offline-banner-inner--syncing {
+  background: transparent;
+}
+
+.offline-banner-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.offline-banner-text {
+  flex: 1;
+  min-width: 200px;
+}
+
+.offline-banner-text strong {
+  display: block;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.offline-banner-text span {
+  display: block;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+html.bca-offline-mode .sidebar #sync-status-label {
+  color: #f0c040;
+}
+
+.pwa-install-card-inner--windows .pwa-install-actions .btn-primary {
+  min-width: 200px;
+}
+
 @media (max-width: 480px) {
+  .offline-banner-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .pwa-banner-content {
     flex-wrap: wrap;
   }
