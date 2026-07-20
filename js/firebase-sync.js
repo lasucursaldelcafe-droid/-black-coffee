@@ -886,11 +886,39 @@ const FirebaseSync = {
     return 0;
   },
 
+  _isPrimaryBackend() {
+    if (typeof SyncHub === 'undefined') return true;
+    const primary = SyncHub.getPrimary();
+    if (primary === this) return true;
+    if (primary) return false;
+    if (typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready) return false;
+    return true;
+  },
+
+  _getSecondaryStatusLabel() {
+    if (this.permissionDenied) {
+      return 'Firebase opcional: reglas pendientes (la nube Google sigue activa)';
+    }
+    if (!window.FIREBASE_CONFIG?.projectId) {
+      return 'Firebase: no configurado';
+    }
+    if (this.lastError) {
+      return `Firebase: ${this.lastError}`;
+    }
+    if (this.ready) {
+      return 'Firebase: conectado';
+    }
+    return 'Firebase: conectando...';
+  },
+
   getStatusLabel() {
     if (!window.FIREBASE_CONFIG?.projectId) {
       return 'Guardado en este navegador';
     }
     if (this.permissionDenied) {
+      if (!this._isPrimaryBackend()) {
+        return this._getSecondaryStatusLabel();
+      }
       return 'Nube bloqueada — publique reglas Firestore (ver banner arriba)';
     }
     if (this.syncing) {
@@ -922,7 +950,17 @@ const FirebaseSync = {
 
   updateStatusElement() {
     const label = this.getStatusLabel();
-    document.getElementById('firebase-sync-status')?.replaceChildren(document.createTextNode(label));
-    document.getElementById('sidebar-sync-status')?.replaceChildren(document.createTextNode(label));
+    const isPrimary = this._isPrimaryBackend();
+
+    if (isPrimary) {
+      document.getElementById('firebase-sync-status')?.replaceChildren(document.createTextNode(label));
+      document.getElementById('sidebar-sync-status')?.replaceChildren(document.createTextNode(label));
+      return;
+    }
+
+    const secondary = document.getElementById('firebase-secondary-status');
+    if (secondary) {
+      secondary.replaceChildren(document.createTextNode(this._getSecondaryStatusLabel()));
+    }
   }
 };
