@@ -53,16 +53,10 @@ const App = {
         this.navigateTo('dashboard');
       }
 
-      FirebaseSync.startInBackground().finally(() => {
-        FirebaseSync.updateStatusElement();
-        if (typeof CloudSync !== 'undefined') {
-          CloudSync.startInBackground().finally(() => {
-            CloudSync.updateStatusElement();
-            this.renderSyncAlert();
-          });
-        } else {
-          this.renderSyncAlert();
-        }
+      FirebaseSync.startInBackground();
+      SyncHub.startInBackground().finally(() => {
+        SyncHub.updateStatusElement();
+        this.renderSyncAlert();
         InventoryManager.checkAllLowStock();
       });
     } catch (error) {
@@ -123,6 +117,7 @@ const App = {
       this.renderSection(this.currentSection);
       Notifications.updateBadge();
       FirebaseSync.updateStatusElement();
+      SyncHub.updateStatusElement();
     });
 
     window.addEventListener('bca-sync-complete', (event) => {
@@ -131,13 +126,13 @@ const App = {
       this.applySettings();
       this.renderSection(this.currentSection);
       Notifications.updateBadge();
-      FirebaseSync.updateStatusElement();
+      SyncHub.updateStatusElement();
       this.renderSyncAlert();
     });
 
     window.addEventListener('bca-sync-status', () => {
       this.renderSyncAlert();
-      FirebaseSync.updateStatusElement();
+      SyncHub.updateStatusElement();
     });
   },
 
@@ -145,43 +140,28 @@ const App = {
     const banner = document.getElementById('sync-alert-banner');
     if (!banner) return;
 
+    const gasOk = typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready;
+    const hubOk = typeof SyncHub !== 'undefined' && SyncHub.ready;
     const firebaseBlocked = typeof FirebaseSync !== 'undefined' && FirebaseSync.permissionDenied;
-    const cloudReady = typeof CloudSync !== 'undefined' && CloudSync.ready;
-    const cloudCanWrite = typeof CloudSync !== 'undefined' && CloudSync.canWrite();
 
-    if (firebaseBlocked && cloudReady) {
-      banner.hidden = false;
-      if (!cloudCanWrite) {
-        banner.innerHTML = `
-          <strong>Firebase bloqueado — usando nube GitHub.</strong>
-          Pablo ya puede <strong>bajar</strong> datos con «Forzar sincronización completa».
-          Ximena: pulse <strong>Conectar GitHub</strong> en Configuración y luego «Publicar mis datos a la nube».`;
-      } else {
-        banner.hidden = true;
-        banner.textContent = '';
-      }
-      return;
-    }
-
-    if (typeof FirebaseSync === 'undefined') return;
-
-    if (FirebaseSync.permissionDenied) {
-      banner.hidden = false;
-      banner.innerHTML = `
-        <strong>La sincronización con la nube está bloqueada.</strong>
-        Conecte GitHub en Configuración para compartir datos sin Firebase.`;
-      return;
-    }
-
-    if (FirebaseSync.ready && !FirebaseSync.lastError) {
+    if (gasOk || hubOk) {
       banner.hidden = true;
       banner.textContent = '';
       return;
     }
 
-    if (FirebaseSync.lastError && !FirebaseSync.ready) {
+    if (firebaseBlocked) {
       banner.hidden = false;
-      banner.innerHTML = `<strong>Sincronización:</strong> ${FirebaseSync.lastError}`;
+      banner.innerHTML = `
+        <strong>Firebase bloqueado.</strong> Despliegue Google Apps Script (2 min):
+        <a href="https://github.com/lasucursaldelcafe-droid/-black-coffee/blob/main/apps-script/README.md" target="_blank" rel="noopener">apps-script/README.md</a>
+        → pegue URL en GitHub Secret <code>GAS_WEB_APP_URL</code> → vuelva a desplegar.
+        Mientras tanto use «Forzar sincronización completa».`;
+      return;
+    }
+
+    if (typeof FirebaseSync !== 'undefined' && FirebaseSync.ready && !FirebaseSync.lastError) {
+      banner.hidden = true;
       return;
     }
 
@@ -191,7 +171,7 @@ const App = {
   renderLocalDataSummary() {
     const el = document.getElementById('local-data-summary');
     if (!el) return;
-    const sync = typeof CloudSync !== 'undefined' ? CloudSync : FirebaseSync;
+    const sync = typeof SyncHub !== 'undefined' ? SyncHub : (typeof GasSync !== 'undefined' ? GasSync : FirebaseSync);
     if (typeof sync === 'undefined') return;
     const s = sync.getLocalDataSummary();
     const parts = [
@@ -212,21 +192,8 @@ const App = {
       btn.textContent = 'Publicando...';
     }
     try {
-      let result;
-      if (typeof FirebaseSync !== 'undefined' && FirebaseSync.isEnabled() && !FirebaseSync.permissionDenied) {
-        result = await FirebaseSync.publishAllLocalData();
-      } else if (typeof CloudSync !== 'undefined') {
-        if (!CloudSync.canWrite()) {
-          await this.runConnectGitHub();
-          if (!CloudSync.canWrite()) {
-            throw new Error('Conecte GitHub para publicar sus datos.');
-          }
-        }
-        result = await CloudSync.publishAllLocalData();
-      } else {
-        throw new Error('No hay backend de nube disponible');
-      }
-      Toast.show(`Datos publicados · ${result.pushed} enviados · ${result.pulled} recibidos`, 'success');
+      const result = await SyncHub.publishAllLocalData();
+      Toast.show(`Datos publicados · ${result.pushed || 0} enviados · ${result.pulled || 0} recibidos`, 'success');
       this.renderSection(this.currentSection);
       this.renderLocalDataSummary();
       this.renderSyncAlert();
@@ -234,8 +201,7 @@ const App = {
       Toast.show(error.message || 'No se pudo publicar a la nube', 'danger');
       this.renderSyncAlert();
     } finally {
-      if (typeof FirebaseSync !== 'undefined') FirebaseSync.updateStatusElement();
-      if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
+      SyncHub.updateStatusElement();
       if (btn) {
         btn.disabled = false;
         btn.textContent = 'Publicar mis datos a la nube';
@@ -249,27 +215,18 @@ const App = {
       btn.disabled = true;
       btn.textContent = 'Sincronizando...';
     }
-    if (typeof FirebaseSync !== 'undefined') FirebaseSync.updateStatusElement();
-    if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
+    SyncHub.updateStatusElement();
 
     try {
-      let result = { pushed: 0, pulled: 0 };
-      if (typeof CloudSync !== 'undefined') {
-        result = await CloudSync.syncAll();
-      } else if (typeof FirebaseSync !== 'undefined' && !FirebaseSync.permissionDenied) {
-        result = await FirebaseSync.syncAll();
-      } else {
-        throw new Error('Sync no disponible');
-      }
-      Toast.show(`Todo sincronizado · ${result.pushed} enviados · ${result.pulled} recibidos`, 'success');
+      const result = await SyncHub.forceSync({ silent: false });
+      Toast.show(`Todo sincronizado · ${result.pushed || 0} enviados · ${result.pulled || 0} recibidos`, 'success');
       this.applySettings();
       this.renderSection(this.currentSection);
       Notifications.updateBadge();
     } catch (error) {
       Toast.show(error.message || 'Error al sincronizar', 'danger');
     } finally {
-      if (typeof FirebaseSync !== 'undefined') FirebaseSync.updateStatusElement();
-      if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
+      SyncHub.updateStatusElement();
       if (btn) {
         btn.disabled = false;
         btn.textContent = 'Forzar sincronización completa';
@@ -787,19 +744,19 @@ const App = {
           costos, reportes y configuración) se sincroniza automáticamente entre Ximena y Pablo cuando hay internet.
           Los cambios de ambos se <strong>unen</strong> sin borrar los del otro.
         </p>
-        <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
-        <p id="cloud-sync-status" class="form-hint" style="margin-bottom:8px">${typeof CloudSync !== 'undefined' ? CloudSync.getStatusLabel() : ''}</p>
+        <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof SyncHub !== 'undefined' ? SyncHub.getStatusLabel() : 'Cargando...'}</p>
+        <p id="gas-sync-status" class="form-hint" style="margin-bottom:8px">${typeof GasSync !== 'undefined' ? GasSync.getStatusLabel() : ''}</p>
         <p id="github-sync-status" class="form-hint" style="margin-bottom:8px"></p>
         <p id="local-data-summary" class="form-hint" style="margin-bottom:8px"></p>
         <p id="online-status" class="form-hint" style="margin-bottom:12px"></p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button type="button" class="btn btn-sm btn-primary" id="publish-local-cloud-btn">Publicar mis datos a la nube</button>
           <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización completa</button>
-          <button type="button" class="btn btn-sm btn-secondary" id="connect-github-btn">${typeof CloudSync !== 'undefined' && CloudSync.canWrite() ? 'GitHub conectado' : 'Conectar GitHub para publicar'}</button>
         </div>
         <p class="form-hint" style="margin-top:8px">
-          <strong>Ximena:</strong> «Conectar GitHub» (una vez) y luego «Publicar mis datos a la nube».
-          <strong>Pablo:</strong> «Forzar sincronización completa» baja los datos sin GitHub.
+          La sync usa <strong>Google Apps Script</strong> (recomendado) o Firebase/GitHub como respaldo.
+          Al abrir la app se sincroniza automáticamente cada 30 s.
+          Guía Apps Script: <a href="https://github.com/lasucursaldelcafe-droid/-black-coffee/blob/main/apps-script/README.md" target="_blank" rel="noopener">apps-script/README.md</a>
         </p>
       </div>
       <div class="card" style="margin-bottom:20px">
@@ -854,9 +811,7 @@ const App = {
     document.getElementById('save-settings-btn')?.addEventListener('click', () => this.saveSettings());
     document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
     document.getElementById('publish-local-cloud-btn')?.addEventListener('click', () => this.runPublishLocalCloud());
-    document.getElementById('connect-github-btn')?.addEventListener('click', () => this.runConnectGitHub());
     this.renderLocalDataSummary();
-    this.renderGitHubStatus();
     this.renderSyncAlert();
     PWA.renderInstallCard('pwa-install-card-settings');
     this.renderBiometricSettings();

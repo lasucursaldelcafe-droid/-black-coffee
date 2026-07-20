@@ -79,8 +79,8 @@ const Storage = {
         FirebaseSync.pushKeyNow(DELETED_RECORDS_KEY).catch(() => {});
       }
     }
-    if (typeof CloudSync !== 'undefined') {
-      CloudSync.queuePush(DELETED_RECORDS_KEY);
+    if (typeof SyncHub !== 'undefined') {
+      SyncHub.queuePush(DELETED_RECORDS_KEY);
     }
   },
 
@@ -202,8 +202,8 @@ const Storage = {
         FirebaseSync.queuePush(key, next);
       }
     }
-    if (typeof CloudSync !== 'undefined') {
-      CloudSync.queuePush(key);
+    if (typeof SyncHub !== 'undefined') {
+      SyncHub.queuePush(key);
     }
   },
 
@@ -213,8 +213,8 @@ const Storage = {
     if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.queueDelete(key);
     }
-    if (typeof CloudSync !== 'undefined') {
-      CloudSync.queuePush(key);
+    if (typeof SyncHub !== 'undefined') {
+      SyncHub.queuePush(key);
     }
   },
 

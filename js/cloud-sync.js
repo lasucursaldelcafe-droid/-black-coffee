@@ -27,7 +27,11 @@ const CloudSync = {
   },
 
   canWrite() {
-    return Boolean(this.getToken());
+    return Boolean(this.getToken() || window.CLOUD_SYNC_CONFIG?.githubWriteToken);
+  },
+
+  getWriteToken() {
+    return this.getToken() || window.CLOUD_SYNC_CONFIG?.githubWriteToken || '';
   },
 
   getToken() {
@@ -72,7 +76,6 @@ const CloudSync = {
   async _bootstrap() {
     this.hasWriteAccess = this.canWrite();
     this.ready = true;
-    this.lastError = null;
     this.updateStatusElement();
     window.dispatchEvent(new CustomEvent('bca-sync-status', { detail: { cloud: true } }));
 
@@ -125,7 +128,7 @@ const CloudSync = {
   },
 
   async fetchRemoteWithSha() {
-    const token = this.getToken();
+    const token = this.getWriteToken();
     if (!token) {
       const { document } = await this.fetchRemoteDocument();
       return { document, sha: this._fileSha };
@@ -214,9 +217,9 @@ const CloudSync = {
   },
 
   async writeCloudDocument(document) {
-    const token = this.getToken();
+    const token = this.getWriteToken();
     if (!token) {
-      throw new Error('Conecte GitHub una vez para publicar datos (Configuración → Conectar GitHub).');
+      throw new Error('Conecte GitHub o configure GITHUB_SYNC_TOKEN para publicar.');
     }
 
     let sha = this._fileSha;

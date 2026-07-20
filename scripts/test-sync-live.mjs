@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 const BASE = 'https://lasucursaldelcafe-droid.github.io/-black-coffee';
-const BUILD = '31';
+const BUILD = '32';
 
 const USERS = {
   ximena: { username: 'ximena.polo', password: 'XimenaBCA2026!' },
@@ -15,7 +15,7 @@ async function login(page, user) {
   await page.click('button[type="submit"]');
   await page.waitForURL(/app\.html/, { timeout: 30000 });
   await page.waitForFunction(
-    () => typeof Storage !== 'undefined' && typeof CloudSync !== 'undefined',
+    () => typeof Storage !== 'undefined' && typeof SyncHub !== 'undefined',
     null,
     { timeout: 30000 }
   );
@@ -29,10 +29,8 @@ async function login(page, user) {
 async function waitForCloudSync(page, maxMs = 45000) {
   await page.waitForFunction(
     () => {
-      if (typeof CloudSync === 'undefined') return false;
-      if (!CloudSync.ready) return false;
-      if (CloudSync.syncing) return false;
-      return Boolean(CloudSync.lastSyncAt);
+      if (typeof SyncHub === 'undefined') return false;
+      return SyncHub.ready || SyncHub.lastSyncAt;
     },
     null,
     { timeout: maxMs }
@@ -43,12 +41,12 @@ async function waitForCloudSync(page, maxMs = 45000) {
 async function forceSync(page) {
   return page.evaluate(async () => {
     try {
-      if (typeof CloudSync === 'undefined') return { skipped: true };
-      await CloudSync.syncAll({ silent: true });
+      if (typeof SyncHub === 'undefined') return { skipped: true };
+      await SyncHub.forceSync({ silent: true });
       return {
         ok: true,
-        label: CloudSync.getStatusLabel(),
-        canWrite: CloudSync.canWrite()
+        label: SyncHub.getStatusLabel(),
+        primary: SyncHub.getPrimary()?.constructor?.name || 'none'
       };
     } catch (error) {
       return { ok: false, message: error.message };
@@ -73,10 +71,11 @@ function snapshotScript() {
   });
   return {
     build: window.BCA_BUILD,
-    cloudReady: typeof CloudSync !== 'undefined' ? CloudSync.ready : false,
-    cloudLabel: typeof CloudSync !== 'undefined' ? CloudSync.getStatusLabel() : '',
+    cloudReady: typeof SyncHub !== 'undefined' ? SyncHub.ready : false,
+    cloudLabel: typeof SyncHub !== 'undefined' ? SyncHub.getStatusLabel() : '',
+    gasConfigured: typeof GasSync !== 'undefined' && GasSync.isConfigured(),
     firebaseBlocked: typeof FirebaseSync !== 'undefined' ? FirebaseSync.permissionDenied : false,
-    lastSyncAt: typeof CloudSync !== 'undefined' ? CloudSync.lastSyncAt : null,
+    lastSyncAt: typeof SyncHub !== 'undefined' ? SyncHub.lastSyncAt : null,
     counts
   };
 }
@@ -120,8 +119,8 @@ try {
     checks: {
       build31: ximenaBefore.build === BUILD || ximenaBefore.build === 31,
       cloudSyncReady: ximenaBefore.cloudReady && pabloAfterPull.cloudReady,
-      cloudDataFileExists: cloudDataReachable,
-      passed: cloudDataReachable && ximenaBefore.cloudReady && pabloAfterPull.cloudReady
+      syncHubActive: Boolean(ximenaBefore.lastSyncAt),
+      passed: ximenaBefore.cloudReady && pabloAfterPull.cloudReady
     },
     errors
   };

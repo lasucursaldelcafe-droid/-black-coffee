@@ -5,7 +5,7 @@ import { join, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BUILD = '31';
+const BUILD = '32';
 
 const MIME = {
   '.html': 'text/html',
