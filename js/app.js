@@ -140,8 +140,17 @@ const App = {
     const banner = document.getElementById('sync-alert-banner');
     if (!banner) return;
 
-    const gasOk = typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready;
-    const hubOk = typeof SyncHub !== 'undefined' && SyncHub.ready;
+    const gasOk = typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready && !GasSync.lastError?.includes('Access Denied');
+    const gasDenied = typeof GasSync !== 'undefined' && GasSync.lastError?.includes('Access Denied');
+    const hubOk = typeof SyncHub !== 'undefined' && SyncHub.ready && !gasDenied;
+
+    if (gasDenied) {
+      banner.hidden = false;
+      banner.innerHTML = `
+        <strong>Apps Script: acceso denegado.</strong>
+        En script.google.com → Implementar → Editar → «Quién tiene acceso» = <strong>Cualquier persona</strong> → Implementar de nuevo.`;
+      return;
+    }
     const firebaseBlocked = typeof FirebaseSync !== 'undefined' && FirebaseSync.permissionDenied;
 
     if (gasOk || hubOk) {

@@ -122,6 +122,11 @@ const GasSync = {
     });
 
     const text = await response.text();
+    if (text.includes('Access Denied') || text.trimStart().startsWith('<!DOCTYPE')) {
+      throw new Error(
+        'Apps Script rechazó el acceso. Vuelva a Implementar → Aplicación web → acceso «Cualquier persona».'
+      );
+    }
     try {
       return JSON.parse(text);
     } catch {

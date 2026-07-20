@@ -8,7 +8,7 @@ Backend de sincronización **sin Firebase Console**. Los datos se guardan en Goo
 2. Borre el código default y pegue el contenido de `BcaCloudSync.gs`
 3. **Implementar** → **Nueva implementación** → tipo **Aplicación web**
    - Ejecutar como: **Yo**
-   - Quién tiene acceso: **Cualquier persona**
+   - Quién tiene acceso: **Cualquier persona** ← obligatorio (si no, la app muestra «Access Denied»)
 4. Copie la URL que termina en `/exec`
 5. En GitHub: **Actions** → **Instalar secretos de GitHub** → pegue la URL en **GAS_WEB_APP_URL**
 6. Vuelva a ejecutar **Deploy GitHub Pages** (o espere el push a `main`)
