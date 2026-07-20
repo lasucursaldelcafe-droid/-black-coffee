@@ -52,6 +52,9 @@ REQUIRED_JS_FROM_APP = [
     "js/notifications.js",
     "js/email.js",
     "js/costEngine.js",
+    "js/glossary.js",
+    "js/workflow.js",
+    "js/adminConfig.js",
     "js/pwa.js",
     "js/app.js",
 ]

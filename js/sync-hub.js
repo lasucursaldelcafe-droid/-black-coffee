@@ -113,7 +113,7 @@ const SyncHub = {
     if (this._autoSyncTimer) clearInterval(this._autoSyncTimer);
     this._autoSyncTimer = setInterval(() => {
       if (document.visibilityState === 'visible') pullNow();
-    }, 15000);
+    }, 10000);
   },
 
   async forceSync(options = {}) {

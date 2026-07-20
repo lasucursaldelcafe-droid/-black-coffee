@@ -39,79 +39,52 @@ const ProductionCosts = {
     return [...new Set(steps)];
   },
 
-  getKgEnteringStep(greenKg, coffeeState, activeSteps, targetStep) {
+  getKgEnteringStep(greenKg, coffeeState, activeSteps, targetStep, coffee = null) {
     const costs = this.get();
+    const skipped = getSkippedMermaStepsForCoffeeState(coffeeState);
     let kg = greenKg;
     const order = ['trilla', 'greenSelection', 'tostion', 'seleccion'];
 
     for (const step of order) {
       if (step === targetStep) return kg;
       if (!activeSteps.includes(step)) continue;
+      if (skipped.includes(step)) continue;
       if (step === 'trilla' && coffeeState !== 'pergamino') continue;
 
-      const mermaKey = TRANSFORMATION_STEPS[step]?.mermaKey;
-      const pct = mermaKey ? (costs.mermas[mermaKey] || 0) : 0;
+      const mermaKey = TRANSFORMATION_STEPS[step]?.mermaKey || step;
+      const pct = getEffectiveMermaPercent(mermaKey, costs, coffee);
       kg *= (1 - pct / 100);
     }
 
     return kg;
   },
 
-  calculateGreenToRoasted(greenKg, coffeeState = 'verde', activeSteps = []) {
+  calculateGreenToRoasted(greenKg, coffeeState = 'verde', activeSteps = [], coffee = null) {
     const costs = this.get();
-    if (coffeeState === 'tostado') {
-      return {
-        roastedKg: greenKg,
-        mermaDetails: {
-          details: [],
-          inputKg: greenKg,
-          outputKg: greenKg,
-          totalLossKg: 0,
-          totalLossPercent: '0'
-        }
-      };
-    }
-    if (coffeeState === 'seleccionado' || coffeeState === 'molido') {
-      return {
-        roastedKg: greenKg,
-        mermaDetails: {
-          details: [],
-          inputKg: greenKg,
-          outputKg: greenKg,
-          totalLossKg: 0,
-          totalLossPercent: '0'
-        }
-      };
-    }
-
+    const skipped = getSkippedMermaStepsForCoffeeState(coffeeState);
     let remaining = greenKg;
     const details = [];
+    const order = ['trilla', 'greenSelection', 'tostion', 'seleccion'];
 
-    if (activeSteps.includes('trilla') && coffeeState === 'pergamino') {
-      const loss = remaining * (costs.mermas.trilla / 100);
-      details.push({ name: 'Trilla', percent: costs.mermas.trilla, lossKg: loss });
+    order.forEach((step) => {
+      if (!activeSteps.includes(step)) return;
+      if (skipped.includes(step)) return;
+      if (step === 'trilla' && coffeeState !== 'pergamino') return;
+
+      const mermaKey = TRANSFORMATION_STEPS[step]?.mermaKey || step;
+      const pct = getEffectiveMermaPercent(mermaKey, costs, coffee);
+      if (pct <= 0) return;
+
+      const loss = remaining * (pct / 100);
+      details.push({
+        name: TRANSFORMATION_STEPS[step]?.label || step,
+        percent: pct,
+        lossKg: loss,
+        step,
+        source: getCoffeeMermaOverrides(coffee)[mermaKey] != null ? 'café' : 'global'
+      });
       remaining -= loss;
-    }
-
-    if (activeSteps.includes('greenSelection')) {
-      const loss = remaining * ((costs.mermas.greenSelection || 0) / 100);
-      if (loss > 0) {
-        details.push({ name: 'Selección en Verde', percent: costs.mermas.greenSelection, lossKg: loss });
-        remaining -= loss;
-      }
-    }
-
-    if (activeSteps.includes('tostion')) {
-      const loss = remaining * (costs.mermas.tostion / 100);
-      details.push({ name: 'Tostión', percent: costs.mermas.tostion, lossKg: loss });
-      remaining -= loss;
-    }
-
-    if (activeSteps.includes('seleccion')) {
-      const loss = remaining * (costs.mermas.seleccion / 100);
-      details.push({ name: 'Selección', percent: costs.mermas.seleccion, lossKg: loss });
-      remaining -= loss;
-    }
+    });
 
     return {
       roastedKg: remaining,
@@ -125,9 +98,29 @@ const ProductionCosts = {
     };
   },
 
-  getMermaDetails(inputKg, coffeeState) {
+  calculateInputKgForOutput(outputKg, coffeeState, activeSteps = [], coffee = null) {
+    const costs = this.get();
+    const skipped = getSkippedMermaStepsForCoffeeState(coffeeState);
+    let required = outputKg;
+    const order = ['seleccion', 'tostion', 'greenSelection', 'trilla'];
+
+    order.forEach((step) => {
+      if (!activeSteps.includes(step)) return;
+      if (skipped.includes(step)) return;
+      if (step === 'trilla' && coffeeState !== 'pergamino') return;
+
+      const mermaKey = TRANSFORMATION_STEPS[step]?.mermaKey || step;
+      const pct = getEffectiveMermaPercent(mermaKey, costs, coffee);
+      if (pct >= 100) return;
+      required /= (1 - pct / 100);
+    });
+
+    return { inputKg: required };
+  },
+
+  getMermaDetails(inputKg, coffeeState, coffee = null) {
     const activeSteps = getFullPackSteps(coffeeState);
-    return this.calculateGreenToRoasted(inputKg, coffeeState, activeSteps).mermaDetails;
+    return this.calculateGreenToRoasted(inputKg, coffeeState, activeSteps, coffee).mermaDetails;
   },
 
   getPackagingEntryCosts(packagingSize, supplierId, options = {}) {
@@ -173,7 +166,8 @@ const ProductionCosts = {
       clientProvidesCoffee = false,
       clientProvidesPackaging = true,
       grindType = 'grano',
-      processSuppliers = {}
+      processSuppliers = {},
+      includeLabels = null
     } = options;
 
     const supplierMap = { ...costs.defaultSuppliers, ...processSuppliers };
@@ -189,10 +183,12 @@ const ProductionCosts = {
     const roastedKgNeeded = pkg.grams / 1000;
 
     let greenKgNeeded = roastedKgNeeded;
-    if (coffee.state === 'tostado' || coffee.state === 'seleccionado' || coffee.state === 'molido') {
-      greenKgNeeded = roastedKgNeeded;
+    const advancedStates = ['tostado', 'seleccionado', 'molido'];
+    if (advancedStates.includes(coffee.state)) {
+      const { inputKg } = this.calculateInputKgForOutput(roastedKgNeeded, coffee.state, activeSteps, coffee);
+      greenKgNeeded = inputKg;
     } else if (activeSteps.some((s) => ['tostion', 'seleccion', 'trilla', 'greenSelection'].includes(s))) {
-      const { roastedKg } = this.calculateGreenToRoasted(1, coffee.state, activeSteps);
+      const { roastedKg } = this.calculateGreenToRoasted(1, coffee.state, activeSteps, coffee);
       greenKgNeeded = roastedKg > 0 ? roastedKgNeeded / roastedKg : roastedKgNeeded;
     }
 
@@ -204,6 +200,9 @@ const ProductionCosts = {
     };
 
     let totalCost = 0;
+    const shouldIncludeLabels = includeLabels != null
+      ? includeLabels
+      : productionMode === 'full_pack';
 
     if (productionMode === 'full_pack' || !clientProvidesCoffee) {
       const transportCost = coffee.transportIncluded ? 0 : (coffee.transportCost || 0);
@@ -262,7 +261,7 @@ const ProductionCosts = {
       if (!activeSteps.includes(stepKey)) return;
       if (stepKey === 'trilla' && coffee.state !== 'pergamino') return;
 
-      const kgBasis = this.getKgEnteringStep(greenKgNeeded, coffee.state, activeSteps, stepKey);
+      const kgBasis = this.getKgEnteringStep(greenKgNeeded, coffee.state, activeSteps, stepKey, coffee);
       const stepCost = this.getTransformationCost(stepKey, kgBasis, packagingSize, costs, supplierMap[stepKey]);
       const rate = SupplierManager.getEffectiveServiceRate(stepKey, supplierMap[stepKey], packagingSize);
       const supplierName = SupplierManager.getName(supplierMap[stepKey]);
@@ -309,22 +308,9 @@ const ProductionCosts = {
       });
       totalCost += packagingCost;
 
-      const labelDetails = breakdown.labels.map((size) => ({
-        size,
-        name: LABEL_NAMES[size] || size,
-        cost: costs.labels[size] || 0
-      }));
-      const labelCost = labelDetails.reduce((sum, item) => sum + item.cost, 0);
-      labelDetails.forEach((item) => {
-        breakdown.materials.push({
-          key: `label_${item.size}`,
-          label: `Etiqueta ${item.name}`,
-          cost: item.cost
-        });
-      });
-      breakdown.labelDetails = labelDetails;
-      breakdown.labelCost = labelCost;
-      totalCost += labelCost;
+      if (shouldIncludeLabels) {
+        this._applyLabelCosts(breakdown, costs, labelSizes, (amount) => { totalCost += amount; });
+      }
     } else if (productionMode === 'maquila') {
       if (!clientProvidesPackaging) {
         const packagingCost = costs.packaging[packagingSize] || 0;
@@ -341,6 +327,10 @@ const ProductionCosts = {
           cost: 0
         });
       }
+
+      if (shouldIncludeLabels && labelSizes?.length) {
+        this._applyLabelCosts(breakdown, costs, labelSizes, (amount) => { totalCost += amount; });
+      }
     }
 
     const increaseCost = costs.costIncrease.enabled ? costs.costIncrease.amount : 0;
@@ -349,7 +339,7 @@ const ProductionCosts = {
       totalCost += increaseCost;
     }
 
-    const { mermaDetails } = this.calculateGreenToRoasted(greenKgNeeded, coffee.state, activeSteps);
+    const { mermaDetails } = this.calculateGreenToRoasted(greenKgNeeded, coffee.state, activeSteps, coffee);
 
     return {
       productionMode,
@@ -374,6 +364,25 @@ const ProductionCosts = {
       coffeeCost: breakdown.administrative.find((a) => a.key === 'compra')?.cost || 0,
       processCost: breakdown.transformation.reduce((sum, item) => sum + item.cost, 0)
     };
+  },
+
+  _applyLabelCosts(breakdown, costs, labelSizes, addCost) {
+    const labelDetails = parseLabelSelection(labelSizes).map((size) => ({
+      size,
+      name: LABEL_NAMES[size] || size,
+      cost: costs.labels[size] || 0
+    }));
+    const labelCost = labelDetails.reduce((sum, item) => sum + item.cost, 0);
+    labelDetails.forEach((item) => {
+      breakdown.materials.push({
+        key: `label_${item.size}`,
+        label: `Etiqueta ${item.name}`,
+        cost: item.cost
+      });
+    });
+    breakdown.labelDetails = labelDetails;
+    breakdown.labelCost = labelCost;
+    addCost(labelCost);
   },
 
   calculateSellingPrice(coffee, packagingSize, profitMargin, clientType, labelSizes = ['small'], options = {}) {

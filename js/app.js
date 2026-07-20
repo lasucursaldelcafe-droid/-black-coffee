@@ -450,7 +450,10 @@ const App = {
       'cost-engine': 'Costeo Interno',
       sales: 'Ventas',
       costs: 'Costos de Producción',
-      settings: 'Configuración'
+      settings: 'Configuración',
+      glossary: 'Glosario',
+      workflow: 'Flujo de trabajo',
+      'admin-config': 'Admin visual'
     };
     document.getElementById('page-title').textContent = titles[section] || section;
 
@@ -507,6 +510,15 @@ const App = {
         break;
       case 'settings':
         this.renderSettings();
+        break;
+      case 'glossary':
+        Glossary.render(document.getElementById('glossary-container'));
+        break;
+      case 'workflow':
+        WorkflowGuide.render(document.getElementById('workflow-container'));
+        break;
+      case 'admin-config':
+        AdminConfig.render(document.getElementById('admin-config-container'));
         break;
     }
   },
@@ -775,9 +787,8 @@ const App = {
         </div>
         <p class="form-hint" style="margin-top:8px">
           La sync usa <strong>Google Apps Script</strong> (recomendado) o Firebase/GitHub como respaldo.
-          Se sincroniza sola cada 15 s y al abrir la app (Ximena ↔ Pablo).
+          Se sincroniza sola cada 10 s y al abrir la app (Ximena ↔ Pablo).
           Las actualizaciones de la plataforma se instalan automáticamente al detectar un build nuevo.
-          Al abrir la app se sincroniza automáticamente cada 30 s.
           Guía Apps Script: <a href="https://github.com/lasucursaldelcafe-droid/-black-coffee/blob/main/apps-script/README.md" target="_blank" rel="noopener">apps-script/README.md</a>
         </p>
       </div>
@@ -926,6 +937,13 @@ const App = {
 
     const brandName = document.getElementById('sidebar-brand-name');
     if (brandName) brandName.textContent = settings.companyName;
+
+    if (settings.accentColor) {
+      document.documentElement.style.setProperty('--accent', settings.accentColor);
+    }
+    if (settings.primaryColor) {
+      document.documentElement.style.setProperty('--bg-secondary', settings.primaryColor);
+    }
   },
 
   renderUserInfo() {

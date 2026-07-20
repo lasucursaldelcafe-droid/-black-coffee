@@ -226,7 +226,7 @@ const FirebaseSync = {
       if (!this.isEnabled() || !navigator.onLine) return;
       if (this.syncing) return;
       this.syncAll({ silent: true }).catch(() => {});
-    }, 15000);
+    }, 10000);
   },
 
   getAllSyncKeys() {

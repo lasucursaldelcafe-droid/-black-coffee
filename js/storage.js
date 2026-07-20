@@ -395,6 +395,38 @@ function getFullPackSteps(coffeeState) {
   return steps;
 }
 
+/** Pasos de merma ya aplicados según el estado de llegada del café */
+function getSkippedMermaStepsForCoffeeState(coffeeState) {
+  switch (coffeeState) {
+    case 'molido':
+    case 'seleccionado':
+      return ['trilla', 'greenSelection', 'tostion', 'seleccion'];
+    case 'tostado':
+      return ['trilla', 'greenSelection', 'tostion'];
+    case 'verde':
+      return ['trilla'];
+    default:
+      return [];
+  }
+}
+
+function getCoffeeMermaOverrides(coffee) {
+  if (!coffee) return {};
+  const overrides = { ...(coffee.mermaOverrides || {}) };
+  const meta = coffee.ghostMeta || {};
+  if (meta.mermaTostion != null) overrides.tostion = meta.mermaTostion;
+  if (meta.mermaSeleccion != null) overrides.seleccion = meta.mermaSeleccion;
+  if (meta.mermaTrilla != null) overrides.trilla = meta.mermaTrilla;
+  if (meta.mermaGreenSelection != null) overrides.greenSelection = meta.mermaGreenSelection;
+  return overrides;
+}
+
+function getEffectiveMermaPercent(mermaKey, costs, coffee = null) {
+  const overrides = getCoffeeMermaOverrides(coffee);
+  if (overrides[mermaKey] != null) return Number(overrides[mermaKey]) || 0;
+  return costs?.mermas?.[mermaKey] || 0;
+}
+
 const TRANSFORMATION_PIPELINE_ORDER = [
   'trilla',
   'greenSelection',

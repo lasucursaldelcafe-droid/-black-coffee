@@ -746,15 +746,27 @@ const QuotationManager = {
         <input type="hidden" id="quot-grind-value" value="grano">
       </div>
 
-      <div id="full-pack-labels">
-        <div class="form-group">
-          <label>Etiquetas</label>
-          <p class="form-hint form-hint-spaced">Selección múltiple: pequeña, grande o ambas</p>
-          <div class="selection-grid selection-grid-multi" id="quot-label">
-            <button type="button" class="selection-btn active" data-value="small">Pequeña (${formatCurrency(costs.labels.small)})</button>
-            <button type="button" class="selection-btn" data-value="large">Grande (${formatCurrency(costs.labels.large)})</button>
+      <div id="quot-labels-section">
+        <div id="quot-maquila-label-toggle" class="form-group" style="display:none">
+          <label>¿Incluir etiquetas BCA?</label>
+          <div class="toggle-group toggle-group-spaced">
+            <label class="toggle">
+              <input type="checkbox" id="quot-include-labels">
+              <span class="toggle-slider"></span>
+            </label>
+            <span id="quot-include-labels-status">Sin etiquetas (costo $0)</span>
           </div>
-          <input type="hidden" id="quot-label-value" value='["small"]'>
+        </div>
+        <div id="quot-label-picker">
+          <div class="form-group">
+            <label>Etiquetas</label>
+            <p class="form-hint form-hint-spaced">Selección múltiple: pequeña, grande o ambas</p>
+            <div class="selection-grid selection-grid-multi" id="quot-label">
+              <button type="button" class="selection-btn active" data-value="small">Pequeña (${formatCurrency(costs.labels.small)})</button>
+              <button type="button" class="selection-btn" data-value="large">Grande (${formatCurrency(costs.labels.large)})</button>
+            </div>
+            <input type="hidden" id="quot-label-value" value='["small"]'>
+          </div>
         </div>
       </div>
 
@@ -901,6 +913,22 @@ const QuotationManager = {
 
       const salePriceInput = document.getElementById('quot-sale-price');
       if (salePriceInput && q.totalPrice != null) salePriceInput.value = q.totalPrice;
+
+      const maquilaLabels = q.labels || parseLabelSelection(q.label);
+      const includeLabels = maquilaLabels.length > 0;
+      const includeCheckbox = document.getElementById('quot-include-labels');
+      if (includeCheckbox) includeCheckbox.checked = includeLabels;
+      const labelStatus = document.getElementById('quot-include-labels-status');
+      if (labelStatus) {
+        labelStatus.textContent = includeLabels
+          ? 'Con etiquetas BCA (costo incluido en cotización)'
+          : 'Sin etiquetas (costo $0)';
+      }
+      if (includeLabels) {
+        const labelHidden = document.getElementById('quot-label-value');
+        if (labelHidden) labelHidden.value = JSON.stringify(maquilaLabels);
+        this.setMultiSelectionActive('quot-label', maquilaLabels);
+      }
 
       const lines = getQuotationProductLines(q);
       this.initCoffeeLinesFromQuotation(lines.length > 0 ? lines : [{}]);
@@ -1197,6 +1225,17 @@ const QuotationManager = {
       this.updatePreview();
     });
 
+    document.getElementById('quot-include-labels')?.addEventListener('change', (e) => {
+      const status = document.getElementById('quot-include-labels-status');
+      if (status) {
+        status.textContent = e.target.checked
+          ? 'Con etiquetas BCA (costo incluido en cotización)'
+          : 'Sin etiquetas (costo $0)';
+      }
+      this.updateLabelPickerVisibility();
+      this.updatePreview();
+    });
+
     document.querySelectorAll('.quot-pack-mix-qty').forEach((input) => {
       input.addEventListener('input', () => this.updatePreview());
       input.addEventListener('change', () => this.updatePreview());
@@ -1279,13 +1318,26 @@ const QuotationManager = {
     const mode = document.getElementById('quot-production-mode-value')?.value || 'full_pack';
     const isMaquila = mode === 'maquila';
     document.getElementById('maquila-options').style.display = isMaquila ? 'block' : 'none';
-    document.getElementById('full-pack-labels').style.display = isMaquila ? 'none' : 'block';
+    document.getElementById('quot-maquila-label-toggle').style.display = isMaquila ? 'block' : 'none';
     document.getElementById('quot-packaging-single').style.display = isMaquila ? 'none' : 'block';
     document.getElementById('quot-packaging-maquila').style.display = isMaquila ? 'block' : 'none';
     if (isMaquila) {
       this.updatePackagingMixRates();
     }
+    this.updateLabelPickerVisibility();
     this.updateCoffeeLinesVisibility();
+  },
+
+  updateLabelPickerVisibility() {
+    const mode = document.getElementById('quot-production-mode-value')?.value || 'full_pack';
+    const picker = document.getElementById('quot-label-picker');
+    if (!picker) return;
+    if (mode === 'full_pack') {
+      picker.style.display = 'block';
+      return;
+    }
+    const include = document.getElementById('quot-include-labels')?.checked;
+    picker.style.display = include ? 'block' : 'none';
   },
 
   getQuoteOptions() {
@@ -1302,14 +1354,40 @@ const QuotationManager = {
       maquilaSteps,
       clientProvidesCoffee: document.getElementById('quot-client-coffee')?.checked ?? false,
       clientProvidesPackaging: document.getElementById('quot-client-packaging')?.checked ?? true,
-      grindType: document.getElementById('quot-grind-value')?.value || 'grano'
+      grindType: document.getElementById('quot-grind-value')?.value || 'grano',
+      includeLabels: mode === 'full_pack'
+        ? true
+        : (document.getElementById('quot-include-labels')?.checked ?? false)
     };
   },
 
   getSelectedLabels() {
     const mode = document.getElementById('quot-production-mode-value')?.value || 'full_pack';
-    if (mode === 'maquila') return [];
+    if (mode === 'maquila' && !document.getElementById('quot-include-labels')?.checked) {
+      return [];
+    }
     return parseLabelSelection(document.getElementById('quot-label-value')?.value);
+  },
+
+  renderMermaRowsHTML(mermaDetails) {
+    if (!mermaDetails?.details?.length) return '';
+    const rows = mermaDetails.details.map((item) => `
+      <div class="cost-row">
+        <span class="cost-label">
+          ${item.name} (${formatNumber(item.percent, 1)}%${item.source === 'café' ? ' · café' : ''})
+          <small> −${formatNumber(item.lossKg, 3)} kg</small>
+        </span>
+        <span>${formatNumber(item.percent, 1)}%</span>
+      </div>
+    `).join('');
+    return `
+      <h5 style="margin:12px 0 8px;color:var(--text-secondary)">Mermas aplicadas</h5>
+      ${rows}
+      <div class="cost-row">
+        <span class="cost-label">Merma total</span>
+        <span>${mermaDetails.totalLossPercent || 0}% · ${formatNumber(mermaDetails.totalLossKg || 0, 3)} kg</span>
+      </div>
+    `;
   },
 
   renderBreakdownHTML(pricing, labels, margin, quantity, salePriceOverride) {
@@ -1357,6 +1435,8 @@ const QuotationManager = {
         </div>
       `).join('');
 
+      const mermaBlock = this.renderMermaRowsHTML(pricing.lines?.[0]?.costBreakdown?.mermaDetails);
+
       const packagingNote = pricing.clientProvidesPackaging !== false
         ? 'Empaque aportado por el cliente (solo mano de obra)'
         : 'Empaque aportado por nosotros (material incluido)';
@@ -1375,6 +1455,7 @@ const QuotationManager = {
           ${adminRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Administrativa / Logística</h5>${adminRows}` : ''}
           ${transformRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Transformación (otros procesos)</h5>${transformRows}` : ''}
           ${materialRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Materiales</h5>${materialRows}` : ''}
+          ${mermaBlock}
           <div class="cost-row" style="margin-top:8px"><span class="cost-label">Costo Total Pedido</span><span>${formatCurrency(pricing.totalCost)}</span></div>
           <div class="cost-row"><span class="cost-label">Margen (${margin}%)</span><span>+${formatCurrency(total - pricing.totalCost)}</span></div>
           <div class="cost-row"><span class="cost-label">Precio Total Cliente</span><span>${formatCurrency(total)}</span></div>
@@ -1404,6 +1485,8 @@ const QuotationManager = {
       </div>
     `).join('');
 
+    const mermaBlock = this.renderMermaRowsHTML(pricing.mermaDetails);
+
     return `
       <div class="cost-breakdown">
         <h4 style="margin-bottom:4px">Desglose de Costos por Unidad</h4>
@@ -1416,6 +1499,7 @@ const QuotationManager = {
         ${adminRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Administrativa / Logística</h5>${adminRows}` : ''}
         ${transformRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Transformación</h5>${transformRows}` : ''}
         ${materialRows ? `<h5 style="margin:12px 0 8px;color:var(--text-secondary)">Materiales</h5>${materialRows}` : ''}
+        ${mermaBlock}
 
         <div class="cost-row" style="margin-top:8px"><span class="cost-label">Costo Total</span><span>${formatCurrency(pricing.totalCost)}</span></div>
         <div class="cost-row"><span class="cost-label">Margen (${margin}%)</span><span>+${formatCurrency(unitPrice - pricing.totalCost)}</span></div>
@@ -1764,6 +1848,7 @@ const QuotationManager = {
       maquilaSteps: options.maquilaSteps,
       clientProvidesCoffee: options.clientProvidesCoffee,
       clientProvidesPackaging: options.clientProvidesPackaging,
+      includeLabels: options.includeLabels,
       grindType: options.grindType,
       processSuppliers,
       unitPrice: totalQuantity > 0 ? totalPrice / totalQuantity : first.unitPrice,
@@ -1974,7 +2059,7 @@ const QuotationManager = {
         <p><strong>Detalle:</strong> ${q.coffeeDetails}</p>
         <p><strong>Presentación:</strong> ${presentationText}</p>
         <p><strong>Preparación:</strong> ${grindLabel}</p>
-        ${q.productionMode === 'full_pack' ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : ''}
+        ${(q.labels?.length || q.label) ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : (q.productionMode === 'maquila' ? '<p><strong>Etiquetas:</strong> Sin etiquetas BCA</p>' : '')}
       `;
 
     return `

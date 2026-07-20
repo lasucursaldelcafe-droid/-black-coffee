@@ -211,7 +211,7 @@ const SetupWizard = {
 
   shouldInterceptNavigation(section) {
     if (this.isComplete()) return false;
-    if (section === 'settings' || section === 'dashboard') return false;
+    if (section === 'settings' || section === 'dashboard' || section === 'glossary' || section === 'workflow') return false;
     return true;
   },
 

@@ -67,7 +67,7 @@ const FirebaseHttpSync = {
     this._periodicTimer = setInterval(() => {
       if (!navigator.onLine || this.syncing) return;
       this.syncAll({ silent: true }).catch(() => {});
-    }, 15000);
+    }, 10000);
   },
 
   _buildLocalDocument() {

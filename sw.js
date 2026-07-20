@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_VERSION = 'bca-v52';
+const CACHE_VERSION = 'bca-v53';
 
 const PRECACHE_URLS = [
   './',
@@ -46,6 +46,9 @@ const PRECACHE_URLS = [
   './js/notifications.js',
   './js/email.js',
   './js/costEngine.js',
+  './js/glossary.js',
+  './js/workflow.js',
+  './js/adminConfig.js',
   './js/pwa.js',
   './js/reports.js',
   './js/app.js'
