@@ -1,12 +1,15 @@
 {
   "name": "workspace",
   "version": "1.0.0",
-  "description": "Plataforma integral de gestión contable y logística para café de especialidad. Desarrollada en HTML, CSS y JavaScript puro — lista para compartir por enlace.",
+  "description": "Plataforma integral de gestión contable y logística para café de especialidad. Stack: HTML, CSS, JavaScript, Python (utilidades) y Google Apps Script.",
   "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
+    "aplicar": "node scripts/aplicar-todo.mjs",
+    "validar": "python3 scripts/validar_plataforma.py",
+    "servir": "python3 scripts/servir_local.py",
     "test": "node scripts/test-persistence.mjs && node scripts/test-pipeline.mjs",
     "test:persistence": "node scripts/test-persistence.mjs",
     "test:pipeline": "node scripts/test-pipeline.mjs",

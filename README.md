@@ -16,8 +16,11 @@ Plataforma integral de gestión contable y logística para café de especialidad
 | `DESCARGAR-PROYECTO.bat` | Clona en `Documentos\BlackCoffeeAdmin` + iconos en Escritorio |
 | `ABRIR-ENLACES.bat` | Abre app, Firebase, GitHub y Resend en el navegador |
 | `INSTALAR-Y-ABRIR.bat` | Instala dependencias + abre todo |
+| `APLICAR-TODO.bat` | Valida HTML/CSS/JS/Python y aplica build unificado |
 
 Ver tambien: [LEEME-ACCESOS.txt](LEEME-ACCESOS.txt), [docs/RUTAS_ACCESO.md](docs/RUTAS_ACCESO.md) y [scripts/BCA/README.md](scripts/BCA/README.md)
+
+**Stack:** HTML + CSS + JavaScript (app) · Python (validación/local) · Apps Script (sync nube)
 
 **PowerShell bloqueado?** Doble clic en `HABILITAR-POWERSHELL.bat` o usa `.\BCA.bat auto` (no requiere `Import-Module` manual).
 

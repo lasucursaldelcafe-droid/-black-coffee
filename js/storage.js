@@ -447,7 +447,7 @@ const COFFEE_VARIETY_OTHER = 'Otras variedades';
 
 const COFFEE_VARIETIES = [
   'Caturra', 'Castillo', 'Colombia', 'Típica', 'Borbón', 'Geisha',
-  'SL28', 'SL34', 'Pacamara', 'Maragogipe', 'Tabi', 'Variedades Colombia',
+  'Java', 'SL28', 'SL34', 'Pacamara', 'Maragogipe', 'Tabi', 'Variedades Colombia',
   COFFEE_VARIETY_OTHER
 ];
 
