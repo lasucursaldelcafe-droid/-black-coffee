@@ -116,7 +116,6 @@ const App = {
       this.applySettings();
       this.renderSection(this.currentSection);
       Notifications.updateBadge();
-      FirebaseSync.updateStatusElement();
       SyncHub.updateStatusElement();
     });
 
@@ -160,7 +159,7 @@ const App = {
       return;
     }
 
-    if (firebaseBlocked) {
+    if (firebaseBlocked && !gasOk && !hubOk) {
       banner.hidden = false;
       banner.innerHTML = `
         <strong>Firebase bloqueado</strong> (reglas Firestore no publicadas).
@@ -168,6 +167,12 @@ const App = {
         <a href="https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desbloquear-firebase.yml" target="_blank" rel="noopener">Desbloquear Firebase</a>
         → pegue token de <code>npx firebase login:ci</code>.
         La sync vía Apps Script sigue activa mientras tanto.`;
+      return;
+    }
+
+    if (firebaseBlocked && (gasOk || hubOk)) {
+      banner.hidden = true;
+      banner.textContent = '';
       return;
     }
 
@@ -759,6 +764,7 @@ const App = {
         </p>
         <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof SyncHub !== 'undefined' ? SyncHub.getStatusLabel() : 'Cargando...'}</p>
         <p id="gas-sync-status" class="form-hint" style="margin-bottom:8px">${typeof GasSync !== 'undefined' ? GasSync.getStatusLabel() : ''}</p>
+        <p id="firebase-secondary-status" class="form-hint" style="margin-bottom:8px"></p>
         <p id="github-sync-status" class="form-hint" style="margin-bottom:8px"></p>
         <p id="local-data-summary" class="form-hint" style="margin-bottom:8px"></p>
         <p id="online-status" class="form-hint" style="margin-bottom:12px"></p>
@@ -874,7 +880,7 @@ const App = {
       onlineEl.textContent = navigator.onLine
         ? '🟢 En línea — toda la información se sincroniza automáticamente'
         : '🔴 Sin conexión — los cambios se guardan aquí y se enviarán al reconectar';
-      FirebaseSync.updateStatusElement();
+      SyncHub.updateStatusElement();
     };
     refreshOnlineStatus();
     window.addEventListener('online', refreshOnlineStatus);

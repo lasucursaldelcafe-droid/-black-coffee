@@ -205,6 +205,9 @@ const SyncHub = {
   getStatusLabel() {
     const p = this.getPrimary();
     if (p?.getStatusLabel) return p.getStatusLabel();
+    if (typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready) {
+      return GasSync.getStatusLabel();
+    }
     if (typeof GasSync !== 'undefined' && GasSync.isConfigured() && !GasSync.ready) {
       return 'Conectando nube Google (Apps Script)...';
     }
@@ -213,11 +216,12 @@ const SyncHub = {
   },
 
   updateStatusElement() {
-    const label = this.getStatusLabel();
-    document.getElementById('firebase-sync-status')?.replaceChildren(document.createTextNode(label));
-    document.getElementById('sidebar-sync-status')?.replaceChildren(document.createTextNode(label));
     if (typeof GasSync !== 'undefined') GasSync.updateStatusElement();
     if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
     if (typeof FirebaseSync !== 'undefined') FirebaseSync.updateStatusElement();
+
+    const label = this.getStatusLabel();
+    document.getElementById('firebase-sync-status')?.replaceChildren(document.createTextNode(label));
+    document.getElementById('sidebar-sync-status')?.replaceChildren(document.createTextNode(label));
   }
 };
