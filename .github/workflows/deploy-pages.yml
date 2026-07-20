@@ -53,12 +53,21 @@ jobs:
           const { gasConfig, cloudConfig, firebaseHttpConfig } = JSON.parse(
             require('child_process').execSync('node scripts/generate-sync-config.js', { encoding: 'utf8' })
           );
-          fs.writeFileSync('js/gas-config.js', gasConfig);
-          fs.writeFileSync('js/cloud-sync-config.js', cloudConfig);
+          const gasHasUrl = /webAppUrl\":\s*\"https:\\/\\//.test(gasConfig);
+          if (gasHasUrl) {
+            fs.writeFileSync('js/gas-config.js', gasConfig);
+            console.log('GAS config generada');
+          } else {
+            console.log('GAS URL vacía; se mantiene js/gas-config.js del repositorio');
+          }
+          if (process.env.GITHUB_SYNC_TOKEN) {
+            fs.writeFileSync('js/cloud-sync-config.js', cloudConfig);
+            console.log('GitHub sync token: configurado');
+          } else {
+            console.log('GitHub sync token no configurado; se mantiene js/cloud-sync-config.js');
+          }
           fs.writeFileSync('js/firebase-http-config.js', firebaseHttpConfig);
-          console.log('Sync config generada');
-          if (process.env.GAS_WEB_APP_URL) console.log('  GAS URL: configurada');
-          if (process.env.GITHUB_SYNC_TOKEN) console.log('  GitHub write token: configurado');
+          console.log('Firebase HTTP config generada');
           "
 
       - name: Install Playwright and run tests

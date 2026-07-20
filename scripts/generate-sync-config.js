@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 const syncKey = process.env.BCA_SYNC_KEY || 'BCA-Ximena-Pablo-2026';
-const gasUrl = (process.env.GAS_WEB_APP_URL || '').trim();
+const DEFAULT_GAS_URL =
+  'https://script.google.com/macros/s/AKfycbwbN42x_9ed0m2cAAXPg5fEhucERXsJNvNflGhgl0oMTJKzvSssfEwHxK42H2erLvDgYQ/exec';
+const gasUrl = (process.env.GAS_WEB_APP_URL || DEFAULT_GAS_URL).trim();
 const githubToken = (process.env.GITHUB_SYNC_TOKEN || '').trim();
 const firebaseSyncUrl = (process.env.FIREBASE_SYNC_URL || 'https://southamerica-east1-black-coffee-15ccc.cloudfunctions.net/bcaSync').trim();
 

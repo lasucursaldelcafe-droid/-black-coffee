@@ -5,7 +5,7 @@ import { join, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BUILD = '35';
+const BUILD = '36';
 
 const MIME = {
   '.html': 'text/html',
@@ -270,7 +270,7 @@ try {
     return {
       build,
       cases,
-      passed: build === '35' && cases.every((c) => c.passed)
+      passed: build === '36' && cases.every((c) => c.passed)
     };
   });
 

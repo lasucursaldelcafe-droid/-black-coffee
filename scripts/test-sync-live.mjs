@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 const BASE = 'https://lasucursaldelcafe-droid.github.io/-black-coffee';
-const BUILD = '35';
+const BUILD = '36';
 
 const USERS = {
   ximena: { username: 'ximena.polo', password: 'XimenaBCA2026!' },
