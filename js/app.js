@@ -140,15 +140,16 @@ const App = {
     const banner = document.getElementById('sync-alert-banner');
     if (!banner) return;
 
-    const gasOk = typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready && !GasSync.lastError?.includes('Access Denied');
-    const gasDenied = typeof GasSync !== 'undefined' && GasSync.lastError?.includes('Access Denied');
+    const gasOk = typeof GasSync !== 'undefined' && GasSync.isConfigured() && GasSync.ready && !GasSync.lastError?.includes('Apps Script no es público');
+    const gasDenied = typeof GasSync !== 'undefined' && GasSync.lastError?.includes('Apps Script no es público');
     const hubOk = typeof SyncHub !== 'undefined' && SyncHub.ready && !gasDenied;
 
     if (gasDenied) {
       banner.hidden = false;
       banner.innerHTML = `
-        <strong>Apps Script: acceso denegado.</strong>
-        En script.google.com → Implementar → Editar → «Quién tiene acceso» = <strong>Cualquier persona</strong> → Implementar de nuevo.`;
+        <strong>Apps Script: falta acceso público.</strong>
+        script.google.com → Implementar → Administrar implementaciones → Editar →
+        «Quién tiene acceso» = <strong>Cualquier persona</strong> (no «usuarios con cuenta Google») → Implementar.`;
       return;
     }
     const firebaseBlocked = typeof FirebaseSync !== 'undefined' && FirebaseSync.permissionDenied;
