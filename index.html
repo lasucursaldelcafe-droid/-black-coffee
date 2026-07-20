@@ -90,11 +90,11 @@
     </div>
   </div>
 
-  <script>window.BCA_BUILD = '45';</script>
-  <script src="js/storage.js?v=45"></script>
-  <script src="js/auth.js?v=45"></script>
-  <script src="js/auth-biometric.js?v=45"></script>
-  <script src="js/pwa.js?v=45"></script>
+  <script>window.BCA_BUILD = '46';</script>
+  <script src="js/storage.js?v=46"></script>
+  <script src="js/auth.js?v=46"></script>
+  <script src="js/auth-biometric.js?v=46"></script>
+  <script src="js/pwa.js?v=46"></script>
   <script>
     Auth.init();
 
@@ -127,8 +127,11 @@
       });
     }
 
+    let cachedBiometricSupport = null;
+
     async function setupBiometricUI() {
-      const info = await BiometricAuth.getSupportInfo();
+      cachedBiometricSupport = await BiometricAuth.getSupportInfo(true);
+      const info = cachedBiometricSupport;
       const enableGroup = document.getElementById('biometric-enable-group');
       const bioBtn = document.getElementById('biometric-login-btn');
       const hint = document.getElementById('biometric-support-hint');
@@ -138,10 +141,7 @@
       }
 
       if (hint) {
-        hint.textContent = info.available
-          ? info.reason
-          : info.reason;
-        hint.style.display = info.available ? '' : '';
+        hint.textContent = info.reason;
       }
 
       if (info.available && bioBtn && BiometricAuth.hasAnyCredential()) {
@@ -168,12 +168,16 @@
         const enableBio = document.getElementById('enable-biometric')?.checked;
         const user = Auth.getCurrentUser();
         if (enableBio && user) {
-          const bioResult = await BiometricAuth.register(user);
+          const bioResult = await BiometricAuth.register(user, {
+            supportInfo: cachedBiometricSupport
+          });
           if (!bioResult.success) {
             errorEl.textContent = bioResult.message;
             errorEl.classList.add('show');
-            if (!bioResult.cancelled) {
-              await new Promise((resolve) => setTimeout(resolve, 2500));
+            if (bioResult.cancelled) {
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+            } else {
+              await new Promise((resolve) => setTimeout(resolve, 3500));
             }
           }
         }
@@ -186,7 +190,9 @@
 
     document.getElementById('biometric-login-btn')?.addEventListener('click', async () => {
       const errorEl = document.getElementById('login-error');
-      const result = await BiometricAuth.authenticate();
+      const result = await BiometricAuth.authenticate({
+        supportInfo: cachedBiometricSupport
+      });
       if (result.success) {
         window.location.href = 'app.html';
         return;

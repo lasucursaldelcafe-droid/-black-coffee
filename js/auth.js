@@ -35,10 +35,27 @@ const Auth = {
   loadUsers() {
     const stored = Storage.get(STORAGE_KEYS.USERS);
     if (this.isValidUserList(stored)) {
-      return stored;
+      return this.normalizeUserIds(stored);
     }
     Storage.set(STORAGE_KEYS.USERS, this.defaultUsers);
     return [...this.defaultUsers];
+  },
+
+  normalizeUserIds(users) {
+    let changed = false;
+    const normalized = users.map((user, index) => {
+      if (user?.id) return user;
+      changed = true;
+      const base = user?.username || user?.name || `user_${index + 1}`;
+      return {
+        ...user,
+        id: `user_${String(base).replace(/[^\w.-]+/g, '_')}`
+      };
+    });
+    if (changed) {
+      Storage.set(STORAGE_KEYS.USERS, normalized);
+    }
+    return normalized;
   },
 
   isValidUserList(users) {

@@ -939,7 +939,8 @@ const App = {
 
     const session = Auth.getSession();
     const user = Auth.getCurrentUser();
-    const info = await BiometricAuth.getSupportInfo();
+    const info = await BiometricAuth.getSupportInfo(true);
+    panel.dataset.biometricSupport = JSON.stringify(info);
     const enabled = user ? BiometricAuth.hasCredentialForUser(user.id) : false;
 
     if (!info.available) {
@@ -983,7 +984,13 @@ const App = {
         btn.disabled = true;
         btn.textContent = 'Esperando huella / Face ID...';
       }
-      const result = await BiometricAuth.register(user);
+      let supportInfo = null;
+      try {
+        supportInfo = JSON.parse(panel.dataset.biometricSupport || 'null');
+      } catch {
+        supportInfo = null;
+      }
+      const result = await BiometricAuth.register(user, { supportInfo });
       if (btn) {
         btn.textContent = 'Activar huella / Face ID';
       }
