@@ -17,6 +17,10 @@ const DataSeed = {
     this.seedProductionCosts();
     this.seedSettings();
 
+    if (typeof SetupWizard !== 'undefined') {
+      SetupWizard.autoCompleteIfNeeded({ silent: true });
+    }
+
     const setupComplete = typeof SetupWizard !== 'undefined'
       ? SetupWizard.isComplete()
       : (Storage.get(STORAGE_KEYS.PLATFORM_SETUP)?.completed === true);
@@ -33,9 +37,12 @@ const DataSeed = {
   },
 
   seedPlatformSetup() {
-    if (!Storage.get(STORAGE_KEYS.PLATFORM_SETUP)) {
-      Storage.set(STORAGE_KEYS.PLATFORM_SETUP, { ...DEFAULT_PLATFORM_SETUP });
-    }
+    if (Storage.get(STORAGE_KEYS.PLATFORM_SETUP)) return;
+    // Solo local: evita sobrescribir en la nube un setup ya completado en otro dispositivo.
+    localStorage.setItem(
+      STORAGE_KEYS.PLATFORM_SETUP,
+      JSON.stringify({ ...DEFAULT_PLATFORM_SETUP })
+    );
   },
 
   ensureEmptyBusinessData() {

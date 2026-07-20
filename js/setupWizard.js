@@ -12,6 +12,92 @@ const SetupWizard = {
     return this.getState().completed === true;
   },
 
+  hasOperationalData() {
+    const dataKeys = [
+      STORAGE_KEYS.COFFEES,
+      STORAGE_KEYS.CLIENTS,
+      STORAGE_KEYS.SUPPLIERS,
+      STORAGE_KEYS.INVENTORY,
+      STORAGE_KEYS.QUOTATIONS,
+      STORAGE_KEYS.SALES,
+      STORAGE_KEYS.PURCHASES
+    ];
+
+    return dataKeys.some((key) => {
+      const data = Storage.get(key);
+      return Array.isArray(data) && data.length > 0;
+    });
+  },
+
+  hasConfiguredCosts() {
+    const costs = migrateProductionCosts(Storage.get(STORAGE_KEYS.PRODUCTION_COSTS));
+    if (!costs) return false;
+
+    const t = costs.transformation || {};
+    const numericValues = [
+      t.trilla,
+      t.greenSelection,
+      t.roasting,
+      t.selection,
+      t.grinding,
+      t.packagingLabor?.['250g'],
+      t.packagingLabor?.['500g'],
+      t.packagingLabor?.['5lb'],
+      costs.mermas?.trilla,
+      costs.mermas?.greenSelection,
+      costs.mermas?.tostion,
+      costs.mermas?.seleccion,
+      costs.packaging?.['250g'],
+      costs.packaging?.['500g'],
+      costs.packaging?.['5lb'],
+      costs.labels?.small,
+      costs.labels?.large
+    ];
+
+    return numericValues.some((value) => Number(value) > 0);
+  },
+
+  hasCustomSettings() {
+    const settings = Storage.get(STORAGE_KEYS.SETTINGS);
+    if (!settings) return false;
+
+    return settings.companyName !== DEFAULT_SETTINGS.companyName
+      || settings.email !== DEFAULT_SETTINGS.email
+      || settings.tagline !== DEFAULT_SETTINGS.tagline
+      || Boolean(settings.logo);
+  },
+
+  shouldTreatAsComplete() {
+    if (this.isComplete()) return true;
+    return this.hasOperationalData() || this.hasConfiguredCosts() || this.hasCustomSettings();
+  },
+
+  autoCompleteIfNeeded(options = {}) {
+    if (this.isComplete()) return true;
+    if (!this.shouldTreatAsComplete()) return false;
+
+    this.markComplete();
+    this.close();
+
+    const pending = this._pendingSection;
+    const pendingOpts = this._pendingOptions;
+    this._pendingSection = null;
+    this._pendingOptions = null;
+
+    if (pending && typeof App !== 'undefined') {
+      setTimeout(() => App.navigateTo(pending, pendingOpts || {}), 0);
+    } else if (typeof App !== 'undefined') {
+      App.applySettings();
+      App.renderSection(App.currentSection);
+    }
+
+    if (!options.silent) {
+      Toast?.show('Configuración detectada desde datos sincronizados', 'success');
+    }
+
+    return true;
+  },
+
   saveState(partial) {
     const next = { ...this.getState(), ...partial };
     Storage.set(STORAGE_KEYS.PLATFORM_SETUP, next, { immediate: true });
@@ -416,7 +502,7 @@ const SetupWizard = {
     }
   },
 
-  init() {
+  init(options = {}) {
     document.getElementById('setup-wizard-back')?.addEventListener('click', () => this.back());
     document.getElementById('setup-wizard-next')?.addEventListener('click', () => this.next());
     document.getElementById('setup-wizard-skip')?.addEventListener('click', () => {
@@ -426,9 +512,40 @@ const SetupWizard = {
     });
 
     this.bindNavigationIntercept();
+    this.bindSyncRecheck();
 
+    this.autoCompleteIfNeeded({ silent: true });
+
+    if (!this.isComplete() && !options.deferOpen) {
+      setTimeout(() => {
+        this.autoCompleteIfNeeded({ silent: true });
+        if (!this.isComplete()) {
+          this.open();
+        }
+      }, 300);
+    }
+  },
+
+  bindSyncRecheck() {
+    if (this._syncRecheckBound) return;
+    this._syncRecheckBound = true;
+
+    const recheck = () => {
+      if (this.autoCompleteIfNeeded({ silent: true })) {
+        window.dispatchEvent(new CustomEvent('bca-data-changed'));
+      }
+    };
+
+    window.addEventListener('bca-sync-complete', recheck);
+    window.addEventListener('bca-data-changed', () => {
+      if (!this.isComplete()) recheck();
+    });
+  },
+
+  afterSyncBootstrap() {
+    this.autoCompleteIfNeeded({ silent: true });
     if (!this.isComplete()) {
-      setTimeout(() => this.open(), 600);
+      this.open();
     }
   },
 
