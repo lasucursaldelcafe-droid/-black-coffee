@@ -48,7 +48,7 @@
               <input type="checkbox" id="enable-biometric" checked>
               <span>Activar inicio biométrico en este dispositivo</span>
             </label>
-            <p class="form-hint" style="margin-top:6px">Disponible para todos los usuarios (huella, Face ID o PIN del dispositivo).</p>
+            <p class="form-hint" id="biometric-support-hint" style="margin-top:6px">Disponible para todos los usuarios (huella, Face ID o PIN del dispositivo).</p>
           </div>
           <button type="submit" class="btn btn-primary btn-lg login-submit-btn">
             Iniciar Sesión
@@ -90,11 +90,11 @@
     </div>
   </div>
 
-  <script>window.BCA_BUILD = '44';</script>
-  <script src="js/storage.js?v=44"></script>
-  <script src="js/auth.js?v=44"></script>
-  <script src="js/auth-biometric.js?v=44"></script>
-  <script src="js/pwa.js?v=44"></script>
+  <script>window.BCA_BUILD = '45';</script>
+  <script src="js/storage.js?v=45"></script>
+  <script src="js/auth.js?v=45"></script>
+  <script src="js/auth-biometric.js?v=45"></script>
+  <script src="js/pwa.js?v=45"></script>
   <script>
     Auth.init();
 
@@ -128,15 +128,23 @@
     }
 
     async function setupBiometricUI() {
-      const supported = await BiometricAuth.isSupported();
+      const info = await BiometricAuth.getSupportInfo();
       const enableGroup = document.getElementById('biometric-enable-group');
       const bioBtn = document.getElementById('biometric-login-btn');
+      const hint = document.getElementById('biometric-support-hint');
 
-      if (supported && enableGroup) {
+      if (info.available && enableGroup) {
         enableGroup.style.display = '';
       }
 
-      if (supported && bioBtn && BiometricAuth.hasAnyCredential()) {
+      if (hint) {
+        hint.textContent = info.available
+          ? info.reason
+          : info.reason;
+        hint.style.display = info.available ? '' : '';
+      }
+
+      if (info.available && bioBtn && BiometricAuth.hasAnyCredential()) {
         bioBtn.style.display = '';
       }
     }
@@ -159,11 +167,14 @@
       if (result.success) {
         const enableBio = document.getElementById('enable-biometric')?.checked;
         const user = Auth.getCurrentUser();
-        if (enableBio && user && await BiometricAuth.isSupported()) {
+        if (enableBio && user) {
           const bioResult = await BiometricAuth.register(user);
-          if (!bioResult.success && !BiometricAuth.hasCredentialForUser(user.id)) {
+          if (!bioResult.success) {
             errorEl.textContent = bioResult.message;
             errorEl.classList.add('show');
+            if (!bioResult.cancelled) {
+              await new Promise((resolve) => setTimeout(resolve, 2500));
+            }
           }
         }
         window.location.href = 'app.html';
