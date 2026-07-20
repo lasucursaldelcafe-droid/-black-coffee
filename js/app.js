@@ -55,7 +55,14 @@ const App = {
 
       FirebaseSync.startInBackground().finally(() => {
         FirebaseSync.updateStatusElement();
-        this.renderSyncAlert();
+        if (typeof CloudSync !== 'undefined') {
+          CloudSync.startInBackground().finally(() => {
+            CloudSync.updateStatusElement();
+            this.renderSyncAlert();
+          });
+        } else {
+          this.renderSyncAlert();
+        }
         InventoryManager.checkAllLowStock();
       });
     } catch (error) {
@@ -136,16 +143,33 @@ const App = {
 
   renderSyncAlert() {
     const banner = document.getElementById('sync-alert-banner');
-    if (!banner || typeof FirebaseSync === 'undefined') return;
+    if (!banner) return;
+
+    const firebaseBlocked = typeof FirebaseSync !== 'undefined' && FirebaseSync.permissionDenied;
+    const cloudReady = typeof CloudSync !== 'undefined' && CloudSync.ready;
+    const cloudCanWrite = typeof CloudSync !== 'undefined' && CloudSync.canWrite();
+
+    if (firebaseBlocked && cloudReady) {
+      banner.hidden = false;
+      if (!cloudCanWrite) {
+        banner.innerHTML = `
+          <strong>Firebase bloqueado — usando nube GitHub.</strong>
+          Pablo ya puede <strong>bajar</strong> datos con «Forzar sincronización completa».
+          Ximena: pulse <strong>Conectar GitHub</strong> en Configuración y luego «Publicar mis datos a la nube».`;
+      } else {
+        banner.hidden = true;
+        banner.textContent = '';
+      }
+      return;
+    }
+
+    if (typeof FirebaseSync === 'undefined') return;
 
     if (FirebaseSync.permissionDenied) {
       banner.hidden = false;
       banner.innerHTML = `
         <strong>La sincronización con la nube está bloqueada.</strong>
-        Los datos de Ximena solo existen en su navegador hasta publicar las reglas de Firestore.
-        <a href="https://console.firebase.google.com/project/black-coffee-15ccc/firestore/rules" target="_blank" rel="noopener">Abrir reglas Firestore</a>
-        · pegue el contenido de <code>firestore.rules</code> del repositorio y pulse <strong>Publicar</strong>.
-        Luego Ximena pulse «Publicar mis datos a la nube» en Configuración.`;
+        Conecte GitHub en Configuración para compartir datos sin Firebase.`;
       return;
     }
 
@@ -166,8 +190,10 @@ const App = {
 
   renderLocalDataSummary() {
     const el = document.getElementById('local-data-summary');
-    if (!el || typeof FirebaseSync === 'undefined') return;
-    const s = FirebaseSync.getLocalDataSummary();
+    if (!el) return;
+    const sync = typeof CloudSync !== 'undefined' ? CloudSync : FirebaseSync;
+    if (typeof sync === 'undefined') return;
+    const s = sync.getLocalDataSummary();
     const parts = [
       `Cafés ${s.bca_coffees || 0}`,
       `Clientes ${s.bca_clients || 0}`,
@@ -186,8 +212,21 @@ const App = {
       btn.textContent = 'Publicando...';
     }
     try {
-      const result = await FirebaseSync.publishAllLocalData();
-      Toast.show(`Datos publicados · ${result.pushed} claves enviadas · ${result.pulled} recibidas`, 'success');
+      let result;
+      if (typeof FirebaseSync !== 'undefined' && FirebaseSync.isEnabled() && !FirebaseSync.permissionDenied) {
+        result = await FirebaseSync.publishAllLocalData();
+      } else if (typeof CloudSync !== 'undefined') {
+        if (!CloudSync.canWrite()) {
+          await this.runConnectGitHub();
+          if (!CloudSync.canWrite()) {
+            throw new Error('Conecte GitHub para publicar sus datos.');
+          }
+        }
+        result = await CloudSync.publishAllLocalData();
+      } else {
+        throw new Error('No hay backend de nube disponible');
+      }
+      Toast.show(`Datos publicados · ${result.pushed} enviados · ${result.pulled} recibidos`, 'success');
       this.renderSection(this.currentSection);
       this.renderLocalDataSummary();
       this.renderSyncAlert();
@@ -195,7 +234,8 @@ const App = {
       Toast.show(error.message || 'No se pudo publicar a la nube', 'danger');
       this.renderSyncAlert();
     } finally {
-      FirebaseSync.updateStatusElement();
+      if (typeof FirebaseSync !== 'undefined') FirebaseSync.updateStatusElement();
+      if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
       if (btn) {
         btn.disabled = false;
         btn.textContent = 'Publicar mis datos a la nube';
@@ -209,23 +249,75 @@ const App = {
       btn.disabled = true;
       btn.textContent = 'Sincronizando...';
     }
-    FirebaseSync.updateStatusElement();
+    if (typeof FirebaseSync !== 'undefined') FirebaseSync.updateStatusElement();
+    if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
 
     try {
-      const result = await FirebaseSync.syncAll();
+      let result = { pushed: 0, pulled: 0 };
+      if (typeof CloudSync !== 'undefined') {
+        result = await CloudSync.syncAll();
+      } else if (typeof FirebaseSync !== 'undefined' && !FirebaseSync.permissionDenied) {
+        result = await FirebaseSync.syncAll();
+      } else {
+        throw new Error('Sync no disponible');
+      }
       Toast.show(`Todo sincronizado · ${result.pushed} enviados · ${result.pulled} recibidos`, 'success');
       this.applySettings();
       this.renderSection(this.currentSection);
       Notifications.updateBadge();
     } catch (error) {
-      Toast.show(error.message || 'No se pudo sincronizar', 'danger');
+      Toast.show(error.message || 'Error al sincronizar', 'danger');
     } finally {
-      FirebaseSync.updateStatusElement();
+      if (typeof FirebaseSync !== 'undefined') FirebaseSync.updateStatusElement();
+      if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Sincronizar todo';
+        btn.textContent = 'Forzar sincronización completa';
       }
     }
+  },
+
+  async runConnectGitHub() {
+    const btn = document.getElementById('connect-github-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Conectando...';
+    }
+
+    try {
+      const flow = await CloudSync.startDeviceFlow();
+      window.open(flow.verificationUri, '_blank', 'noopener');
+      Toast.show(`Código GitHub: ${flow.userCode} — autorice en la ventana abierta`, 'info', 15000);
+
+      const poll = async () => {
+        const status = await CloudSync.pollDeviceFlow();
+        if (status.pending) {
+          setTimeout(poll, (status.interval || 5) * 1000);
+          return;
+        }
+        Toast.show('GitHub conectado — publicando datos...', 'success');
+        this.renderSyncAlert();
+        this.renderGitHubStatus();
+        if (typeof CloudSync !== 'undefined') CloudSync.updateStatusElement();
+      };
+
+      setTimeout(poll, 3000);
+    } catch (error) {
+      Toast.show(error.message || 'No se pudo conectar GitHub', 'danger');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = CloudSync.canWrite() ? 'GitHub conectado' : 'Conectar GitHub para publicar';
+      }
+    }
+  },
+
+  renderGitHubStatus() {
+    const el = document.getElementById('github-sync-status');
+    if (!el || typeof CloudSync === 'undefined') return;
+    el.textContent = CloudSync.canWrite()
+      ? 'GitHub conectado — puede publicar y recibir cambios.'
+      : 'Sin GitHub — puede bajar datos; conecte GitHub para publicar los suyos.';
   },
 
   bindNavigation() {
@@ -696,15 +788,18 @@ const App = {
           Los cambios de ambos se <strong>unen</strong> sin borrar los del otro.
         </p>
         <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
+        <p id="cloud-sync-status" class="form-hint" style="margin-bottom:8px">${typeof CloudSync !== 'undefined' ? CloudSync.getStatusLabel() : ''}</p>
+        <p id="github-sync-status" class="form-hint" style="margin-bottom:8px"></p>
         <p id="local-data-summary" class="form-hint" style="margin-bottom:8px"></p>
         <p id="online-status" class="form-hint" style="margin-bottom:12px"></p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button type="button" class="btn btn-sm btn-primary" id="publish-local-cloud-btn">Publicar mis datos a la nube</button>
           <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización completa</button>
+          <button type="button" class="btn btn-sm btn-secondary" id="connect-github-btn">${typeof CloudSync !== 'undefined' && CloudSync.canWrite() ? 'GitHub conectado' : 'Conectar GitHub para publicar'}</button>
         </div>
         <p class="form-hint" style="margin-top:8px">
-          <strong>Ximena:</strong> use «Publicar mis datos a la nube» para subir lo creado en su sesión.
-          <strong>Pablo:</strong> use «Forzar sincronización completa» para bajar los datos de Ximena.
+          <strong>Ximena:</strong> «Conectar GitHub» (una vez) y luego «Publicar mis datos a la nube».
+          <strong>Pablo:</strong> «Forzar sincronización completa» baja los datos sin GitHub.
         </p>
       </div>
       <div class="card" style="margin-bottom:20px">
@@ -759,7 +854,9 @@ const App = {
     document.getElementById('save-settings-btn')?.addEventListener('click', () => this.saveSettings());
     document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
     document.getElementById('publish-local-cloud-btn')?.addEventListener('click', () => this.runPublishLocalCloud());
+    document.getElementById('connect-github-btn')?.addEventListener('click', () => this.runConnectGitHub());
     this.renderLocalDataSummary();
+    this.renderGitHubStatus();
     this.renderSyncAlert();
     PWA.renderInstallCard('pwa-install-card-settings');
     this.renderBiometricSettings();

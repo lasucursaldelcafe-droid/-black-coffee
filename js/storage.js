@@ -79,6 +79,9 @@ const Storage = {
         FirebaseSync.pushKeyNow(DELETED_RECORDS_KEY).catch(() => {});
       }
     }
+    if (typeof CloudSync !== 'undefined') {
+      CloudSync.queuePush(DELETED_RECORDS_KEY);
+    }
   },
 
   filterDeleted(key, items) {
@@ -199,6 +202,9 @@ const Storage = {
         FirebaseSync.queuePush(key, next);
       }
     }
+    if (typeof CloudSync !== 'undefined') {
+      CloudSync.queuePush(key);
+    }
   },
 
   remove(key) {
@@ -206,6 +212,9 @@ const Storage = {
     this.markLocalWrite(key);
     if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.queueDelete(key);
+    }
+    if (typeof CloudSync !== 'undefined') {
+      CloudSync.queuePush(key);
     }
   },
 
