@@ -1,0 +1,103 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate Firebase config from secrets
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        run: |
+          GENERATED=$(node scripts/generate-firebase-config.js)
+          if echo "$GENERATED" | grep -q '"projectId"'; then
+            echo "$GENERATED" > js/firebase-config.js
+            echo "Firebase config generada desde GitHub Secrets"
+          else
+            echo "Secrets no configurados; se mantiene js/firebase-config.js del repositorio"
+          fi
+
+      - name: Generate sync config (Apps Script + GitHub + Firebase HTTP)
+        env:
+          GAS_WEB_APP_URL: ${{ secrets.GAS_WEB_APP_URL }}
+          GITHUB_SYNC_TOKEN: ${{ secrets.GITHUB_SYNC_TOKEN }}
+          BCA_SYNC_KEY: ${{ secrets.BCA_SYNC_KEY }}
+          FIREBASE_SYNC_URL: ${{ secrets.FIREBASE_SYNC_URL }}
+        run: |
+          node -e "
+          const fs = require('fs');
+          const { gasConfig, cloudConfig, firebaseHttpConfig } = JSON.parse(
+            require('child_process').execSync('node scripts/generate-sync-config.js', { encoding: 'utf8' })
+          );
+          const gasHasUrl = /webAppUrl\":\s*\"https:\\/\\//.test(gasConfig);
+          if (gasHasUrl) {
+            fs.writeFileSync('js/gas-config.js', gasConfig);
+            console.log('GAS config generada');
+          } else {
+            console.log('GAS URL vacía; se mantiene js/gas-config.js del repositorio');
+          }
+          if (process.env.GITHUB_SYNC_TOKEN) {
+            fs.writeFileSync('js/cloud-sync-config.js', cloudConfig);
+            console.log('GitHub sync token: configurado');
+          } else {
+            console.log('GitHub sync token no configurado; se mantiene js/cloud-sync-config.js');
+          }
+          fs.writeFileSync('js/firebase-http-config.js', firebaseHttpConfig);
+          console.log('Firebase HTTP config generada');
+          "
+
+      - name: Bump unified build version
+        run: node scripts/bump-build.mjs
+
+      - name: Install Playwright and run tests
+        run: |
+          npm install playwright@1.49.1 --no-save
+          npx playwright install chromium
+          node scripts/test-persistence.mjs
+
+      - name: Publicar reglas Firestore (sync entre usuarios)
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::warning::FIREBASE_TOKEN no configurado. La sync Ximena↔Pablo NO funcionará hasta publicar firestore.rules."
+            exit 0
+          fi
+          npx firebase-tools deploy --only firestore:rules --project black-coffee-15ccc --token "$FIREBASE_TOKEN"
+
+      - name: Deploy to gh-pages branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: .
+          branch: gh-pages
+          clean: true
+          single-commit: true
+          ignoreFiles: |
+            node_modules/**
+            scripts/**
+            .git/**
+            .github/**

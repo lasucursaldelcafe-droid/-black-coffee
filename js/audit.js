@@ -1,0 +1,179 @@
+const AUDIT_ACTIONS = {
+  purchase: 'Compra',
+  purchase_roasted: 'Entrada tostado',
+  purchase_selected: 'Entrada seleccionado',
+  purchase_ground: 'Entrada molido',
+  purchase_packaged: 'Entrada empacado',
+  roast: 'Tostión',
+  production_batch: 'Lote de producción',
+  adjust: 'Ajuste manual',
+  delete_coffee: 'Eliminación de café',
+  delete_quotation: 'Eliminación de cotización',
+  delete_supplier: 'Eliminación de proveedor',
+  update_inventory: 'Actualización de inventario',
+  transfer_green_roasted: 'Transformación · Tostión',
+  transfer_roasted_selected: 'Transformación · Selección',
+  transfer_selected_ground: 'Transformación · Molienda',
+  transfer_ground_packaged: 'Transformación · Empacado',
+  quotation_status: 'Estado cotización',
+  convert_quotation: 'Cotización → Venta',
+  payment_received: 'Pago recibido'
+};
+
+const AuditLog = {
+  getAll() {
+    return Storage.get(STORAGE_KEYS.AUDIT_LOG) || [];
+  },
+
+  log(action, entity, details = {}) {
+    const session = Auth.getSession();
+    const entry = {
+      id: Storage.generateId(),
+      action,
+      actionLabel: AUDIT_ACTIONS[action] || action,
+      entity,
+      details,
+      userId: session?.userId || 'unknown',
+      userName: session?.name || 'Usuario desconocido',
+      createdAt: new Date().toISOString()
+    };
+
+    const raw = Storage.get(STORAGE_KEYS.AUDIT_LOG);
+    const log = Array.isArray(raw) ? raw : [];
+    log.unshift(entry);
+    if (log.length > 200) log.length = 200;
+    Storage.set(STORAGE_KEYS.AUDIT_LOG, log);
+    return entry;
+  },
+
+  getByEntity(entity) {
+    return this.getAll().filter((e) => e.entity === entity);
+  },
+
+  renderLog(container, options = {}) {
+    const { entity = null, limit = 50 } = options;
+    let entries = this.getAll();
+    if (entity) entries = entries.filter((e) => e.entity === entity);
+    entries = entries.slice(0, limit);
+
+    if (entries.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="padding:24px">
+          <p style="color:var(--text-muted)">No hay movimientos registrados</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="audit-log">
+        ${entries.map((e) => `
+          <div class="audit-entry">
+            <div class="audit-entry-icon">${this.getActionIcon(e.action)}</div>
+            <div class="audit-entry-body">
+              <div class="audit-entry-title">${e.actionLabel}</div>
+              <div class="audit-entry-detail">${this.formatDetails(e)}</div>
+              <div class="audit-entry-meta">
+                <span class="audit-user">${e.userName}</span>
+                <span class="audit-date">${formatDateTime(e.createdAt)}</span>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+  },
+
+  getActionIcon(action) {
+    const icons = {
+      purchase: '📥',
+      purchase_roasted: '🔥',
+      purchase_selected: '✨',
+      purchase_ground: '⚙️',
+      purchase_packaged: '📦',
+      roast: '🔥',
+      production_batch: '⚙️',
+      adjust: '✏️',
+      delete_coffee: '🗑️',
+      delete_quotation: '🗑️',
+      delete_supplier: '🗑️',
+      update_inventory: '📦',
+      sale: '💰',
+      delete_sale: '🗑️',
+      transfer_green_roasted: '🔥',
+      transfer_roasted_selected: '✨',
+      transfer_selected_ground: '⚙️',
+      transfer_ground_packaged: '📦',
+      quotation_status: '📋',
+      convert_quotation: '🔄',
+      payment_received: '💵'
+    };
+    return icons[action] || '📝';
+  },
+
+  formatDetails(entry) {
+    const d = entry.details || {};
+    switch (entry.action) {
+      case 'purchase':
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg${d.stage ? ` (${d.stage})` : ' verde'}${d.costPerKg || d.costPerUnit ? ` · ${formatCurrency(d.costPerKg || d.costPerUnit)}/${d.unit === 'uds' ? 'ud' : 'kg'}` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_roasted':
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg tostado${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_selected':
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg seleccionado${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_ground':
+        return `${d.coffeeName || entry.entity}: +${formatNumber(d.kg || d.quantity)} kg molido${d.costPerKg ? ` · ${formatCurrency(d.costPerKg)}/kg` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'purchase_packaged': {
+        const parts = [
+          `${d.coffeeName || entry.entity}: +${d.quantity || 0} uds ${PACKAGING_SIZES[d.packaging]?.label || d.packaging || ''}`,
+          d.packagingMaterialCost > 0 ? `material ${formatCurrency(d.packagingMaterialCost)}` : (d.clientProvidesPackaging ? 'material cliente' : null),
+          d.packagingLaborCost > 0 ? `MO ${formatCurrency(d.packagingLaborCost)}/ud` : null,
+          d.costPerUnit ? `total ${formatCurrency(d.costPerUnit)}/ud` : null,
+          d.supplierName ? d.supplierName : null
+        ].filter(Boolean);
+        return parts.join(' · ');
+      }
+      case 'roast':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.greenKg)} kg verde → ${formatNumber(d.roastedKg)} kg tostado${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'production_batch':
+        return `${d.coffeeName || entry.entity}: ${d.steps?.map((s) => `${s.label}: ${s.supplierName || '—'}`).join(' · ') || 'Lote registrado'}`;
+      case 'adjust':
+        return `${d.coffeeName || entry.entity}: ${d.field} ${d.previousValue} → ${d.newValue} kg${d.reason ? ` · ${d.reason}` : ''}`;
+      case 'delete_coffee':
+        return `Café eliminado: ${d.coffeeName || entry.entity}`;
+      case 'delete_quotation':
+        return `Cotización eliminada: ${d.number || entry.entity}`;
+      case 'delete_supplier':
+        return `Proveedor eliminado: ${d.name || entry.entity}`;
+      case 'sale':
+        return `${d.coffeeName || entry.entity}: ${d.quantity} × ${d.packaging || ''} · ${formatCurrency(d.totalRevenue || 0)} · Margen ${formatNumber(d.profitMargin || 0, 1)}% · Vendió: ${d.soldBy || entry.userName}`;
+      case 'delete_sale':
+        return `Venta eliminada: ${d.coffeeName || entry.entity} (${d.quantity} uds)`;
+      case 'transfer_green_roasted':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg verde → ${formatNumber(d.outputKg)} kg tostado${d.mermaKg ? ` (merma ${formatNumber(d.mermaKg)} kg)` : ''}${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}${d.supplierName ? ` · ${d.supplierName}` : ''}`;
+      case 'transfer_roasted_selected':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg tostado → ${formatNumber(d.outputKg)} kg seleccionado${d.mermaKg ? ` (merma ${formatNumber(d.mermaKg)} kg)` : ''}${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}`;
+      case 'transfer_selected_ground':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg seleccionado → ${formatNumber(d.outputKg)} kg molido${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}`;
+      case 'transfer_ground_packaged':
+        return `${d.coffeeName || entry.entity}: ${formatNumber(d.inputKg)} kg molido → ${d.outputUnits} uds ${PACKAGING_SIZES[d.packaging]?.label || d.packaging || ''}${d.processCost ? ` · ${formatCurrency(d.processCost)}` : ''}`;
+      case 'quotation_status':
+        return `${d.number || entry.entity}: ${d.fromStatus || '—'} → ${d.toStatus || '—'}`;
+      case 'convert_quotation':
+        return `${d.number || entry.entity} → venta ${d.saleId ? 'registrada' : ''} · ${formatCurrency(d.totalPrice || 0)}`;
+      case 'payment_received':
+        return `${d.reference || entry.entity}: ${formatCurrency(d.amount || 0)}${d.notes ? ` · ${d.notes}` : ''}`;
+      default:
+        return d.message || entry.entity || '';
+    }
+  }
+};
+
+function formatDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString('es-CO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}

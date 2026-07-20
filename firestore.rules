@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Datos compartidos BCA — usuarios autenticados (incluye auth anónima de la app)
+    match /bca_data/{document} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Cola de correos — la app crea, Cloud Functions envía
+    match /bca_email_outbox/{document} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['to', 'subject', 'body']);
+      allow read, update, delete: if false;
+    }
+
+    // Denegar todo lo demás
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

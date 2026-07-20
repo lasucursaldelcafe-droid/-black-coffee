@@ -1,0 +1,72 @@
+name: Desplegar Firebase (correo + reglas)
+
+on:
+  workflow_dispatch:
+    inputs:
+      firebase_token:
+        description: 'Token Firebase (opcional si ya existe secret FIREBASE_TOKEN)'
+        required: false
+        type: string
+  push:
+    branches: [main]
+
+jobs:
+  desplegar:
+    name: Desplegar Functions y Firestore
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias de Functions
+        working-directory: functions
+        run: npm ci || npm install
+
+      - name: Resolver credenciales
+        id: creds
+        env:
+          SECRET_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          INPUT_TOKEN: ${{ github.event.inputs.firebase_token }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_BOOTSTRAP: re_cwQwSzDh_D87Cmoe1jraQuAjyTkkXSQkH
+        run: |
+          RESEND="${RESEND_API_KEY:-$RESEND_BOOTSTRAP}"
+          TOKEN="${INPUT_TOKEN:-$SECRET_TOKEN}"
+          echo "resend=$RESEND" >> "$GITHUB_OUTPUT"
+          if [ -z "$TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Sin FIREBASE_TOKEN — ejecute Actions → Desbloquear Firebase con token de: npx firebase login:ci"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar Firebase CLI
+        if: steps.creds.outputs.skip != 'true'
+        run: npm install -g firebase-tools
+
+      - name: Configurar secreto RESEND en Firebase
+        if: steps.creds.outputs.skip != 'true'
+        env:
+          FIREBASE_TOKEN: ${{ steps.creds.outputs.token }}
+          RESEND_API_KEY: ${{ steps.creds.outputs.resend }}
+        run: |
+          printf '%s' "$RESEND_API_KEY" | firebase functions:secrets:set RESEND_API_KEY --project black-coffee-15ccc --data-file -
+          printf '%s' 'Black Coffee <onboarding@resend.dev>' | firebase functions:secrets:set BCA_FROM_EMAIL --project black-coffee-15ccc --data-file -
+
+      - name: Desplegar Functions y reglas Firestore
+        if: steps.creds.outputs.skip != 'true'
+        env:
+          FIREBASE_TOKEN: ${{ steps.creds.outputs.token }}
+        run: |
+          firebase deploy --only functions,firestore:rules --project black-coffee-15ccc --token "$FIREBASE_TOKEN"
+          npm install firebase@11 --no-save
+          node scripts/test-firestore-access.mjs
+
+      - name: Resumen
+        run: echo "Workflow completado. App en https://lasucursaldelcafe-droid.github.io/-black-coffee/"

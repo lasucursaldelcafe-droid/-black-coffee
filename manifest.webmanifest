@@ -1,0 +1,67 @@
+{
+  "id": "bca-pwa",
+  "name": "Black Coffee Administration",
+  "short_name": "BCA",
+  "description": "Gestión integral de café de especialidad — inventario, cotizaciones, ventas y costeo.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "lang": "es-CO",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "food"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Inventario",
+      "short_name": "Inventario",
+      "description": "Stock y entradas por etapa",
+      "url": "./app.html?section=inventory",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Cotizaciones",
+      "short_name": "Cotizar",
+      "description": "Nueva cotización",
+      "url": "./app.html?section=quotations",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Ventas",
+      "short_name": "Ventas",
+      "description": "Registrar venta",
+      "url": "./app.html?section=sales",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Costeo Interno",
+      "short_name": "Costeo",
+      "description": "Simulador de procesos",
+      "url": "./app.html?section=cost-engine",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "prefer_related_applications": false
+}

@@ -1,0 +1,41 @@
+BLACK COFFEE - CONFIGURACION 100% AUTOMATICA
+==========================================
+
+UN SOLO DOBLE CLIC (recomendado):
+  CONFIGURAR-TODO-AUTO.bat
+
+O en PowerShell (copiar y pegar):
+  cd C:\Users\LENOVO\Documents\BlackCoffeeAdmin
+  git pull origin main
+  .\CONFIGURAR-TODO-AUTO.bat
+
+O:
+  .\BCA.bat auto
+
+ERROR "ejecucion de scripts deshabilitada" (Import-Module falla):
+  Solucion A: doble clic HABILITAR-POWERSHELL.bat (1 vez)
+  Solucion B: doble clic BCA-CONSOLA.bat (consola lista)
+  Solucion C: .\BCA.bat auto (sin Import-Module manual)
+
+QUE HACE CADA COSA (automatico vs manual):
+  1. git pull                    -> AUTO
+  2. Node.js + npm + firebase    -> AUTO
+  3. .env.local credenciales     -> AUTO (si existe el archivo)
+  4. Iconos Escritorio           -> AUTO
+  5. Secretos GitHub             -> AUTO (si GH_TOKEN o gh auth)
+  6. Reglas Firestore            -> AUTO (si FIREBASE_TOKEN)
+  7. Functions correo Resend     -> AUTO (si tokens + Blaze)
+  8. Workflow GitHub CI          -> AUTO
+  9. Verificar app online        -> AUTO
+
+  SOLO MANUAL (1 vez, si falla el paso 7):
+  - Plan Blaze Firebase (consola Google)
+  - RESEND_API_KEY en .env.local
+  - FIREBASE_TOKEN en .env.local (npx firebase login:ci)
+  - Auth anonima ON en Firebase Console
+
+INFORME AL TERMINAR:
+  BCA-informe-setup.txt (en la carpeta del proyecto)
+
+Carpeta:
+  C:\Users\LENOVO\Documents\BlackCoffeeAdmin

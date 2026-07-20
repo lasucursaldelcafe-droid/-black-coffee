@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BCA">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Black Coffee Administration — gestión de café de especialidad">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <title>Black Coffee Administration</title>
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/mobile.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
+  <style>
+    #notification-panel {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      width: min(360px, calc(100vw - 32px));
+      max-height: min(400px, 70vh);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      display: none;
+      z-index: 200;
+    }
+    #notification-panel.active { display: block; }
+    #notification-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    #notification-list { max-height: 320px; overflow-y: auto; }
+    .header-notification-wrap { position: relative; }
+    .sync-alert-banner {
+      background: #3a1515;
+      border-bottom: 1px solid #7a2020;
+      color: #ffd4d4;
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+    .sync-alert-banner strong { color: #fff; }
+    .sync-alert-banner a { color: #ffb4b4; }
+  </style>
+</head>
+<body>
+  <div id="sync-alert-banner" hidden></div>
+  <div id="offline-banner" hidden></div>
+  <div id="pwa-install-banner" hidden></div>
+  <div class="app-layout">
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <img id="sidebar-logo" src="" alt="" style="display:none">
+          <div>
+            <h2 id="sidebar-brand-name">Black Coffee</h2>
+            <span>Administration</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="principal">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Principal</span>
+            <span class="nav-chevron">▾</span>
+          </button>
+          <div class="nav-section-items">
+            <button class="nav-item active" data-section="dashboard">
+              <span class="icon">📊</span> Dashboard
+            </button>
+            <button class="nav-item" data-section="reports">
+              <span class="icon">📈</span> Reportes
+            </button>
+            <button class="nav-item" data-section="quotations">
+              <span class="icon">📋</span> Cotizaciones
+            </button>
+            <button class="nav-item" data-section="cost-engine">
+              <span class="icon">🧠</span> Costeo Interno
+            </button>
+            <button class="nav-item" data-section="sales">
+              <span class="icon">💰</span> Ventas
+            </button>
+          </div>
+        </div>
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="gestion">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Gestión</span>
+            <span class="nav-chevron">▾</span>
+          </button>
+          <div class="nav-section-items">
+            <button class="nav-item" data-section="coffees">
+              <span class="icon">☕</span> Cafés
+            </button>
+            <button class="nav-item" data-section="clients">
+              <span class="icon">👥</span> Clientes
+            </button>
+            <button class="nav-item" data-section="suppliers">
+              <span class="icon">🌱</span> Proveedores
+            </button>
+            <button class="nav-item" data-section="inventory">
+              <span class="icon">📦</span> Inventario
+              <span class="nav-badge" id="notification-badge" style="display:none">0</span>
+            </button>
+          </div>
+        </div>
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="transformacion">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Transformación</span>
+            <span class="nav-chevron">▾</span>
+          </button>
+          <div class="nav-section-items">
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="green" data-open-form="true">
+              <span class="icon">🌱</span> + Llegada Verde
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-transfer="green_to_roasted">
+              <span class="icon">🔥</span> Transformar · Tostión
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-transfer="roasted_to_selected">
+              <span class="icon">✨</span> Transformar · Selección
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-transfer="selected_to_ground">
+              <span class="icon">⚙️</span> Transformar · Molienda
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-transfer="ground_to_packaged">
+              <span class="icon">📦</span> Transformar · Empacado
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="roasted" data-open-form="true">
+              <span class="icon">➕</span> Entrada Tostado
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="selected" data-open-form="true">
+              <span class="icon">➕</span> Entrada Selección
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="ground" data-open-form="true">
+              <span class="icon">➕</span> Entrada Molienda
+            </button>
+            <button class="nav-item nav-subitem" data-section="inventory" data-inventory-stage="packaged" data-open-form="true">
+              <span class="icon">➕</span> Entrada Empacado
+            </button>
+          </div>
+        </div>
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="ayuda">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Ayuda</span>
+            <span class="nav-chevron">▾</span>
+          </button>
+          <div class="nav-section-items">
+            <button class="nav-item" data-section="glossary">
+              <span class="icon">📖</span> Glosario
+            </button>
+            <button class="nav-item" data-section="workflow">
+              <span class="icon">🔀</span> Flujo de trabajo
+            </button>
+            <button class="nav-item" data-section="admin-config">
+              <span class="icon">🛠️</span> Admin visual
+            </button>
+          </div>
+        </div>
+        <div class="nav-section nav-section--collapsible expanded" data-nav-section="config">
+          <button type="button" class="nav-section-toggle" aria-expanded="true">
+            <span class="nav-section-title">Configuración</span>
+            <span class="nav-chevron">▾</span>
+          </button>
+          <div class="nav-section-items">
+            <button class="nav-item" data-section="costs">
+              <span class="icon">💰</span> Costos de Producción
+            </button>
+            <button class="nav-item" data-section="settings">
+              <span class="icon">⚙️</span> Configuración
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p id="sidebar-sync-status" class="sidebar-sync-status" title="Estado de sincronización compartida">Conectando...</p>
+        <div class="user-info">
+          <div class="user-avatar" id="user-avatar">XP</div>
+          <div>
+            <div class="user-name" id="user-name">Usuario</div>
+            <div class="user-role" id="user-role">Admin</div>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-secondary" id="logout-btn" style="width:100%;margin-top:8px">
+          Cerrar Sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="top-header">
+        <div class="header-title-group">
+          <button class="menu-toggle" id="menu-toggle">☰</button>
+          <h1 class="page-title" id="page-title">Dashboard</h1>
+        </div>
+        <div class="header-actions">
+          <div class="header-notification-wrap">
+            <button class="notification-btn" id="notification-btn">
+              🔔
+              <span class="notification-dot" id="notification-dot" style="display:none"></span>
+            </button>
+            <div id="notification-panel">
+              <div id="notification-panel-header">
+                <span>Notificaciones</span>
+                <button class="btn btn-sm btn-secondary" id="mark-all-read">Marcar leídas</button>
+              </div>
+              <div id="notification-list"></div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <!-- Dashboard -->
+        <section class="page-section active" id="section-dashboard">
+          <div class="hero" id="dashboard-hero"></div>
+          <div id="dashboard-alerts"></div>
+          <div class="grid-4" id="dashboard-stats" style="margin-bottom:24px"></div>
+          <div class="section">
+            <div class="section-header">
+              <h3 class="section-title">Acciones Rápidas</h3>
+            </div>
+            <div id="dashboard-quick-actions" style="display:flex;gap:12px;flex-wrap:wrap"></div>
+          </div>
+          <div id="dashboard-recent"></div>
+        </section>
+
+        <!-- Reports -->
+        <section class="page-section" id="section-reports">
+          <div class="section-header">
+            <h3 class="section-title">Estadísticas y Reportes</h3>
+          </div>
+          <div id="reports-container"></div>
+        </section>
+
+        <!-- Coffees -->
+        <section class="page-section" id="section-coffees">
+          <div class="section-header">
+            <h3 class="section-title">Catálogo de Cafés</h3>
+            <div class="action-buttons">
+              <button class="btn btn-secondary" onclick="ImportManager.showModal()">📥 Importar Excel / PDF</button>
+              <button class="btn btn-primary" onclick="CoffeeManager.create()">+ Nuevo Café</button>
+            </div>
+          </div>
+          <div class="grid-auto" id="coffees-grid"></div>
+        </section>
+
+        <!-- Clients -->
+        <section class="page-section" id="section-clients">
+          <div class="section-header">
+            <h3 class="section-title">Clientes</h3>
+            <button class="btn btn-primary" onclick="ClientManager.create()">+ Nuevo Cliente</button>
+          </div>
+          <div id="clients-table"></div>
+        </section>
+
+        <!-- Suppliers -->
+        <section class="page-section" id="section-suppliers">
+          <div class="section-header">
+            <h3 class="section-title">Proveedores</h3>
+            <button class="btn btn-primary" onclick="SupplierManager.create()">+ Nuevo Proveedor</button>
+          </div>
+          <p class="form-hint" style="margin:-8px 0 16px">Café · Transformación (trilla, selección, tostión, molienda, empacado) · Logística · Tarifas por proveedor</p>
+          <div id="suppliers-table"></div>
+        </section>
+
+        <!-- Inventory -->
+        <section class="page-section" id="section-inventory">
+          <div class="section-header">
+            <h3 class="section-title">Inventario y Producción</h3>
+          </div>
+          <div class="grid-auto" id="inventory-grid"></div>
+        </section>
+
+        <!-- Quotations -->
+        <section class="page-section" id="section-quotations">
+          <div class="section-header">
+            <h3 class="section-title">Cotizaciones</h3>
+            <button class="btn btn-primary" onclick="QuotationManager.create()">+ Nueva Cotización</button>
+          </div>
+          <div id="quotations-table"></div>
+        </section>
+
+        <!-- Sales -->
+        <section class="page-section" id="section-sales">
+          <div class="section-header">
+            <h3 class="section-title">Ventas y Rentabilidad</h3>
+            <button class="btn btn-primary" onclick="SalesManager.create()">+ Registrar Venta</button>
+          </div>
+          <div id="sales-dashboard"></div>
+        </section>
+
+        <!-- Cost Engine -->
+        <section class="page-section" id="section-cost-engine">
+          <div class="section-header">
+            <h3 class="section-title">Costeo Interno — Cerebro de Procesos</h3>
+          </div>
+          <div id="cost-engine-container"></div>
+        </section>
+
+        <!-- Production Costs -->
+        <section class="page-section" id="section-costs">
+          <div class="section-header">
+            <h3 class="section-title">Costos de Producción</h3>
+            <button class="btn btn-primary" id="save-costs-page-btn" onclick="ProductionCosts.saveFromForm();Toast.show('Costos guardados','success')">Guardar Cambios</button>
+          </div>
+          <div class="card">
+            <div id="costs-form-container"></div>
+          </div>
+        </section>
+
+        <!-- Settings -->
+        <section class="page-section" id="section-settings">
+          <div class="section-header">
+            <h3 class="section-title">Configuración de la Plataforma</h3>
+          </div>
+          <div id="settings-form"></div>
+        </section>
+
+        <!-- Glossary -->
+        <section class="page-section" id="section-glossary">
+          <div class="section-header">
+            <h3 class="section-title">Glosario BCA</h3>
+          </div>
+          <div id="glossary-container"></div>
+        </section>
+
+        <!-- Workflow -->
+        <section class="page-section" id="section-workflow">
+          <div class="section-header">
+            <h3 class="section-title">Flujo de trabajo</h3>
+          </div>
+          <div id="workflow-container"></div>
+        </section>
+
+        <!-- Admin Config -->
+        <section class="page-section" id="section-admin-config">
+          <div class="section-header">
+            <h3 class="section-title">Configuración visual y datos (Admin)</h3>
+          </div>
+          <div id="admin-config-container"></div>
+        </section>
+      </div>
+    </main>
+
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Navegación móvil">
+      <button type="button" class="mobile-nav-item active" data-section="dashboard" aria-label="Dashboard">
+        <span class="mobile-nav-icon">📊</span>
+        <span>Inicio</span>
+      </button>
+      <button type="button" class="mobile-nav-item" data-section="inventory" aria-label="Inventario">
+        <span class="mobile-nav-icon">📦</span>
+        <span>Stock</span>
+      </button>
+      <button type="button" class="mobile-nav-item" data-section="quotations" aria-label="Cotizaciones">
+        <span class="mobile-nav-icon">📋</span>
+        <span>Cotizar</span>
+      </button>
+      <button type="button" class="mobile-nav-item" data-section="sales" aria-label="Ventas">
+        <span class="mobile-nav-icon">💰</span>
+        <span>Ventas</span>
+      </button>
+      <button type="button" class="mobile-nav-item" data-section="menu" aria-label="Menú">
+        <span class="mobile-nav-icon">☰</span>
+        <span>Menú</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Modal: Setup Wizard -->
+  <div class="modal-overlay setup-wizard-overlay" id="setup-wizard-overlay">
+    <div class="modal modal-xl setup-wizard-modal">
+      <div class="modal-header">
+        <h3>Configuración inicial — Black Coffee Administration</h3>
+      </div>
+      <div class="modal-body" id="setup-wizard-body"></div>
+      <div class="modal-footer setup-wizard-footer">
+        <button type="button" class="btn btn-secondary" id="setup-wizard-skip">Cerrar</button>
+        <button type="button" class="btn btn-secondary" id="setup-wizard-back">Atrás</button>
+        <button type="button" class="btn btn-primary" id="setup-wizard-next">Siguiente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cost Check on Startup -->
+  <div class="modal-overlay" id="costs-check-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Verificación de Costos</h3>
+      </div>
+      <div class="modal-body" style="text-align:center">
+        <div style="font-size:3rem;margin-bottom:16px">💰</div>
+        <h3 style="margin-bottom:12px">¿Hay algún cambio en los costos de producción?</h3>
+        <p style="color:var(--text-secondary);margin-bottom:8px">
+          Verifique si los costos de tostión, selección, empaque o etiquetas han cambiado desde la última sesión.
+        </p>
+      </div>
+      <div class="modal-footer" style="justify-content:center">
+        <button class="btn btn-secondary btn-lg" id="costs-no-change">No, todo igual</button>
+        <button class="btn btn-primary btn-lg" id="costs-yes-change">Sí, actualizar costos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Edit Costs -->
+  <div class="modal-overlay" id="costs-modal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3>Actualizar Costos de Producción</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="costs-modal-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-costs-btn">Guardar Costos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Coffee -->
+  <div class="modal-overlay" id="coffee-modal">
+    <div class="modal modal-xl">
+      <div class="modal-header">
+        <h3 id="coffee-modal-title">Nuevo Café</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="coffee-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-coffee-btn">Guardar Café</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Client -->
+  <div class="modal-overlay" id="client-modal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="client-modal-title">Nuevo Cliente</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="client-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-client-btn">Guardar Cliente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Supplier -->
+  <div class="modal-overlay" id="supplier-modal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="supplier-modal-title">Nuevo Proveedor</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="supplier-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-supplier-btn">Guardar Proveedor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Quotation -->
+  <div class="modal-overlay" id="quotation-modal">
+    <div class="modal modal-xl">
+      <div class="modal-header">
+        <h3 id="quotation-modal-title">Nueva Cotización</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="quotation-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-quotation-btn">Generar Cotización y PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: View Quotation -->
+  <div class="modal-overlay" id="quotation-view-modal">
+    <div class="modal modal-xl">
+      <div class="modal-header">
+        <h3>Detalle de Cotización</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="quotation-view-content"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Import -->
+  <div class="modal-overlay" id="import-modal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="import-modal-title">Importar Cafés</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="import-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="confirm-import-btn">Importar Cafés</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Sales -->
+  <div class="modal-overlay" id="sales-modal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="sales-modal-title">Registrar Venta</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="sales-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-sale-btn">Registrar Venta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: PWA Install Instructions -->
+  <div class="modal-overlay" id="pwa-instructions-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Instalar App Móvil BCA</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="pwa-instructions-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Inventory -->
+  <div class="modal-overlay" id="inventory-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="inventory-modal-title">Inventario</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="inventory-form"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cancelar</button>
+        <button class="btn btn-primary" id="save-inventory-btn">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+  <script>window.BCA_BUILD = '54';</script>
+  <script src="js/storage.js?v=54"></script>
+  <script src="js/offline-sync.js?v=54"></script>
+  <script src="js/sync-shared.js?v=54"></script>
+  <script src="js/gas-config.js?v=54"></script>
+  <script src="js/cloud-sync-config.js?v=54"></script>
+  <script src="js/firebase-http-config.js?v=54"></script>
+  <script src="js/firebase-config.js?v=54"></script>
+  <script src="js/gas-sync.js?v=54"></script>
+  <script src="js/firebase-http-sync.js?v=54"></script>
+  <script src="js/firebase-sync.js?v=54"></script>
+  <script src="js/cloud-sync.js?v=54"></script>
+  <script src="js/sync-hub.js?v=54"></script>
+  <script src="js/auth.js?v=54"></script>
+  <script src="js/auth-biometric.js?v=54"></script>
+  <script src="js/audit.js?v=54"></script>
+  <script src="js/data.js?v=54"></script>
+  <script src="js/setupWizard.js?v=54"></script>
+  <script src="js/backup.js?v=54"></script>
+  <script src="js/costs.js?v=54"></script>
+  <script src="js/coffees.js?v=54"></script>
+  <script src="js/clients.js?v=54"></script>
+  <script src="js/suppliers.js?v=54"></script>
+  <script src="js/inventory.js?v=54"></script>
+  <script src="js/sales.js?v=54"></script>
+  <script src="js/ghostCatalog.js?v=54"></script>
+  <script src="js/import.js?v=54"></script>
+  <script src="js/quotations.js?v=54"></script>
+  <script src="js/reports.js?v=54"></script>
+  <script src="js/pdf.js?v=54"></script>
+  <script src="js/notifications.js?v=54"></script>
+  <script src="js/email.js?v=54"></script>
+  <script src="js/costEngine.js?v=54"></script>
+  <script src="js/glossary.js?v=54"></script>
+  <script src="js/workflow.js?v=54"></script>
+  <script src="js/adminConfig.js?v=54"></script>
+  <script src="js/pwa.js?v=54"></script>
+  <script src="js/app.js?v=54"></script>
+</body>
+</html>

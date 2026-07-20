@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BCA">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Black Coffee Administration — gestión de café de especialidad">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <title>Black Coffee Administration — Iniciar Sesión</title>
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/mobile.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-container">
+      <div class="login-card">
+        <div class="login-logo">
+          <div class="login-logo-icon">☕</div>
+          <h1 class="display-title">Black Coffee</h1>
+          <p>Administration Platform</p>
+        </div>
+
+        <div class="login-error" id="login-error"></div>
+
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">Usuario</label>
+            <input type="text" class="form-control" id="username" placeholder="ximena.polo o pablo.colorado" required autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="password">Contraseña</label>
+            <div class="password-field">
+              <input type="password" class="form-control" id="password" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="password-toggle" id="toggle-password" aria-label="Mostrar contraseña" title="Ver contraseña">👁</button>
+            </div>
+          </div>
+          <div class="form-group" id="biometric-enable-group" style="display:none">
+            <label class="toggle-group" style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0">
+              <input type="checkbox" id="enable-biometric" checked>
+              <span>Activar inicio biométrico en este dispositivo</span>
+            </label>
+            <p class="form-hint" id="biometric-support-hint" style="margin-top:6px">Disponible para todos los usuarios (huella, Face ID o PIN del dispositivo).</p>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg login-submit-btn">
+            Iniciar Sesión
+          </button>
+          <button type="button" class="btn btn-secondary btn-lg biometric-login-btn login-biometric-btn" id="biometric-login-btn" style="display:none">
+            🔐 Iniciar con huella / Face ID
+          </button>
+        </form>
+
+        <div class="login-users-hint" id="login-users-hint">
+          <strong>Usuarios de acceso</strong>
+          <div id="login-users-list"></div>
+        </div>
+
+        <div class="login-footer">
+          <p>
+            Plataforma de gestión integral de café de especialidad
+          </p>
+          <button type="button" class="btn btn-sm btn-secondary" id="repair-access-btn">
+            Reparar acceso
+          </button>
+        </div>
+
+        <div class="login-pwa-card" id="pwa-install-card"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="pwa-instructions-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Instalar App Móvil BCA</h3>
+        <button class="modal-close" data-modal-close>&times;</button>
+      </div>
+      <div class="modal-body" id="pwa-instructions-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal-close>Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>window.BCA_BUILD = '54';</script>
+  <script src="js/storage.js?v=54"></script>
+  <script src="js/offline-sync.js?v=54"></script>
+  <script src="js/auth.js?v=54"></script>
+  <script src="js/auth-biometric.js?v=54"></script>
+  <script src="js/pwa.js?v=54"></script>
+  <script>
+    Auth.init();
+
+    function renderLoginUsersList() {
+      const listEl = document.getElementById('login-users-list');
+      if (!listEl) return;
+      listEl.innerHTML = Auth.listUsersPublic().map((u) => `
+        <div style="margin-bottom:4px">
+          <strong>${u.name}</strong> · usuario: <code>${u.username}</code> · ${u.role}
+        </div>
+      `).join('');
+    }
+
+    function bindPasswordToggle() {
+      document.getElementById('toggle-password')?.addEventListener('click', () => {
+        const input = document.getElementById('password');
+        const btn = document.getElementById('toggle-password');
+        if (!input || !btn) return;
+        if (input.type === 'password') {
+          input.type = 'text';
+          btn.textContent = '🙈';
+          btn.setAttribute('aria-label', 'Ocultar contraseña');
+          btn.title = 'Ocultar contraseña';
+        } else {
+          input.type = 'password';
+          btn.textContent = '👁';
+          btn.setAttribute('aria-label', 'Mostrar contraseña');
+          btn.title = 'Ver contraseña';
+        }
+      });
+    }
+
+    let cachedBiometricSupport = null;
+
+    async function setupBiometricUI() {
+      cachedBiometricSupport = await BiometricAuth.getSupportInfo(true);
+      const info = cachedBiometricSupport;
+      const enableGroup = document.getElementById('biometric-enable-group');
+      const bioBtn = document.getElementById('biometric-login-btn');
+      const hint = document.getElementById('biometric-support-hint');
+
+      if (info.available && enableGroup) {
+        enableGroup.style.display = '';
+      }
+
+      if (hint) {
+        hint.textContent = info.reason;
+      }
+
+      if (info.available && bioBtn && BiometricAuth.hasAnyCredential()) {
+        bioBtn.style.display = '';
+      }
+    }
+
+    renderLoginUsersList();
+    bindPasswordToggle();
+
+    if (Auth.isAuthenticated()) {
+      window.location.href = 'app.html';
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('login-error');
+
+      const result = Auth.login(username, password);
+
+      if (result.success) {
+        const enableBio = document.getElementById('enable-biometric')?.checked;
+        const user = Auth.getCurrentUser();
+        if (enableBio && user) {
+          const bioResult = await BiometricAuth.register(user, {
+            supportInfo: cachedBiometricSupport
+          });
+          if (!bioResult.success) {
+            errorEl.textContent = bioResult.message;
+            errorEl.classList.add('show');
+            if (bioResult.cancelled) {
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+            } else {
+              await new Promise((resolve) => setTimeout(resolve, 3500));
+            }
+          }
+        }
+        window.location.href = 'app.html';
+      } else {
+        errorEl.textContent = result.message;
+        errorEl.classList.add('show');
+      }
+    });
+
+    document.getElementById('biometric-login-btn')?.addEventListener('click', async () => {
+      const errorEl = document.getElementById('login-error');
+      const result = await BiometricAuth.authenticate({
+        supportInfo: cachedBiometricSupport
+      });
+      if (result.success) {
+        window.location.href = 'app.html';
+        return;
+      }
+      errorEl.textContent = result.message;
+      errorEl.classList.add('show');
+    });
+
+    document.getElementById('repair-access-btn')?.addEventListener('click', () => {
+      if (confirm('¿Restaurar usuarios de acceso y cerrar sesión? Esto no borra cafés, clientes ni inventario.')) {
+        Auth.repairAccess();
+        document.getElementById('login-error').textContent = 'Acceso reparado. Intente iniciar sesión de nuevo.';
+        document.getElementById('login-error').classList.add('show');
+      }
+    });
+
+    document.querySelectorAll('.modal-close, [data-modal-close]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.modal-overlay')?.classList.remove('active');
+      });
+    });
+
+    PWA.init();
+    if (typeof OfflineSync !== 'undefined') OfflineSync.init();
+    setupBiometricUI();
+  </script>
+</body>
+</html>
