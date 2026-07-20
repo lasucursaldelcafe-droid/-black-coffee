@@ -112,7 +112,7 @@ try {
   await ximenaPage.waitForTimeout(2000);
   const ximenaBefore = await ximenaPage.evaluate(snapshotScript);
 
-  if (ximenaBefore.firebase?.permissionDenied || ximenaSyncProbe?.permissionDenied) {
+  if (ximenaSyncProbe?.permissionDenied || /insufficient permissions/i.test(ximenaSyncProbe?.message || '')) {
     console.log(JSON.stringify({
       build: ximenaBefore.build,
       blocked: true,
