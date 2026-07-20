@@ -55,6 +55,7 @@ const App = {
 
       FirebaseSync.startInBackground().finally(() => {
         FirebaseSync.updateStatusElement();
+        this.renderSyncAlert();
         InventoryManager.checkAllLowStock();
       });
     } catch (error) {
@@ -124,7 +125,82 @@ const App = {
       this.renderSection(this.currentSection);
       Notifications.updateBadge();
       FirebaseSync.updateStatusElement();
+      this.renderSyncAlert();
     });
+
+    window.addEventListener('bca-sync-status', () => {
+      this.renderSyncAlert();
+      FirebaseSync.updateStatusElement();
+    });
+  },
+
+  renderSyncAlert() {
+    const banner = document.getElementById('sync-alert-banner');
+    if (!banner || typeof FirebaseSync === 'undefined') return;
+
+    if (FirebaseSync.permissionDenied) {
+      banner.hidden = false;
+      banner.innerHTML = `
+        <strong>La sincronización con la nube está bloqueada.</strong>
+        Los datos de Ximena solo existen en su navegador hasta publicar las reglas de Firestore.
+        <a href="https://console.firebase.google.com/project/black-coffee-15ccc/firestore/rules" target="_blank" rel="noopener">Abrir reglas Firestore</a>
+        · pegue el contenido de <code>firestore.rules</code> del repositorio y pulse <strong>Publicar</strong>.
+        Luego Ximena pulse «Publicar mis datos a la nube» en Configuración.`;
+      return;
+    }
+
+    if (FirebaseSync.ready && !FirebaseSync.lastError) {
+      banner.hidden = true;
+      banner.textContent = '';
+      return;
+    }
+
+    if (FirebaseSync.lastError && !FirebaseSync.ready) {
+      banner.hidden = false;
+      banner.innerHTML = `<strong>Sincronización:</strong> ${FirebaseSync.lastError}`;
+      return;
+    }
+
+    banner.hidden = true;
+  },
+
+  renderLocalDataSummary() {
+    const el = document.getElementById('local-data-summary');
+    if (!el || typeof FirebaseSync === 'undefined') return;
+    const s = FirebaseSync.getLocalDataSummary();
+    const parts = [
+      `Cafés ${s.bca_coffees || 0}`,
+      `Clientes ${s.bca_clients || 0}`,
+      `Proveedores ${s.bca_suppliers || 0}`,
+      `Inventario ${s.bca_inventory || 0}`,
+      `Cotizaciones ${s.bca_quotations || 0}`,
+      `Ventas ${s.bca_sales || 0}`
+    ];
+    el.textContent = `Datos en este navegador: ${parts.join(' · ')}`;
+  },
+
+  async runPublishLocalCloud() {
+    const btn = document.getElementById('publish-local-cloud-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Publicando...';
+    }
+    try {
+      const result = await FirebaseSync.publishAllLocalData();
+      Toast.show(`Datos publicados · ${result.pushed} claves enviadas · ${result.pulled} recibidas`, 'success');
+      this.renderSection(this.currentSection);
+      this.renderLocalDataSummary();
+      this.renderSyncAlert();
+    } catch (error) {
+      Toast.show(error.message || 'No se pudo publicar a la nube', 'danger');
+      this.renderSyncAlert();
+    } finally {
+      FirebaseSync.updateStatusElement();
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Publicar mis datos a la nube';
+      }
+    }
   },
 
   async runFullSync() {
@@ -620,8 +696,16 @@ const App = {
           Los cambios de ambos se <strong>unen</strong> sin borrar los del otro.
         </p>
         <p id="firebase-sync-status" style="font-weight:600;margin-bottom:8px">${typeof FirebaseSync !== 'undefined' ? FirebaseSync.getStatusLabel() : 'Cargando...'}</p>
+        <p id="local-data-summary" class="form-hint" style="margin-bottom:8px"></p>
         <p id="online-status" class="form-hint" style="margin-bottom:12px"></p>
-        <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización completa</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-sm btn-primary" id="publish-local-cloud-btn">Publicar mis datos a la nube</button>
+          <button type="button" class="btn btn-sm btn-secondary" id="sync-all-btn">Forzar sincronización completa</button>
+        </div>
+        <p class="form-hint" style="margin-top:8px">
+          <strong>Ximena:</strong> use «Publicar mis datos a la nube» para subir lo creado en su sesión.
+          <strong>Pablo:</strong> use «Forzar sincronización completa» para bajar los datos de Ximena.
+        </p>
       </div>
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-title">Correos de Notificación</span></div>
@@ -674,6 +758,9 @@ const App = {
 
     document.getElementById('save-settings-btn')?.addEventListener('click', () => this.saveSettings());
     document.getElementById('sync-all-btn')?.addEventListener('click', () => this.runFullSync());
+    document.getElementById('publish-local-cloud-btn')?.addEventListener('click', () => this.runPublishLocalCloud());
+    this.renderLocalDataSummary();
+    this.renderSyncAlert();
     PWA.renderInstallCard('pwa-install-card-settings');
     this.renderBiometricSettings();
     this.renderUsersPanel();

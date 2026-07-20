@@ -47,6 +47,16 @@ jobs:
           npx playwright install chromium
           node scripts/test-persistence.mjs
 
+      - name: Publicar reglas Firestore (sync entre usuarios)
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::warning::FIREBASE_TOKEN no configurado. La sync Ximena↔Pablo NO funcionará hasta publicar firestore.rules."
+            exit 0
+          fi
+          npx firebase-tools deploy --only firestore:rules --project black-coffee-15ccc --token "$FIREBASE_TOKEN"
+
       - name: Deploy to gh-pages branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:

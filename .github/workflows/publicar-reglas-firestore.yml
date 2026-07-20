@@ -1,0 +1,30 @@
+name: Publicar reglas Firestore
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - firestore.rules
+      - firebase.json
+      - .github/workflows/publicar-reglas-firestore.yml
+
+jobs:
+  reglas:
+    name: Desplegar firestore.rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publicar reglas
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::error::Falta FIREBASE_TOKEN. Ejecute el workflow Instalar secretos o pegue las reglas manualmente en Firebase Console."
+            exit 1
+          fi
+          npx firebase-tools deploy --only firestore:rules --project black-coffee-15ccc --token "$FIREBASE_TOKEN"
+
+      - name: Listo
+        run: echo "Reglas publicadas. Ximena puede usar Configuración → Publicar mis datos a la nube."

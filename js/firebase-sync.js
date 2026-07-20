@@ -48,6 +48,7 @@ const FirebaseSync = {
   _unsubscribe: null,
   _listenerReady: false,
   _localBootstrapped: false,
+  permissionDenied: false,
 
   isEnabled() {
     return this.enabled && this.ready;
@@ -130,16 +131,52 @@ const FirebaseSync = {
     }
     this.auth = firebase.auth();
     this.db = firebase.firestore();
-    await this._withTimeout(this.auth.signInAnonymously(), 10000, 'autenticación Firebase');
+
+    try {
+      await this._withTimeout(this.auth.signInAnonymously(), 10000, 'autenticación Firebase');
+    } catch (error) {
+      this.lastError = error.message || 'No se pudo autenticar con Firebase';
+      return false;
+    }
+
     this.enabled = true;
     this.ready = true;
+    this.permissionDenied = false;
     this.lastError = null;
     this.setupConnectivityListeners();
     this.updateStatusElement();
-    await this._flushOfflinePushes();
+
+    try {
+      await this._verifyFirestoreAccess();
+      await this._flushOfflinePushes();
+    } catch (error) {
+      if (this._isPermissionError(error)) {
+        this.permissionDenied = true;
+        this.lastError = 'Reglas de Firestore no publicadas — publique las reglas en Firebase Console';
+      } else {
+        this.lastError = error.message || 'Error al conectar con la nube';
+      }
+      console.warn('Firebase conectado pero la nube rechazó lectura/escritura:', this.lastError);
+    }
+
     this._listenerReady = true;
     this._startPeriodicSync();
+    this.updateStatusElement();
+    window.dispatchEvent(new CustomEvent('bca-sync-status', { detail: { permissionDenied: this.permissionDenied } }));
     return true;
+  },
+
+  async _verifyFirestoreAccess() {
+    await this._withTimeout(
+      this.db.collection(FIREBASE_COLLECTION).limit(1).get(),
+      10000,
+      'verificación Firestore'
+    );
+  },
+
+  _isPermissionError(error) {
+    const message = error?.message || String(error);
+    return error?.code === 'permission-denied' || /insufficient permissions/i.test(message);
   },
 
   _runBackgroundSync() {
@@ -148,10 +185,18 @@ const FirebaseSync = {
       Storage.purgeDeletedFromStorage();
     }
 
+    if (this.permissionDenied) {
+      this.updateStatusElement();
+      return;
+    }
+
     const pullEnabled = this._isPullEnabled();
-    const syncPromise = pullEnabled
-      ? this.syncAll({ silent: true })
-      : this.pushAllLocal();
+    const syncPromise = (async () => {
+      await this.pushAllLocal();
+      if (pullEnabled) {
+        await this.syncAll({ silent: true });
+      }
+    })();
 
     syncPromise
       .then(() => {
@@ -161,7 +206,13 @@ const FirebaseSync = {
       })
       .catch((error) => {
         console.warn('Sincronización en segundo plano:', error.message);
-        this.lastError = error.message || 'Error al sincronizar';
+        if (this._isPermissionError(error)) {
+          this.permissionDenied = true;
+          this.lastError = 'Reglas de Firestore no publicadas — publique las reglas en Firebase Console';
+        } else {
+          this.lastError = error.message || 'Error al sincronizar';
+        }
+        window.dispatchEvent(new CustomEvent('bca-sync-status', { detail: { permissionDenied: this.permissionDenied } }));
       })
       .finally(() => {
         this.updateStatusElement();
@@ -368,6 +419,50 @@ const FirebaseSync = {
   async pushAllLocal() {
     const keys = this.getAllSyncKeys().filter((key) => localStorage.getItem(key));
     return this.pushKeys(keys);
+  },
+
+  async publishAllLocalData(options = {}) {
+    if (!this.db) {
+      throw new Error('Firebase no está conectado');
+    }
+    if (this.permissionDenied) {
+      throw new Error('La nube rechaza los datos. Publique firestore.rules en Firebase Console y reintente.');
+    }
+
+    await this.flushPendingWrites({ sync: true });
+    const pushed = await this.pushAllLocal();
+    let pulled = 0;
+    if (!options.skipPull) {
+      const result = await this.syncAll({ silent: true });
+      pulled = result.pulled;
+    }
+
+    this.lastSyncAt = new Date().toISOString();
+    this.lastError = null;
+    this.updateStatusElement();
+    window.dispatchEvent(new CustomEvent('bca-sync-complete', {
+      detail: { pushed, pulled, at: this.lastSyncAt, source: 'publish-local' }
+    }));
+    return { pushed, pulled };
+  },
+
+  getLocalDataSummary() {
+    const keys = this.getAllSyncKeys();
+    const summary = {};
+    keys.forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        summary[key] = 0;
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        summary[key] = Array.isArray(parsed) ? parsed.length : 1;
+      } catch {
+        summary[key] = 1;
+      }
+    });
+    return summary;
   },
 
   setupConnectivityListeners() {
@@ -794,6 +889,9 @@ const FirebaseSync = {
   getStatusLabel() {
     if (!window.FIREBASE_CONFIG?.projectId) {
       return 'Guardado en este navegador';
+    }
+    if (this.permissionDenied) {
+      return 'Nube bloqueada — publique reglas Firestore (ver banner arriba)';
     }
     if (this.syncing) {
       return 'Sincronizando toda la información...';
