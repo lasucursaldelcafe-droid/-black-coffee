@@ -166,7 +166,7 @@ const QuotationManager = {
         costOptions: {
           productionMode: q.productionMode || 'full_pack',
           labels: q.labels || parseLabelSelection(q.label),
-          grindType: q.grindType || 'grano',
+          grindType: line.grindType || q.grindType || 'grano',
           maquilaSteps: q.maquilaSteps || [],
           clientProvidesCoffee,
           clientProvidesPackaging: q.clientProvidesPackaging
@@ -1753,7 +1753,20 @@ const QuotationManager = {
     const pricing = q.costBreakdown;
 
     let breakdownBlock = '';
-    if (pricing?.breakdown) {
+    if (Array.isArray(q.coffeeLines) && q.coffeeLines.length > 1) {
+      breakdownBlock = q.coffeeLines.map((line) => `
+        <div class="card" style="margin-bottom:12px;padding:12px">
+          <h4 style="margin-bottom:8px">${line.coffeeName} · ${formatCurrency(line.lineTotal)}</h4>
+          ${line.costBreakdown ? this.renderBreakdownHTML(
+            line.costBreakdown,
+            line.labels || q.labels || parseLabelSelection(q.label),
+            line.margin || 0,
+            line.quantity || 1,
+            line.unitPrice
+          ) : '<p class="form-hint">Sin desglose guardado para esta línea.</p>'}
+        </div>
+      `).join('');
+    } else if (pricing?.breakdown) {
       breakdownBlock = this.renderBreakdownHTML(
         pricing,
         q.labels || parseLabelSelection(q.label),
