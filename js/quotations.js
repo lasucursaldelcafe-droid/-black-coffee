@@ -1,4 +1,7 @@
 const QuotationManager = {
+  _editingQuotationId: null,
+  _pendingProcessSuppliers: null,
+
   getAll() {
     return Storage.get(STORAGE_KEYS.QUOTATIONS) || [];
   },
@@ -32,7 +35,7 @@ const QuotationManager = {
     }
   },
 
-  save(quotation) {
+  save(quotation, { isUpdate = false } = {}) {
     const quotations = this.getAll();
     if (!quotation.id) {
       quotation.id = Storage.generateId();
@@ -43,15 +46,58 @@ const QuotationManager = {
       quotations.push(quotation);
     } else {
       const index = quotations.findIndex((q) => q.id === quotation.id);
-      quotations[index] = { ...quotations[index], ...quotation };
+      if (index === -1) {
+        Toast.show('Cotización no encontrada', 'danger');
+        return null;
+      }
+      const existing = quotations[index];
+      quotation = {
+        ...existing,
+        ...quotation,
+        number: existing.number,
+        createdAt: existing.createdAt,
+        updatedAt: new Date().toISOString()
+      };
+      quotations[index] = quotation;
     }
 
     Storage.set(STORAGE_KEYS.QUOTATIONS, quotations);
-    Notifications.add(`Cotización ${quotation.number} creada`, 'success', {
-      section: 'quotations', entityId: quotation.id, action: 'view'
-    });
-    EmailService.sendQuotation(quotation);
+
+    if (isUpdate) {
+      AuditLog.log('update_quotation', quotation.number, {
+        number: quotation.number,
+        clientName: quotation.clientName,
+        totalPrice: quotation.totalPrice
+      });
+      Notifications.add(`Cotización ${quotation.number} actualizada`, 'success', {
+        section: 'quotations', entityId: quotation.id, action: 'view'
+      });
+    } else {
+      Notifications.add(`Cotización ${quotation.number} creada`, 'success', {
+        section: 'quotations', entityId: quotation.id, action: 'view'
+      });
+      EmailService.sendQuotation(quotation);
+    }
+
     return quotation;
+  },
+
+  canEdit(q) {
+    if (!q) return false;
+    const status = q.status || 'pending';
+    return status !== 'converted' && status !== 'cancelled';
+  },
+
+  edit(id) {
+    const q = this.getById(id);
+    if (!q) return;
+    if (!this.canEdit(q)) {
+      Toast.show('No se puede editar una cotización convertida o cancelada', 'warning');
+      return;
+    }
+    document.getElementById('quotation-view-modal')?.classList.remove('active');
+    App.navigateTo('quotations');
+    setTimeout(() => this.showForm(null, null, q), 100);
   },
 
   updateStatus(id, status, extra = {}) {
@@ -231,9 +277,15 @@ const QuotationManager = {
     return `qline_${Storage.generateId()}`;
   },
 
-  renderCoffeeLineHTML(index, coffeeId = null) {
+  renderCoffeeLineHTML(index, coffeeId = null, lineData = null) {
     const coffees = CoffeeManager.getAll();
     const lineId = this.createCoffeeLineId();
+    const activePackaging = lineData?.packaging && lineData.packaging !== 'mix'
+      ? lineData.packaging
+      : '250g';
+    const quantity = lineData?.quantity ?? 1;
+    const unitPrice = lineData?.unitPrice;
+    const priceValue = unitPrice != null && !Number.isNaN(unitPrice) ? unitPrice : '';
     return `
       <div class="quot-coffee-line card" data-line-id="${lineId}">
         <div class="quot-coffee-line-header">
@@ -253,24 +305,40 @@ const QuotationManager = {
             <label>Presentación</label>
             <div class="selection-grid quot-line-packaging-grid">
               ${Object.entries(PACKAGING_SIZES).map(([key, val]) => `
-                <button type="button" class="selection-btn ${key === '250g' ? 'active' : ''}" data-value="${key}">${val.label}</button>
+                <button type="button" class="selection-btn ${key === activePackaging ? 'active' : ''}" data-value="${key}">${val.label}</button>
               `).join('')}
             </div>
-            <input type="hidden" class="quot-line-packaging-value" value="250g">
+            <input type="hidden" class="quot-line-packaging-value" value="${activePackaging}">
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>Cantidad (unidades)</label>
-              <input type="number" class="form-control quot-line-qty" value="1" min="1">
+              <input type="number" class="form-control quot-line-qty" value="${quantity}" min="1">
             </div>
             <div class="form-group">
               <label>Precio venta / unidad (COP)</label>
-              <input type="number" class="form-control quot-line-price" min="0" step="100" placeholder="Precio al cliente">
+              <input type="number" class="form-control quot-line-price" min="0" step="100" placeholder="Precio al cliente" value="${priceValue}">
             </div>
           </div>
         </div>
       </div>
     `;
+  },
+
+  initCoffeeLinesFromQuotation(lines) {
+    const container = document.getElementById('quot-coffee-lines-container');
+    if (!container) return;
+    const productLines = lines.length > 0 ? lines : [{}];
+    container.innerHTML = productLines.map((line, index) => this.renderCoffeeLineHTML(index, line.coffeeId || null, {
+      packaging: line.packaging,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice ?? (
+        line.lineTotal && line.quantity ? line.lineTotal / line.quantity : undefined
+      )
+    })).join('');
+    this.bindCoffeeLineEvents();
+    this.updateCoffeeLineInfos();
+    this.updateCoffeeLinesVisibility();
   },
 
   initCoffeeLines(coffeeId = null) {
@@ -478,9 +546,19 @@ const QuotationManager = {
     };
   },
 
-  showForm(clientId = null, coffeeId = null) {
+  showForm(clientId = null, coffeeId = null, quotation = null) {
     const modal = document.getElementById('quotation-modal');
-    document.getElementById('quotation-modal-title').textContent = 'Nueva Cotización';
+    const isEditing = Boolean(quotation?.id);
+    this._editingQuotationId = isEditing ? quotation.id : null;
+
+    document.getElementById('quotation-modal-title').textContent = isEditing
+      ? `Editar Cotización ${quotation.number}`
+      : 'Nueva Cotización';
+
+    const saveBtn = document.getElementById('save-quotation-btn');
+    if (saveBtn) {
+      saveBtn.textContent = isEditing ? 'Guardar cambios' : 'Generar Cotización y PDF';
+    }
 
     const clients = ClientManager.getAll();
     const costs = ProductionCosts.get();
@@ -653,13 +731,122 @@ const QuotationManager = {
     `;
 
     this.bindQuotationEvents();
-    this.initCoffeeLines(coffeeId);
+
+    if (isEditing) {
+      this.populateFormFromQuotation(quotation);
+    } else {
+      this.initCoffeeLines(coffeeId);
+      this.updateModeVisibility();
+      this.updateSupplierFields();
+      this.updatePackagingMixRates();
+      this.suggestSalePrice();
+      this.updatePreview();
+    }
+
+    modal.classList.add('active');
+  },
+
+  setSelectionActive(containerId, value) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('.selection-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.value === value);
+    });
+  },
+
+  setMultiSelectionActive(containerId, values = []) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const set = new Set(values);
+    container.querySelectorAll('.selection-btn').forEach((btn) => {
+      btn.classList.toggle('active', set.has(btn.dataset.value));
+    });
+  },
+
+  populateFormFromQuotation(q) {
+    const mode = q.productionMode || 'full_pack';
+    const modeHidden = document.getElementById('quot-production-mode-value');
+    if (modeHidden) modeHidden.value = mode;
+    this.setSelectionActive('quot-production-mode', mode);
+
+    const clientSelect = document.getElementById('quot-client');
+    if (clientSelect) clientSelect.value = q.clientId || '';
+
+    const grind = q.grindType || 'grano';
+    const grindHidden = document.getElementById('quot-grind-value');
+    if (grindHidden) grindHidden.value = grind;
+    this.setSelectionActive('quot-grind', grind);
+
+    const validityInput = document.getElementById('quot-validity');
+    if (validityInput) validityInput.value = q.validity ?? 15;
+
+    const notesInput = document.getElementById('quot-notes');
+    if (notesInput) notesInput.value = q.notes || '';
+
+    const marginHidden = document.getElementById('quot-margin-value');
+    if (marginHidden && q.margin != null) marginHidden.value = q.margin;
+
+    if (mode === 'maquila') {
+      const clientCoffee = q.clientProvidesCoffee !== false;
+      const clientPackaging = q.clientProvidesPackaging !== false;
+      const coffeeCheckbox = document.getElementById('quot-client-coffee');
+      const packagingCheckbox = document.getElementById('quot-client-packaging');
+      if (coffeeCheckbox) coffeeCheckbox.checked = clientCoffee;
+      if (packagingCheckbox) packagingCheckbox.checked = clientPackaging;
+
+      const coffeeStatus = document.getElementById('client-coffee-status');
+      if (coffeeStatus) {
+        coffeeStatus.textContent = clientCoffee
+          ? 'Sí, el cliente aporta el café'
+          : 'No, nosotros compramos el café';
+      }
+      const packagingStatus = document.getElementById('client-packaging-status');
+      if (packagingStatus) {
+        packagingStatus.textContent = clientPackaging
+          ? 'Sí, el cliente aporta el empaque (solo mano de obra)'
+          : 'No, nosotros aportamos el empaque (material + mano de obra)';
+      }
+
+      const steps = Array.isArray(q.maquilaSteps) && q.maquilaSteps.length > 0
+        ? q.maquilaSteps
+        : ['tostion', 'seleccion', 'empacada'];
+      const stepsHidden = document.getElementById('quot-maquila-steps-value');
+      if (stepsHidden) stepsHidden.value = JSON.stringify(steps);
+      this.setMultiSelectionActive('quot-maquila-steps', steps);
+
+      const mix = normalizePackagingMix(
+        q.packagingMix || { [q.packaging || '250g']: q.quantity || 1 }
+      );
+      document.querySelectorAll('.quot-pack-mix-qty').forEach((input) => {
+        input.value = mix[input.dataset.packaging] || 0;
+      });
+
+      const salePriceInput = document.getElementById('quot-sale-price');
+      if (salePriceInput && q.totalPrice != null) salePriceInput.value = q.totalPrice;
+
+      const lines = getQuotationProductLines(q);
+      this.initCoffeeLinesFromQuotation(lines.slice(0, 1));
+    } else {
+      const labels = q.labels || parseLabelSelection(q.label);
+      const labelHidden = document.getElementById('quot-label-value');
+      if (labelHidden) labelHidden.value = JSON.stringify(labels);
+      this.setMultiSelectionActive('quot-label', labels);
+
+      const packaging = q.packaging || '250g';
+      const packagingHidden = document.getElementById('quot-packaging-value');
+      if (packagingHidden) packagingHidden.value = packaging;
+      this.setSelectionActive('quot-packaging', packaging);
+
+      this.initCoffeeLinesFromQuotation(getQuotationProductLines(q));
+    }
+
+    this._pendingProcessSuppliers = q.processSuppliers || {};
     this.updateModeVisibility();
     this.updateSupplierFields();
+    this._pendingProcessSuppliers = null;
     this.updatePackagingMixRates();
-    this.suggestSalePrice();
+    this.updateCoffeeLineInfos();
     this.updatePreview();
-    modal.classList.add('active');
   },
 
   updateCoffeeProcessInfo() {
@@ -828,7 +1015,8 @@ const QuotationManager = {
     const options = this.getQuoteOptions();
     const steps = this.getActiveQuoteSteps();
     const defaults = ProductionCosts.get().defaultSuppliers || {};
-    const compraDefault = coffee?.supplierId || CoffeeManager.resolveSupplierId(coffee) || defaults.compra || '';
+    const pending = this._pendingProcessSuppliers || {};
+    const compraDefault = pending.compra || coffee?.supplierId || CoffeeManager.resolveSupplierId(coffee) || defaults.compra || '';
     const fields = [];
 
     if (options.productionMode === 'full_pack' || !options.clientProvidesCoffee) {
@@ -839,7 +1027,7 @@ const QuotationManager = {
         </div>
         <div class="form-group">
           <label>${getProcessSupplierLabel('transporte')}</label>
-          ${SupplierManager.renderSelect('transporte', { id: 'quot-supplier-transporte', selectedId: defaults.transporte || '', placeholder: 'Opcional...' })}
+          ${SupplierManager.renderSelect('transporte', { id: 'quot-supplier-transporte', selectedId: pending.transporte || defaults.transporte || '', placeholder: 'Opcional...' })}
         </div>
       `);
     }
@@ -850,7 +1038,7 @@ const QuotationManager = {
           <label>${getProcessSupplierLabel(stepKey)}</label>
           ${SupplierManager.renderSelect(stepKey, {
             id: `quot-supplier-${stepKey}`,
-            selectedId: defaults[stepKey] || ''
+            selectedId: pending[stepKey] || defaults[stepKey] || ''
           })}
         </div>
       `);
@@ -1392,8 +1580,16 @@ const QuotationManager = {
         margin
       });
 
-      const saved = this.save(quotation);
-      Toast.show(`Cotización ${saved.number} guardada`, 'success');
+      if (this._editingQuotationId) quotation.id = this._editingQuotationId;
+      const isUpdate = Boolean(this._editingQuotationId);
+      const saved = this.save(quotation, { isUpdate });
+      if (!saved) return;
+
+      Toast.show(
+        isUpdate ? `Cotización ${saved.number} actualizada` : `Cotización ${saved.number} guardada`,
+        'success'
+      );
+      this._editingQuotationId = null;
       document.getElementById('quotation-modal').classList.remove('active');
       App.renderSection('quotations');
       PDFGenerator.generate(saved);
@@ -1439,8 +1635,18 @@ const QuotationManager = {
       margin: avgMargin
     });
 
-    const saved = this.save(quotation);
-    Toast.show(`Cotización ${saved.number} guardada (${coffeeLines.length} café${coffeeLines.length > 1 ? 's' : ''})`, 'success');
+    if (this._editingQuotationId) quotation.id = this._editingQuotationId;
+    const isUpdate = Boolean(this._editingQuotationId);
+    const saved = this.save(quotation, { isUpdate });
+    if (!saved) return;
+
+    Toast.show(
+      isUpdate
+        ? `Cotización ${saved.number} actualizada (${coffeeLines.length} café${coffeeLines.length > 1 ? 's' : ''})`
+        : `Cotización ${saved.number} guardada (${coffeeLines.length} café${coffeeLines.length > 1 ? 's' : ''})`,
+      'success'
+    );
+    this._editingQuotationId = null;
     document.getElementById('quotation-modal').classList.remove('active');
     App.renderSection('quotations');
     PDFGenerator.generate(saved);
@@ -1607,6 +1813,7 @@ const QuotationManager = {
                   <div class="action-buttons">
                     <button class="btn btn-sm btn-primary" onclick="PDFGenerator.generate(QuotationManager.getById('${q.id}'))">PDF</button>
                     <button class="btn btn-sm btn-secondary" onclick="QuotationManager.view('${q.id}')">Ver</button>
+                    ${this.canEdit(q) ? `<button class="btn btn-sm btn-secondary" onclick="QuotationManager.edit('${q.id}')">Editar</button>` : ''}
                     ${q.status === 'paid' || q.status === 'pending_payment' ? `
                       <button class="btn btn-sm btn-success" onclick="QuotationManager.convertToSale('${q.id}');App.renderSection('quotations')">→ Venta</button>
                     ` : ''}
@@ -1641,6 +1848,7 @@ const QuotationManager = {
       footer.innerHTML = `
         <div style="margin-right:auto">${this.getStatusBadge(status)}</div>
         ${statusActions}
+        ${this.canEdit(q) ? `<button class="btn btn-secondary" onclick="document.getElementById('quotation-view-modal').classList.remove('active');QuotationManager.edit('${q.id}')">Editar</button>` : ''}
         <button class="btn btn-danger" onclick="QuotationManager.confirmDelete('${q.id}')">Eliminar</button>
         <button class="btn btn-secondary" onclick="QuotationManager.viewInternal('${q.id}')">Análisis interno</button>
         <button class="btn btn-secondary" data-modal-close>Cerrar</button>
@@ -1819,6 +2027,7 @@ const QuotationManager = {
   },
 
   create() {
+    this._editingQuotationId = null;
     this.showForm();
   }
 };
