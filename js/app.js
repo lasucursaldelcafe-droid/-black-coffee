@@ -363,16 +363,6 @@ const App = {
       });
     });
 
-    document.querySelectorAll('.modal-overlay').forEach(overlay => {
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
-          overlay.classList.remove('active');
-          if (overlay.id === 'inventory-modal') closeInventoryModal();
-          if (overlay.id === 'quotation-modal') QuotationManager._editingQuotationId = null;
-        }
-      });
-    });
-
     document.getElementById('save-coffee-btn')?.addEventListener('click', () => CoffeeManager.saveFromForm());
     document.getElementById('save-client-btn')?.addEventListener('click', () => ClientManager.saveFromForm());
     document.getElementById('save-supplier-btn')?.addEventListener('click', () => SupplierManager.saveFromForm());
