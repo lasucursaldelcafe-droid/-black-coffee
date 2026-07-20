@@ -15,10 +15,14 @@
 **Pablo:** Configuración → **Forzar sincronización completa**  
 (La app también sincroniza sola cada 30 segundos.)
 
-## Opción B — Firebase (cuando tenga FIREBASE_TOKEN)
+## Opción B — Firebase (sync directa + correo Resend)
 
-1. Actions → **Instalar secretos** → pegue `FIREBASE_TOKEN` (`npx firebase login:ci`)
-2. Actions → **Desplegar Firebase** — publica reglas + función `bcaSync` (Admin SDK, sin depender de reglas del cliente)
+1. En su PC: `npx firebase login:ci` → copie el token
+2. GitHub → **Actions** → [**Desbloquear Firebase**](https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desbloquear-firebase.yml) → **Run workflow**
+3. Pegue el token en **firebase_token** → Run
+4. Recargue la app (Ctrl+Shift+R) → **Forzar sincronización completa**
+
+Verifica con: `npm run test:firestore` (debe terminar sin `permission-denied`).
 
 ## Opción C — GitHub (respaldo)
 

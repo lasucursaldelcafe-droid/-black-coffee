@@ -2,6 +2,11 @@ name: Publicar reglas Firestore
 
 on:
   workflow_dispatch:
+    inputs:
+      firebase_token:
+        description: 'Token Firebase (opcional si ya existe secret FIREBASE_TOKEN)'
+        required: false
+        type: string
   push:
     branches: [main]
     paths:
@@ -18,13 +23,17 @@ jobs:
 
       - name: Publicar reglas
         env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          SECRET_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          INPUT_TOKEN: ${{ github.event.inputs.firebase_token }}
         run: |
-          if [ -z "$FIREBASE_TOKEN" ]; then
-            echo "::error::Falta FIREBASE_TOKEN. Ejecute el workflow Instalar secretos o pegue las reglas manualmente en Firebase Console."
+          TOKEN="${INPUT_TOKEN:-$SECRET_TOKEN}"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Falta FIREBASE_TOKEN. Actions → Desbloquear Firebase → pegue token de: npx firebase login:ci"
             exit 1
           fi
-          npx firebase-tools deploy --only firestore:rules --project black-coffee-15ccc --token "$FIREBASE_TOKEN"
+          npx firebase-tools deploy --only firestore:rules --project black-coffee-15ccc --token "$TOKEN"
+          npm install firebase@11 --no-save
+          node scripts/test-firestore-access.mjs
 
       - name: Listo
         run: echo "Reglas publicadas. Ximena puede usar Configuración → Publicar mis datos a la nube."

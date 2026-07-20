@@ -21,8 +21,15 @@ Claves típicas: `bca_coffees`, `bca_clients`, `bca_suppliers`, `bca_inventory`,
 Archivo en repo: `firestore.rules`. Publicar con:
 
 ```bash
-firebase deploy --only firestore:rules
+# Opción A — GitHub Actions (recomendado)
+# Actions → Desbloquear Firebase → Run workflow → pegar token de npx firebase login:ci
+
+# Opción B — Local
+export FIREBASE_TOKEN="$(npx firebase login:ci)"
+./scripts/deploy-firestore-rules.sh
 ```
+
+Enlace directo: https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desbloquear-firebase.yml
 
 ## Auth
 

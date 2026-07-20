@@ -163,10 +163,11 @@ const App = {
     if (firebaseBlocked) {
       banner.hidden = false;
       banner.innerHTML = `
-        <strong>Firebase bloqueado.</strong> Despliegue Google Apps Script (2 min):
-        <a href="https://github.com/lasucursaldelcafe-droid/-black-coffee/blob/main/apps-script/README.md" target="_blank" rel="noopener">apps-script/README.md</a>
-        → pegue URL en GitHub Secret <code>GAS_WEB_APP_URL</code> → vuelva a desplegar.
-        Mientras tanto use «Forzar sincronización completa».`;
+        <strong>Firebase bloqueado</strong> (reglas Firestore no publicadas).
+        Desbloqueo en 2 min: GitHub → Actions →
+        <a href="https://github.com/lasucursaldelcafe-droid/-black-coffee/actions/workflows/desbloquear-firebase.yml" target="_blank" rel="noopener">Desbloquear Firebase</a>
+        → pegue token de <code>npx firebase login:ci</code>.
+        La sync vía Apps Script sigue activa mientras tanto.`;
       return;
     }
 

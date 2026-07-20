@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node scripts/test-persistence.mjs && node scripts/test-pipeline.mjs",
     "test:persistence": "node scripts/test-persistence.mjs",
-    "test:pipeline": "node scripts/test-pipeline.mjs"
+    "test:pipeline": "node scripts/test-pipeline.mjs",
+    "test:firestore": "node scripts/test-firestore-access.mjs"
   },
   "repository": {
     "type": "git",
