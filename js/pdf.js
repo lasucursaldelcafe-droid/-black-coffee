@@ -110,28 +110,39 @@ const PDFGenerator = {
     doc.setFont('helvetica', 'normal');
     doc.text(quotation.clientName, 50, clientY);
 
-    doc.setFont('helvetica', 'bold');
-    doc.text('Producto:', 20, clientY + 8);
-    doc.setFont('helvetica', 'normal');
-    doc.text(quotation.coffeeName, 50, clientY + 8);
-    doc.setFontSize(8);
-    doc.setTextColor(100);
-    const details = doc.splitTextToSize(quotation.coffeeDetails || '', 140);
-    doc.text(details, 50, clientY + 14);
-    doc.setTextColor(0);
-    doc.setFontSize(10);
-    doc.text(`Presentación: ${packagingLabel}`, 50, clientY + 20 + (details.length - 1) * 4);
-    doc.text(`Preparación: ${grindLabel}`, 50, clientY + 26 + (details.length - 1) * 4);
-    if (quotation.productionMode === 'maquila') {
-      const packagingSource = quotation.clientProvidesPackaging !== false
-        ? 'Empaque: aportado por el cliente'
-        : 'Empaque: aportado por nosotros (material incluido)';
-      doc.text(packagingSource, 50, clientY + 32 + (details.length - 1) * 4);
+    const isMultiCoffee = Array.isArray(quotation.coffeeLines) && quotation.coffeeLines.length > 1;
+    let tableY = clientY + 8;
+
+    if (!isMultiCoffee) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Producto:', 20, tableY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(quotation.coffeeName, 50, tableY);
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      const details = doc.splitTextToSize(quotation.coffeeDetails || '', 140);
+      doc.text(details, 50, tableY + 6);
+      doc.setTextColor(0);
+      doc.setFontSize(10);
+      doc.text(`Presentación: ${packagingLabel}`, 50, tableY + 12 + (details.length - 1) * 4);
+      doc.text(`Preparación: ${grindLabel}`, 50, tableY + 18 + (details.length - 1) * 4);
+      if (quotation.productionMode === 'maquila') {
+        const packagingSource = quotation.clientProvidesPackaging !== false
+          ? 'Empaque: aportado por el cliente'
+          : 'Empaque: aportado por nosotros (material incluido)';
+        doc.text(packagingSource, 50, tableY + 24 + (details.length - 1) * 4);
+      }
+      tableY = quotation.productionMode === 'maquila'
+        ? tableY + 32 + (details.length - 1) * 4
+        : tableY + 26 + (details.length - 1) * 4;
+    } else {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Productos:', 20, tableY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${quotation.coffeeLines.length} referencias de café`, 50, tableY);
+      tableY += 10;
     }
 
-    const tableY = quotation.productionMode === 'maquila'
-      ? clientY + 40 + (details.length - 1) * 4
-      : clientY + 34 + (details.length - 1) * 4;
     doc.line(20, tableY - 4, 190, tableY - 4);
 
     doc.setFont('helvetica', 'bold');
@@ -146,11 +157,14 @@ const PDFGenerator = {
     let rowY = tableY + 12;
     lineItems.forEach((line) => {
       const sizeLabel = PACKAGING_SIZES[line.packaging]?.label || line.packaging;
-      doc.text(`${quotation.coffeeName} (${sizeLabel})`, 20, rowY);
+      const coffeeLabel = line.coffeeName || quotation.coffeeName;
+      const desc = `${coffeeLabel} (${sizeLabel})`;
+      const descLines = doc.splitTextToSize(desc, 95);
+      doc.text(descLines, 20, rowY);
       doc.text(String(line.quantity), 120, rowY);
       doc.text(formatCurrency(line.unitPrice), 145, rowY);
       doc.text(formatCurrency(line.lineTotal), 175, rowY);
-      rowY += 8;
+      rowY += Math.max(8, descLines.length * 5);
     });
 
     let yPos = rowY + 10;

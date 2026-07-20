@@ -17,16 +17,20 @@ const EmailService = {
   },
 
   sendQuotation(quotation) {
+    const lineItems = getQuotationLineItems(quotation);
+    const coffeeSummary = formatQuotationCoffeeNames(quotation);
+    const linesText = lineItems.map((line) =>
+      `- ${line.coffeeName || quotation.coffeeName}: ${line.quantity} × ${formatCurrency(line.unitPrice)} = ${formatCurrency(line.lineTotal)}`
+    ).join('\n');
+
     const subject = `Nueva Cotización ${quotation.number} - ${quotation.clientName}`;
     const body = `
 Nueva cotización generada:
 
 Número: ${quotation.number}
 Cliente: ${quotation.clientName}
-Café: ${quotation.coffeeName}
-Presentación: ${PACKAGING_SIZES[quotation.packaging]?.label || quotation.packaging}
-Cantidad: ${quotation.quantity} unidades
-Precio unitario: ${formatCurrency(quotation.unitPrice)}
+Café(s): ${coffeeSummary}
+${linesText ? `Líneas:\n${linesText}\n` : ''}
 TOTAL: ${formatCurrency(quotation.totalPrice)}
 Margen: ${quotation.margin}%
 Fecha: ${formatDate(quotation.createdAt)}

@@ -799,21 +799,72 @@ function formatPackagingMix(mix, fallbackPackaging = null, fallbackQty = null) {
   return '—';
 }
 
-function getQuotationLineItems(quotation) {
-  if (Array.isArray(quotation.packagingLines) && quotation.packagingLines.length > 0) {
-    return quotation.packagingLines.map((line) => ({
-      packaging: line.packaging,
-      quantity: line.quantity,
-      unitPrice: line.unitPrice,
-      lineTotal: line.linePrice ?? line.unitPrice * line.quantity
-    }));
+function getQuotationProductLines(quotation) {
+  if (Array.isArray(quotation.coffeeLines) && quotation.coffeeLines.length > 0) {
+    return quotation.coffeeLines;
   }
   return [{
+    coffeeId: quotation.coffeeId,
+    coffeeName: quotation.coffeeName,
+    coffeeDetails: quotation.coffeeDetails,
     packaging: quotation.packaging,
+    packagingMix: quotation.packagingMix,
+    packagingLines: quotation.packagingLines,
+    labels: quotation.labels,
+    grindType: quotation.grindType,
     quantity: quotation.quantity || 1,
     unitPrice: quotation.unitPrice,
-    lineTotal: quotation.totalPrice
+    lineTotal: quotation.totalPrice,
+    margin: quotation.margin,
+    costBreakdown: quotation.costBreakdown,
+    internalUnitCost: quotation.internalUnitCost,
+    internalTotalCost: quotation.internalTotalCost
   }];
+}
+
+function getQuotationLineItems(quotation) {
+  const products = getQuotationProductLines(quotation);
+  const items = [];
+
+  products.forEach((product) => {
+    if (Array.isArray(product.packagingLines) && product.packagingLines.length > 0) {
+      product.packagingLines.forEach((line) => {
+        items.push({
+          coffeeId: product.coffeeId,
+          coffeeName: product.coffeeName,
+          coffeeDetails: product.coffeeDetails,
+          grindType: product.grindType || quotation.grindType,
+          packaging: line.packaging,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          lineTotal: line.linePrice ?? line.unitPrice * line.quantity
+        });
+      });
+      return;
+    }
+
+    items.push({
+      coffeeId: product.coffeeId,
+      coffeeName: product.coffeeName,
+      coffeeDetails: product.coffeeDetails,
+      grindType: product.grindType || quotation.grindType,
+      packaging: product.packaging,
+      quantity: product.quantity || 1,
+      unitPrice: product.unitPrice,
+      lineTotal: product.lineTotal ?? (product.unitPrice || 0) * (product.quantity || 1)
+    });
+  });
+
+  return items;
+}
+
+function formatQuotationCoffeeNames(quotation) {
+  const products = getQuotationProductLines(quotation);
+  const names = products.map((p) => p.coffeeName).filter(Boolean);
+  if (names.length === 0) return quotation.coffeeName || '—';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} + ${names[1]}`;
+  return `${names[0]} +${names.length - 1} más`;
 }
 
 const COFFEE_STATES = {

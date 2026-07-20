@@ -800,7 +800,7 @@ const CostEngine = {
   },
 
   compareFromQuotationForm() {
-    const coffeeId = document.getElementById('quot-coffee')?.value;
+    const coffeeId = QuotationManager.getFirstLineCoffeeId();
     const clientId = document.getElementById('quot-client')?.value;
     if (!coffeeId || !clientId) {
       Toast.show('Seleccione cliente y café primero', 'warning');
@@ -812,10 +812,17 @@ const CostEngine = {
     if (!coffee || !client) return null;
 
     const options = QuotationManager.getQuoteOptions();
-    const packaging = document.getElementById('quot-packaging-value')?.value || '250g';
+    const packaging = document.getElementById('quot-packaging-value')?.value
+      || document.querySelector('.quot-line-packaging-value')?.value
+      || '250g';
     const labels = QuotationManager.getSelectedLabels();
     const margin = clampProfitMargin(document.getElementById('quot-margin-value')?.value || PROFIT_MARGIN_DEFAULT);
-    const quantity = parseInt(document.getElementById('quot-quantity')?.value || '1', 10);
+    const quantity = parseInt(
+      document.querySelector('.quot-line-qty')?.value
+      || document.getElementById('quot-quantity')?.value
+      || '1',
+      10
+    );
     const processSuppliers = QuotationManager.getProcessSuppliersFromForm();
     const pricing = QuotationManager.buildPricingPreview(
       coffee, client, options, processSuppliers, packaging, labels, margin, quantity
@@ -949,7 +956,7 @@ const CostEngine = {
   saveQuotationComparisonToMemory(data) {
     const { quote, internal, costDiff, priceDiff } = data;
     const options = QuotationManager.getQuoteOptions();
-    const coffeeId = document.getElementById('quot-coffee')?.value;
+    const coffeeId = QuotationManager.getFirstLineCoffeeId();
 
     const note = [
       `Comparación cotización vs ${internal.label}`,

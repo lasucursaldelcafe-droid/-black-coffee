@@ -147,12 +147,13 @@ const QuotationManager = {
       const packaging = line.packaging || q.packaging || '250g';
       const quantity = line.quantity || 1;
       const unitPrice = line.unitPrice || q.unitPrice || 0;
+      const lineCoffeeId = line.coffeeId || q.coffeeId;
       const lineNote = lineItems.length > 1
-        ? `${baseNotes} (línea ${i + 1}/${lineItems.length})`
+        ? `${baseNotes} (${line.coffeeName || q.coffeeName} · línea ${i + 1}/${lineItems.length})`
         : baseNotes;
 
       const sale = SalesManager.registerSale({
-        coffeeId: q.coffeeId,
+        coffeeId: lineCoffeeId,
         clientId: q.clientId,
         packaging,
         quantity,
@@ -226,12 +227,262 @@ const QuotationManager = {
     setTimeout(() => this.showForm(clientId), 100);
   },
 
+  createCoffeeLineId() {
+    return `qline_${Storage.generateId()}`;
+  },
+
+  renderCoffeeLineHTML(index, coffeeId = null) {
+    const coffees = CoffeeManager.getAll();
+    const lineId = this.createCoffeeLineId();
+    return `
+      <div class="quot-coffee-line card" data-line-id="${lineId}" style="margin-bottom:12px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+          <strong>Café ${index + 1}</strong>
+          <button type="button" class="btn btn-sm btn-danger quot-remove-line" ${index === 0 ? 'disabled' : ''} data-line-id="${lineId}">Quitar</button>
+        </div>
+        <div class="form-group">
+          <label>Café</label>
+          <select class="form-control quot-line-coffee" required>
+            <option value="">Seleccionar café...</option>
+            ${coffees.map((c) => `<option value="${c.id}" ${c.id === coffeeId ? 'selected' : ''}>${c.name} · ${c.process || 'Sin proceso'} · ${COFFEE_STATES[c.state]?.label || c.state || '—'} (${formatCurrency(c.pricePerKg)}/kg)</option>`).join('')}
+          </select>
+          <div class="quot-line-info form-hint" style="margin-top:8px"></div>
+        </div>
+        <div class="quot-line-fullpack-fields">
+          <div class="form-group">
+            <label>Presentación</label>
+            <div class="selection-grid quot-line-packaging-grid">
+              ${Object.entries(PACKAGING_SIZES).map(([key, val]) => `
+                <button type="button" class="selection-btn ${key === '250g' ? 'active' : ''}" data-value="${key}">${val.label}</button>
+              `).join('')}
+            </div>
+            <input type="hidden" class="quot-line-packaging-value" value="250g">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Cantidad (unidades)</label>
+              <input type="number" class="form-control quot-line-qty" value="1" min="1">
+            </div>
+            <div class="form-group">
+              <label>Precio venta / unidad (COP)</label>
+              <input type="number" class="form-control quot-line-price" min="0" step="100" placeholder="Precio al cliente">
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  initCoffeeLines(coffeeId = null) {
+    const container = document.getElementById('quot-coffee-lines-container');
+    if (!container) return;
+    container.innerHTML = this.renderCoffeeLineHTML(0, coffeeId);
+    this.bindCoffeeLineEvents();
+    this.updateCoffeeLineInfos();
+    this.updateCoffeeLinesVisibility();
+  },
+
+  addCoffeeLine(coffeeId = null) {
+    const container = document.getElementById('quot-coffee-lines-container');
+    if (!container) return;
+    const count = container.querySelectorAll('.quot-coffee-line').length;
+    container.insertAdjacentHTML('beforeend', this.renderCoffeeLineHTML(count, coffeeId));
+    this.bindCoffeeLineEvents();
+    this.updateCoffeeLineInfos();
+    this.updatePreview();
+  },
+
+  removeCoffeeLine(lineId) {
+    const container = document.getElementById('quot-coffee-lines-container');
+    if (!container) return;
+    const lines = container.querySelectorAll('.quot-coffee-line');
+    if (lines.length <= 1) return;
+    container.querySelector(`[data-line-id="${lineId}"]`)?.remove();
+    container.querySelectorAll('.quot-coffee-line').forEach((line, i) => {
+      const title = line.querySelector('strong');
+      if (title) title.textContent = `Café ${i + 1}`;
+      const removeBtn = line.querySelector('.quot-remove-line');
+      if (removeBtn) removeBtn.disabled = i === 0;
+    });
+    this.updateSupplierFields();
+    this.updatePreview();
+  },
+
+  bindCoffeeLineEvents() {
+    document.querySelectorAll('.quot-coffee-line').forEach((lineEl) => {
+      if (lineEl.dataset.bound === '1') return;
+      lineEl.dataset.bound = '1';
+
+      lineEl.querySelector('.quot-line-coffee')?.addEventListener('change', () => {
+        this.updateCoffeeLineInfo(lineEl);
+        this.updateSupplierFields();
+        this.suggestLineSalePrice(lineEl);
+        this.updatePreview();
+      });
+
+      lineEl.querySelector('.quot-line-packaging-grid')?.querySelectorAll('.selection-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          lineEl.querySelectorAll('.quot-line-packaging-grid .selection-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          const hidden = lineEl.querySelector('.quot-line-packaging-value');
+          if (hidden) hidden.value = btn.dataset.value;
+          this.suggestLineSalePrice(lineEl);
+          this.updatePreview();
+        });
+      });
+
+      ['input', 'change'].forEach((evt) => {
+        lineEl.querySelector('.quot-line-qty')?.addEventListener(evt, () => this.updatePreview());
+        lineEl.querySelector('.quot-line-price')?.addEventListener(evt, () => this.updatePreview());
+      });
+    });
+
+    document.querySelectorAll('.quot-remove-line').forEach((btn) => {
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        if (!btn.disabled) this.removeCoffeeLine(btn.dataset.lineId);
+      });
+    });
+  },
+
+  updateCoffeeLineInfo(lineEl) {
+    const info = lineEl.querySelector('.quot-line-info');
+    const coffeeId = lineEl.querySelector('.quot-line-coffee')?.value;
+    if (!info) return;
+    if (!coffeeId) {
+      info.textContent = '';
+      return;
+    }
+    const coffee = CoffeeManager.getById(coffeeId);
+    if (!coffee) {
+      info.textContent = '';
+      return;
+    }
+    if (!coffee.process || !coffee.state) {
+      info.innerHTML = `<span style="color:var(--danger)">⚠ Complete proceso y estado en Catálogo → Cafés.</span>`;
+      return;
+    }
+    const stateLabel = COFFEE_STATES[coffee.state]?.label || coffee.state;
+    info.innerHTML = `<strong>Proceso:</strong> ${coffee.process} · <strong>Estado:</strong> ${stateLabel} · <strong>Región:</strong> ${coffee.region || '—'}`;
+  },
+
+  updateCoffeeLineInfos() {
+    document.querySelectorAll('.quot-coffee-line').forEach((lineEl) => this.updateCoffeeLineInfo(lineEl));
+  },
+
+  updateCoffeeLinesVisibility() {
+    const mode = document.getElementById('quot-production-mode-value')?.value || 'full_pack';
+    const isMaquila = mode === 'maquila';
+    const addBtn = document.getElementById('quot-add-coffee-line');
+    if (addBtn) addBtn.style.display = isMaquila ? 'none' : 'inline-flex';
+
+    const container = document.getElementById('quot-coffee-lines-container');
+    if (container && isMaquila) {
+      const lines = container.querySelectorAll('.quot-coffee-line');
+      for (let i = lines.length - 1; i >= 1; i -= 1) {
+        lines[i].remove();
+      }
+    }
+
+    document.querySelectorAll('.quot-coffee-line').forEach((line) => {
+      const fields = line.querySelector('.quot-line-fullpack-fields');
+      if (fields) fields.style.display = isMaquila ? 'none' : 'block';
+    });
+
+    const maquilaPrice = document.getElementById('quot-maquila-global-price');
+    const fullPackMargin = document.getElementById('quot-fullpack-margin-summary');
+    if (maquilaPrice) maquilaPrice.style.display = isMaquila ? 'block' : 'none';
+    if (fullPackMargin) fullPackMargin.style.display = isMaquila ? 'none' : 'block';
+  },
+
+  getFirstLineCoffeeId() {
+    return document.querySelector('.quot-line-coffee')?.value
+      || document.getElementById('quot-coffee')?.value
+      || '';
+  },
+
+  suggestLineSalePrice(lineEl) {
+    const input = lineEl.querySelector('.quot-line-price');
+    if (!input || input.value.trim() !== '') return;
+
+    const coffeeId = lineEl.querySelector('.quot-line-coffee')?.value;
+    const clientId = document.getElementById('quot-client')?.value;
+    if (!coffeeId || !clientId) return;
+
+    const coffee = CoffeeManager.getById(coffeeId);
+    const client = ClientManager.getById(clientId);
+    if (!coffee || !client) return;
+
+    const options = this.getQuoteOptions();
+    const packaging = lineEl.querySelector('.quot-line-packaging-value')?.value || '250g';
+    const labels = this.getSelectedLabels();
+    const pricing = this.buildPricingPreview(
+      coffee, client, options, this.getProcessSuppliersFromForm(), packaging, labels, PROFIT_MARGIN_DEFAULT, 1
+    );
+    if (pricing?.finalPrice) input.value = String(pricing.finalPrice);
+  },
+
+  resolveMarginFromSalePriceForLine(coffee, client, options, processSuppliers, packaging, labels, salePrice) {
+    if (!salePrice || salePrice <= 0) return null;
+    const costPreview = this.getUnitCostPreview(coffee, client, options, processSuppliers, packaging, labels);
+    if (!costPreview) return null;
+    if (options.productionMode === 'maquila') {
+      return markupFromTargetPrice(costPreview.totalCost, salePrice);
+    }
+    const clientMultiplier = CLIENT_TYPES[client.type]?.multiplier || 1;
+    return markupFromTargetPrice(costPreview.totalCost, salePrice * clientMultiplier);
+  },
+
+  buildCoffeeLineFromElement(lineEl, client, options, processSuppliers, labels) {
+    const coffeeId = lineEl.querySelector('.quot-line-coffee')?.value;
+    if (!coffeeId) return null;
+
+    const coffee = CoffeeManager.getById(coffeeId);
+    if (!coffee) return null;
+    if (!coffee.process || !coffee.state) return { error: `El café "${coffee.name}" debe tener proceso y estado definidos.` };
+
+    const packaging = lineEl.querySelector('.quot-line-packaging-value')?.value || '250g';
+    const quantity = parseInt(lineEl.querySelector('.quot-line-qty')?.value || '1', 10);
+    const salePrice = parseFloat(lineEl.querySelector('.quot-line-price')?.value);
+
+    if (!salePrice || salePrice <= 0) return { error: `Indique el precio de venta para "${coffee.name}".` };
+
+    const margin = this.resolveMarginFromSalePriceForLine(
+      coffee, client, options, processSuppliers, packaging, labels, salePrice
+    );
+    if (margin === null) return { error: `No se pudo calcular el margen para "${coffee.name}".` };
+
+    const pricing = this.buildPricingPreview(
+      coffee, client, options, processSuppliers, packaging, labels, margin, quantity
+    );
+    if (!pricing) return { error: `Verifique empaque y cantidad para "${coffee.name}".` };
+
+    const lineTotal = salePrice * quantity;
+    const internalTotalCost = pricing.totalCost * quantity;
+
+    return {
+      coffeeId,
+      coffeeName: coffee.name,
+      coffeeDetails: `${coffee.variety} · ${coffee.region} · ${coffee.process}${coffee.fermentation ? ' · ' + coffee.fermentation : ''}`,
+      packaging,
+      labels,
+      grindType: options.grindType,
+      quantity,
+      unitPrice: salePrice,
+      lineTotal,
+      margin,
+      costBreakdown: pricing,
+      internalUnitCost: pricing.totalCost,
+      internalTotalCost
+    };
+  },
+
   showForm(clientId = null, coffeeId = null) {
     const modal = document.getElementById('quotation-modal');
     document.getElementById('quotation-modal-title').textContent = 'Nueva Cotización';
 
     const clients = ClientManager.getAll();
-    const coffees = CoffeeManager.getAll();
     const costs = ProductionCosts.get();
 
     document.getElementById('quotation-form').innerHTML = `
@@ -247,22 +498,23 @@ const QuotationManager = {
         <input type="hidden" id="quot-production-mode-value" value="full_pack">
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label>Cliente</label>
-          <select class="form-control" id="quot-client" required>
-            <option value="">Seleccionar cliente...</option>
-            ${clients.map((c) => `<option value="${c.id}" ${c.id === clientId ? 'selected' : ''}>${c.name} (${CLIENT_TYPES[c.type]?.label})</option>`).join('')}
-          </select>
+      <div class="form-group">
+        <label>Cliente</label>
+        <select class="form-control" id="quot-client" required>
+          <option value="">Seleccionar cliente...</option>
+          ${clients.map((c) => `<option value="${c.id}" ${c.id === clientId ? 'selected' : ''}>${c.name} (${CLIENT_TYPES[c.type]?.label})</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="form-group" style="margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap">
+          <div>
+            <label style="margin:0">Cafés en esta cotización</label>
+            <p class="form-hint" style="margin:4px 0 0">Agregue uno o varios cafés; todo queda en una sola cotización.</p>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="quot-add-coffee-line">+ Agregar otro café</button>
         </div>
-        <div class="form-group">
-          <label>Café</label>
-          <select class="form-control" id="quot-coffee" required>
-            <option value="">Seleccionar café...</option>
-            ${coffees.map((c) => `<option value="${c.id}" ${c.id === coffeeId ? 'selected' : ''}>${c.name} · ${c.process || 'Sin proceso'} · ${COFFEE_STATES[c.state]?.label || c.state || '—'} (${formatCurrency(c.pricePerKg)}/kg)</option>`).join('')}
-          </select>
-          <div id="quot-coffee-info" class="form-hint" style="margin-top:8px"></div>
-        </div>
+        <div id="quot-coffee-lines-container"></div>
       </div>
 
       <div id="maquila-options" style="display:none">
@@ -350,25 +602,26 @@ const QuotationManager = {
         </div>
       </div>
 
-      <div class="form-group">
-        <label id="quot-sale-price-label">Precio de venta por unidad (COP)</label>
-        <input type="number" class="form-control" id="quot-sale-price" min="0" step="100"
-          placeholder="Ingrese el precio al cliente" inputmode="numeric">
-        <p class="form-hint" style="margin-top:8px">
-          Ingrese el precio de venta; el sistema calcula el <strong>% de ganancia</strong> sobre el costo.
-        </p>
-        <div class="cost-row" style="margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:8px">
-          <span class="cost-label">Margen de ganancia calculado</span>
+      <div id="quot-maquila-global-price" style="display:none">
+        <div class="form-group">
+          <label id="quot-sale-price-label">Precio total de venta al cliente (COP)</label>
+          <input type="number" class="form-control" id="quot-sale-price" min="0" step="100"
+            placeholder="Ingrese el precio total al cliente" inputmode="numeric">
+          <p class="form-hint" style="margin-top:8px">
+            Maquila: un solo café por cotización. El precio es el total del pedido.
+          </p>
+        </div>
+      </div>
+
+      <div id="quot-fullpack-margin-summary" class="form-group">
+        <div class="cost-row" style="padding:12px;background:var(--bg-secondary);border-radius:8px">
+          <span class="cost-label">Margen de ganancia calculado (promedio)</span>
           <span id="quot-margin-display" class="badge badge-neutral">—</span>
         </div>
         <input type="hidden" id="quot-margin-value" value="${PROFIT_MARGIN_DEFAULT}">
       </div>
 
-      <div class="form-row" id="quot-quantity-row">
-        <div class="form-group">
-          <label>Cantidad (unidades)</label>
-          <input type="number" class="form-control" id="quot-quantity" value="1" min="1">
-        </div>
+      <div class="form-row">
         <div class="form-group">
           <label>Validez (días)</label>
           <input type="number" class="form-control" id="quot-validity" value="15" min="1">
@@ -400,43 +653,17 @@ const QuotationManager = {
     `;
 
     this.bindQuotationEvents();
+    this.initCoffeeLines(coffeeId);
     this.updateModeVisibility();
-    this.updateCoffeeProcessInfo();
-    this.updatePackagingMixRates();
     this.updateSupplierFields();
+    this.updatePackagingMixRates();
     this.suggestSalePrice();
     this.updatePreview();
     modal.classList.add('active');
   },
 
   updateCoffeeProcessInfo() {
-    const info = document.getElementById('quot-coffee-info');
-    const coffeeId = document.getElementById('quot-coffee')?.value;
-    if (!info) return;
-
-    if (!coffeeId) {
-      info.textContent = '';
-      return;
-    }
-
-    const coffee = CoffeeManager.getById(coffeeId);
-    if (!coffee) {
-      info.textContent = '';
-      return;
-    }
-
-    const stateLabel = COFFEE_STATES[coffee.state]?.label || coffee.state || 'Sin estado';
-    const processLabel = coffee.process || 'Sin proceso';
-    if (!coffee.process || !coffee.state) {
-      info.innerHTML = `<span style="color:var(--danger)">⚠ Complete proceso y estado del café en Catálogo → Cafés para costear correctamente.</span>`;
-      return;
-    }
-
-    info.innerHTML = `
-      <strong>Proceso:</strong> ${processLabel} ·
-      <strong>Estado:</strong> ${stateLabel} ·
-      <strong>Región:</strong> ${coffee.region || '—'} —
-      el costo usa el estado del grano y las transformaciones configuradas.`;
+    this.updateCoffeeLineInfos();
   },
 
   getUnitCostPreview(coffee, client, options, processSuppliers, packaging, labels) {
@@ -483,10 +710,16 @@ const QuotationManager = {
   },
 
   suggestSalePrice() {
+    const options = this.getQuoteOptions();
+    if (options.productionMode !== 'maquila') {
+      document.querySelectorAll('.quot-coffee-line').forEach((lineEl) => this.suggestLineSalePrice(lineEl));
+      return;
+    }
+
     const input = document.getElementById('quot-sale-price');
     if (!input || input.value.trim() !== '') return;
 
-    const coffeeId = document.getElementById('quot-coffee')?.value;
+    const coffeeId = this.getFirstLineCoffeeId();
     const clientId = document.getElementById('quot-client')?.value;
     if (!coffeeId || !clientId) return;
 
@@ -494,7 +727,6 @@ const QuotationManager = {
     const client = ClientManager.getById(clientId);
     if (!coffee || !client) return;
 
-    const options = this.getQuoteOptions();
     const packaging = document.getElementById('quot-packaging-value')?.value || '250g';
     const labels = this.getSelectedLabels();
     const pricing = this.buildPricingPreview(
@@ -502,9 +734,7 @@ const QuotationManager = {
     );
     if (!pricing) return;
 
-    input.value = options.productionMode === 'maquila'
-      ? String(Math.ceil(pricing.totalPrice / 100) * 100)
-      : String(pricing.finalPrice);
+    input.value = String(Math.ceil(pricing.totalPrice / 100) * 100);
   },
 
   updateMarginDisplay(margin, revenueMargin) {
@@ -570,7 +800,7 @@ const QuotationManager = {
   },
 
   getActiveQuoteSteps() {
-    const coffeeId = document.getElementById('quot-coffee')?.value;
+    const coffeeId = this.getFirstLineCoffeeId();
     const coffee = coffeeId ? CoffeeManager.getById(coffeeId) : null;
     if (!coffee) return [];
 
@@ -588,7 +818,7 @@ const QuotationManager = {
     const container = document.getElementById('quot-suppliers-fields');
     if (!section || !container) return;
 
-    const coffeeId = document.getElementById('quot-coffee')?.value;
+    const coffeeId = this.getFirstLineCoffeeId();
     if (!coffeeId) {
       section.style.display = 'none';
       return;
@@ -673,6 +903,8 @@ const QuotationManager = {
       });
     });
 
+    document.getElementById('quot-add-coffee-line')?.addEventListener('click', () => this.addCoffeeLine());
+
     document.getElementById('quot-client-coffee')?.addEventListener('change', (e) => {
       document.getElementById('client-coffee-status').textContent = e.target.checked
         ? 'Sí, el cliente aporta el café'
@@ -703,17 +935,11 @@ const QuotationManager = {
     });
     this.bindMultiSelect('quot-label', 'quot-label-value', true);
 
-    ['quot-client', 'quot-coffee', 'quot-quantity'].forEach((id) => {
+    ['quot-client'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', () => {
-        if (id === 'quot-coffee') {
-          this.updateSupplierFields();
-          this.updateCoffeeProcessInfo();
-          this.suggestSalePrice();
-        }
         if (id === 'quot-client') this.suggestSalePrice();
         this.updatePreview();
       });
-      document.getElementById(id)?.addEventListener('input', () => this.updatePreview());
     });
 
     document.getElementById('quot-suppliers-fields')?.addEventListener('change', () => {
@@ -780,19 +1006,10 @@ const QuotationManager = {
     document.getElementById('full-pack-labels').style.display = isMaquila ? 'none' : 'block';
     document.getElementById('quot-packaging-single').style.display = isMaquila ? 'none' : 'block';
     document.getElementById('quot-packaging-maquila').style.display = isMaquila ? 'block' : 'none';
-    const qtyRow = document.getElementById('quot-quantity-row');
-    if (qtyRow) {
-      qtyRow.style.display = isMaquila ? 'none' : 'flex';
-    }
     if (isMaquila) {
       this.updatePackagingMixRates();
     }
-    const label = document.getElementById('quot-sale-price-label');
-    if (label) {
-      label.textContent = isMaquila
-        ? 'Precio total de venta al cliente (COP)'
-        : 'Precio de venta por unidad (COP)';
-    }
+    this.updateCoffeeLinesVisibility();
   },
 
   getQuoteOptions() {
@@ -961,48 +1178,119 @@ const QuotationManager = {
   },
 
   updatePreview() {
-    const coffeeId = document.getElementById('quot-coffee')?.value;
     const clientId = document.getElementById('quot-client')?.value;
-    const packaging = document.getElementById('quot-packaging-value')?.value || '250g';
-    const labels = this.getSelectedLabels();
-    const quantity = parseInt(document.getElementById('quot-quantity')?.value || '1', 10);
     const preview = document.getElementById('quotation-preview-area');
     const options = this.getQuoteOptions();
+    const labels = this.getSelectedLabels();
+    const processSuppliers = this.getProcessSuppliersFromForm();
 
-    if (!coffeeId || !clientId || !preview) {
+    if (!clientId || !preview) {
       if (preview) {
-        preview.innerHTML = '<p class="form-hint">Seleccione cliente y café para ver el desglose de costos.</p>';
+        preview.innerHTML = '<p class="form-hint">Seleccione cliente y al menos un café.</p>';
       }
       this.updateMarginDisplay(null);
       return;
     }
 
-    const coffee = CoffeeManager.getById(coffeeId);
     const client = ClientManager.getById(clientId);
-    if (!coffee || !client) return;
+    if (!client) return;
 
-    const processSuppliers = this.getProcessSuppliersFromForm();
-    const salePrice = parseFloat(document.getElementById('quot-sale-price')?.value);
-    const margin = this.resolveMarginFromSalePrice(
-      coffee, client, options, processSuppliers, packaging, labels
-    ) ?? clampProfitMargin(document.getElementById('quot-margin-value')?.value || PROFIT_MARGIN_DEFAULT);
+    if (options.productionMode === 'maquila') {
+      const coffeeId = this.getFirstLineCoffeeId();
+      const packaging = document.getElementById('quot-packaging-value')?.value || '250g';
+      const salePrice = parseFloat(document.getElementById('quot-sale-price')?.value);
 
-    const revenueMargin = salePrice > 0 && options.productionMode !== 'maquila'
-      ? marginOnRevenueFromMarkup(margin)
-      : undefined;
-    this.updateMarginDisplay(margin, revenueMargin);
+      if (!coffeeId) {
+        preview.innerHTML = '<p class="form-hint">Seleccione un café para maquila.</p>';
+        this.updateMarginDisplay(null);
+        return;
+      }
 
-    const pricing = this.buildPricingPreview(
-      coffee, client, options, processSuppliers, packaging, labels, margin, quantity
-    );
+      const coffee = CoffeeManager.getById(coffeeId);
+      if (!coffee) return;
 
-    if (!pricing) {
-      preview.innerHTML = '<p class="form-hint">Indique al menos una cantidad por tamaño de empaque.</p>';
+      const margin = this.resolveMarginFromSalePrice(
+        coffee, client, options, processSuppliers, packaging, labels
+      ) ?? clampProfitMargin(document.getElementById('quot-margin-value')?.value || PROFIT_MARGIN_DEFAULT);
+      this.updateMarginDisplay(margin);
+
+      const pricing = this.buildPricingPreview(
+        coffee, client, options, processSuppliers, packaging, labels, margin, 1
+      );
+
+      if (!pricing) {
+        preview.innerHTML = '<p class="form-hint">Indique al menos una cantidad por tamaño de empaque.</p>';
+        return;
+      }
+
+      preview.innerHTML = this.renderBreakdownHTML(pricing, labels, margin, pricing.totalQuantity, salePrice);
+      const comp = document.getElementById('quot-internal-comparison');
+      if (comp?.style.display !== 'none' && comp.innerHTML.trim()) {
+        CostEngine.showQuotationComparison();
+      }
       return;
     }
 
-    const displayQty = options.productionMode === 'maquila' ? pricing.totalQuantity : quantity;
-    preview.innerHTML = this.renderBreakdownHTML(pricing, labels, margin, displayQty, salePrice);
+    const lineEls = document.querySelectorAll('.quot-coffee-line');
+    const linePreviews = [];
+    let totalPrice = 0;
+    let totalCost = 0;
+
+    lineEls.forEach((lineEl) => {
+      const coffeeId = lineEl.querySelector('.quot-line-coffee')?.value;
+      if (!coffeeId) return;
+
+      const coffee = CoffeeManager.getById(coffeeId);
+      if (!coffee) return;
+
+      const packaging = lineEl.querySelector('.quot-line-packaging-value')?.value || '250g';
+      const quantity = parseInt(lineEl.querySelector('.quot-line-qty')?.value || '1', 10);
+      const salePrice = parseFloat(lineEl.querySelector('.quot-line-price')?.value);
+      if (!salePrice || salePrice <= 0) return;
+
+      const margin = this.resolveMarginFromSalePriceForLine(
+        coffee, client, options, processSuppliers, packaging, labels, salePrice
+      );
+      if (margin === null) return;
+
+      const pricing = this.buildPricingPreview(
+        coffee, client, options, processSuppliers, packaging, labels, margin, quantity
+      );
+      if (!pricing) return;
+
+      const lineTotal = salePrice * quantity;
+      totalPrice += lineTotal;
+      totalCost += pricing.totalCost * quantity;
+      linePreviews.push({ coffee, packaging, quantity, salePrice, margin, pricing, lineTotal });
+    });
+
+    if (linePreviews.length === 0) {
+      preview.innerHTML = '<p class="form-hint">Agregue al menos un café con precio de venta para ver el desglose.</p>';
+      this.updateMarginDisplay(null);
+      return;
+    }
+
+    const clientMultiplier = CLIENT_TYPES[client.type]?.multiplier || 1;
+    const avgMargin = totalCost > 0
+      ? markupFromTargetPrice(totalCost, totalPrice * clientMultiplier)
+      : null;
+    const revenueMargin = totalPrice > 0 ? ((totalPrice - totalCost) / totalPrice) * 100 : undefined;
+    this.updateMarginDisplay(avgMargin, revenueMargin);
+
+    preview.innerHTML = linePreviews.map((lp, i) => `
+      ${i > 0 ? '<hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">' : ''}
+      <h4 style="margin-bottom:8px">${lp.coffee.name}</h4>
+      ${this.renderBreakdownHTML(lp.pricing, labels, lp.margin, lp.quantity, lp.salePrice)}
+      <div class="cost-row" style="margin-top:8px">
+        <span class="cost-label">Subtotal línea</span>
+        <span><strong>${formatCurrency(lp.lineTotal)}</strong></span>
+      </div>
+    `).join('') + `
+      <div class="cost-row" style="margin-top:16px;padding-top:12px;border-top:2px solid var(--border)">
+        <span class="cost-label"><strong>Total cotización (${linePreviews.length} café${linePreviews.length > 1 ? 's' : ''})</strong></span>
+        <span><strong>${formatCurrency(totalPrice)}</strong></span>
+      </div>
+    `;
 
     const comp = document.getElementById('quot-internal-comparison');
     if (comp?.style.display !== 'none' && comp.innerHTML.trim()) {
@@ -1012,75 +1300,182 @@ const QuotationManager = {
 
   saveFromForm() {
     const clientId = document.getElementById('quot-client').value;
-    const coffeeId = document.getElementById('quot-coffee').value;
-    const packaging = document.getElementById('quot-packaging-value').value;
-    const labels = this.getSelectedLabels();
-    const salePrice = parseFloat(document.getElementById('quot-sale-price')?.value);
-    const quantity = parseInt(document.getElementById('quot-quantity').value, 10);
     const validity = parseInt(document.getElementById('quot-validity').value, 10);
     const notes = document.getElementById('quot-notes').value;
     const options = this.getQuoteOptions();
     const processSuppliers = this.getProcessSuppliersFromForm();
+    const labels = this.getSelectedLabels();
 
-    if (!clientId || !coffeeId) {
-      Toast.show('Seleccione cliente y café', 'danger');
+    if (!clientId) {
+      Toast.show('Seleccione un cliente', 'danger');
       return;
     }
 
-    if (!salePrice || salePrice <= 0) {
-      Toast.show('Indique el precio de venta', 'danger');
-      return;
-    }
-
-    const coffee = CoffeeManager.getById(coffeeId);
     const client = ClientManager.getById(clientId);
-
-    if (!coffee?.process || !coffee?.state) {
-      Toast.show('El café debe tener proceso y estado definidos (Catálogo → Cafés)', 'danger');
-      return;
-    }
+    if (!client) return;
 
     if (options.productionMode === 'maquila' && options.maquilaSteps.length === 0) {
       Toast.show('Seleccione al menos un servicio de maquila', 'danger');
       return;
     }
 
-    const margin = this.resolveMarginFromSalePrice(
-      coffee, client, options, processSuppliers, packaging, labels
-    );
-    if (margin === null) {
-      Toast.show('No se pudo calcular el margen. Verifique empaque y cantidades.', 'danger');
+    if (options.productionMode === 'maquila') {
+      const coffeeId = this.getFirstLineCoffeeId();
+      const packaging = document.getElementById('quot-packaging-value').value;
+      const salePrice = parseFloat(document.getElementById('quot-sale-price')?.value);
+
+      if (!coffeeId) {
+        Toast.show('Seleccione un café', 'danger');
+        return;
+      }
+      if (!salePrice || salePrice <= 0) {
+        Toast.show('Indique el precio de venta', 'danger');
+        return;
+      }
+
+      const coffee = CoffeeManager.getById(coffeeId);
+      if (!coffee?.process || !coffee?.state) {
+        Toast.show('El café debe tener proceso y estado definidos (Catálogo → Cafés)', 'danger');
+        return;
+      }
+
+      const margin = this.resolveMarginFromSalePrice(
+        coffee, client, options, processSuppliers, packaging, labels
+      );
+      if (margin === null) {
+        Toast.show('No se pudo calcular el margen. Verifique empaque y cantidades.', 'danger');
+        return;
+      }
+
+      const pricing = this.buildPricingPreview(
+        coffee, client, options, processSuppliers, packaging, labels, margin, 1
+      );
+      if (!pricing) {
+        Toast.show('Indique al menos una cantidad por tamaño de empaque', 'danger');
+        return;
+      }
+
+      const packagingMix = normalizePackagingMix(this.getPackagingMixFromForm());
+      const finalQuantity = pricing.totalQuantity;
+      const finalUnitPrice = finalQuantity > 0 ? salePrice / finalQuantity : 0;
+      const finalTotalCost = pricing.totalCost;
+
+      const coffeeLine = {
+        coffeeId,
+        coffeeName: coffee.name,
+        coffeeDetails: `${coffee.variety} · ${coffee.region} · ${coffee.process}${coffee.fermentation ? ' · ' + coffee.fermentation : ''}`,
+        packaging: Object.keys(packagingMix).length === 1 ? Object.keys(packagingMix)[0] : 'mix',
+        packagingMix,
+        packagingLines: pricing.lines,
+        labels,
+        grindType: options.grindType,
+        quantity: finalQuantity,
+        unitPrice: finalUnitPrice,
+        lineTotal: salePrice,
+        margin,
+        costBreakdown: pricing,
+        internalUnitCost: finalQuantity > 0 ? finalTotalCost / finalQuantity : 0,
+        internalTotalCost: finalTotalCost
+      };
+
+      const quotation = this.buildQuotationRecord({
+        client,
+        options,
+        processSuppliers,
+        labels,
+        validity,
+        notes,
+        coffeeLines: [coffeeLine],
+        totalPrice: salePrice,
+        totalQuantity: finalQuantity,
+        totalCost: finalTotalCost,
+        margin
+      });
+
+      const saved = this.save(quotation);
+      Toast.show(`Cotización ${saved.number} guardada`, 'success');
+      document.getElementById('quotation-modal').classList.remove('active');
+      App.renderSection('quotations');
+      PDFGenerator.generate(saved);
       return;
     }
 
-    const pricing = this.buildPricingPreview(
-      coffee, client, options, processSuppliers, packaging, labels, margin, quantity
-    );
+    const lineEls = document.querySelectorAll('.quot-coffee-line');
+    const coffeeLines = [];
 
-    if (!pricing) {
-      Toast.show('Indique al menos una cantidad por tamaño de empaque', 'danger');
+    for (const lineEl of lineEls) {
+      const built = this.buildCoffeeLineFromElement(lineEl, client, options, processSuppliers, labels);
+      if (!built) continue;
+      if (built.error) {
+        Toast.show(built.error, 'danger');
+        return;
+      }
+      coffeeLines.push(built);
+    }
+
+    if (coffeeLines.length === 0) {
+      Toast.show('Agregue al menos un café con precio de venta', 'danger');
       return;
     }
 
-    const isMix = options.productionMode === 'maquila';
-    const packagingMix = isMix ? normalizePackagingMix(this.getPackagingMixFromForm()) : null;
-    const finalQuantity = isMix ? pricing.totalQuantity : quantity;
-    const finalUnitPrice = isMix
-      ? (finalQuantity > 0 ? salePrice / finalQuantity : 0)
-      : salePrice;
-    const finalTotalPrice = isMix ? salePrice : salePrice * quantity;
-    const finalTotalCost = isMix ? pricing.totalCost : pricing.totalCost * quantity;
+    const totalPrice = coffeeLines.reduce((sum, line) => sum + line.lineTotal, 0);
+    const totalCost = coffeeLines.reduce((sum, line) => sum + line.internalTotalCost, 0);
+    const totalQuantity = coffeeLines.reduce((sum, line) => sum + line.quantity, 0);
+    const avgMargin = totalCost > 0
+      ? markupFromTargetPrice(totalCost, totalPrice * (CLIENT_TYPES[client.type]?.multiplier || 1))
+      : PROFIT_MARGIN_DEFAULT;
 
-    const quotation = {
-      clientId,
-      coffeeId,
-      packaging: isMix ? (Object.keys(packagingMix).length === 1 ? Object.keys(packagingMix)[0] : 'mix') : packaging,
-      packagingMix: isMix ? packagingMix : null,
-      packagingLines: isMix ? pricing.lines : null,
+    const quotation = this.buildQuotationRecord({
+      client,
+      options,
+      processSuppliers,
+      labels,
+      validity,
+      notes,
+      coffeeLines,
+      totalPrice,
+      totalQuantity,
+      totalCost,
+      margin: avgMargin
+    });
+
+    const saved = this.save(quotation);
+    Toast.show(`Cotización ${saved.number} guardada (${coffeeLines.length} café${coffeeLines.length > 1 ? 's' : ''})`, 'success');
+    document.getElementById('quotation-modal').classList.remove('active');
+    App.renderSection('quotations');
+    PDFGenerator.generate(saved);
+  },
+
+  buildQuotationRecord({
+    client,
+    options,
+    processSuppliers,
+    labels,
+    validity,
+    notes,
+    coffeeLines,
+    totalPrice,
+    totalQuantity,
+    totalCost,
+    margin
+  }) {
+    const first = coffeeLines[0];
+
+    return {
+      clientId: client.id,
+      clientName: client.name,
+      clientType: client.type,
+      coffeeLines,
+      coffeeId: first.coffeeId,
+      coffeeName: formatQuotationCoffeeNames({ coffeeLines }),
+      coffeeDetails: coffeeLines.length === 1 ? first.coffeeDetails : `${coffeeLines.length} referencias de café`,
+      packaging: first.packaging,
+      packagingMix: first.packagingMix || null,
+      packagingLines: first.packagingLines || null,
       labels,
       label: labels.join(','),
       margin,
-      quantity: finalQuantity,
+      quantity: totalQuantity,
       validity,
       notes,
       productionMode: options.productionMode,
@@ -1089,29 +1484,30 @@ const QuotationManager = {
       clientProvidesPackaging: options.clientProvidesPackaging,
       grindType: options.grindType,
       processSuppliers,
-      unitPrice: finalUnitPrice,
-      totalPrice: finalTotalPrice,
-      costBreakdown: pricing,
-      internalUnitCost: isMix ? (finalQuantity > 0 ? finalTotalCost / finalQuantity : 0) : pricing.totalCost,
-      internalTotalCost: finalTotalCost,
-      internalProfit: finalTotalPrice - finalTotalCost,
-      internalProfitMargin: finalTotalPrice > 0
-        ? ((finalTotalPrice - finalTotalCost) / finalTotalPrice) * 100
-        : 0,
-      clientName: client.name,
-      clientType: client.type,
-      coffeeName: coffee.name,
-      coffeeDetails: `${coffee.variety} · ${coffee.region} · ${coffee.process}${coffee.fermentation ? ' · ' + coffee.fermentation : ''}`
+      unitPrice: totalQuantity > 0 ? totalPrice / totalQuantity : first.unitPrice,
+      totalPrice,
+      costBreakdown: coffeeLines.length === 1 ? first.costBreakdown : null,
+      internalUnitCost: totalQuantity > 0 ? totalCost / totalQuantity : 0,
+      internalTotalCost: totalCost,
+      internalProfit: totalPrice - totalCost,
+      internalProfitMargin: totalPrice > 0 ? ((totalPrice - totalCost) / totalPrice) * 100 : 0
     };
-
-    const saved = this.save(quotation);
-    Toast.show(`Cotización ${saved.number} guardada`, 'success');
-    document.getElementById('quotation-modal').classList.remove('active');
-    App.renderSection('quotations');
-    PDFGenerator.generate(saved);
   },
 
   getInternalMetrics(q) {
+    if (Array.isArray(q.coffeeLines) && q.coffeeLines.length > 0) {
+      const totalCost = q.coffeeLines.reduce((sum, line) => sum + (line.internalTotalCost || 0), 0);
+      const profit = (q.totalPrice || 0) - totalCost;
+      const profitMargin = q.totalPrice > 0 ? (profit / q.totalPrice) * 100 : 0;
+      const totalQuantity = q.coffeeLines.reduce((sum, line) => sum + (line.quantity || 0), 0);
+      return {
+        unitCost: totalQuantity > 0 ? totalCost / totalQuantity : 0,
+        totalCost,
+        profit,
+        profitMargin
+      };
+    }
+
     const unitCost = q.internalUnitCost ?? q.costBreakdown?.totalCost ?? 0;
     const totalCost = q.internalTotalCost ?? unitCost * (q.quantity || 1);
     const profit = q.internalProfit ?? (q.totalPrice - totalCost);
@@ -1192,7 +1588,7 @@ const QuotationManager = {
                 <td><strong>${q.number}</strong></td>
                 <td>${q.clientName}</td>
                 <td><span class="badge badge-neutral">${PRODUCTION_MODES[q.productionMode || 'full_pack']?.label || 'Full Pack'}</span></td>
-                <td>${q.coffeeName}</td>
+                <td>${formatQuotationCoffeeNames(q)}</td>
                 <td>${formatPackagingMix(q.packagingMix, q.packaging, q.quantity)}</td>
                 <td>${q.quantity}</td>
                 <td><strong>${formatCurrency(q.totalPrice)}</strong></td>
@@ -1282,9 +1678,20 @@ const QuotationManager = {
     validUntil.setDate(validUntil.getDate() + (q.validity || 15));
     const mode = PRODUCTION_MODES[q.productionMode || 'full_pack']?.label || 'Full Pack';
     const grindLabel = GRIND_TYPES[q.grindType || 'grano']?.label || 'En Grano';
+    const isMultiCoffee = Array.isArray(q.coffeeLines) && q.coffeeLines.length > 1;
 
     const lineItems = getQuotationLineItems(q);
     const presentationText = formatPackagingMix(q.packagingMix, q.packaging, q.quantity);
+
+    const productBlock = isMultiCoffee ? `
+        <p><strong>Productos:</strong> ${q.coffeeLines.length} referencias de café</p>
+      ` : `
+        <p><strong>Producto:</strong> ${q.coffeeName}</p>
+        <p><strong>Detalle:</strong> ${q.coffeeDetails}</p>
+        <p><strong>Presentación:</strong> ${presentationText}</p>
+        <p><strong>Preparación:</strong> ${grindLabel}</p>
+        ${q.productionMode === 'full_pack' ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : ''}
+      `;
 
     return `
       <div class="quotation-preview">
@@ -1303,11 +1710,7 @@ const QuotationManager = {
         </div>
         <div style="margin-bottom:24px">
           <p><strong>Cliente:</strong> ${q.clientName}</p>
-          <p><strong>Producto:</strong> ${q.coffeeName}</p>
-          <p><strong>Detalle:</strong> ${q.coffeeDetails}</p>
-          <p><strong>Presentación:</strong> ${presentationText}</p>
-          <p><strong>Preparación:</strong> ${grindLabel}</p>
-          ${q.productionMode === 'full_pack' ? `<p><strong>Etiquetas:</strong> ${formatLabelSelection(q.labels || q.label)}</p>` : ''}
+          ${productBlock}
           ${q.productionMode === 'maquila' ? `<p><strong>Empaque:</strong> ${q.clientProvidesPackaging !== false ? 'Aportado por el cliente' : 'Aportado por nosotros (material incluido)'}</p>` : ''}
         </div>
         <table style="width:100%;margin-bottom:24px">
@@ -1320,17 +1723,20 @@ const QuotationManager = {
             </tr>
           </thead>
           <tbody>
-            ${lineItems.map((line) => `
+            ${lineItems.map((line) => {
+              const lineGrind = GRIND_TYPES[line.grindType || q.grindType || 'grano']?.label || grindLabel;
+              return `
             <tr>
               <td>
-                <strong>${q.coffeeName}</strong><br>
-                <small style="color:#666">${q.coffeeDetails} · ${PACKAGING_SIZES[line.packaging]?.label || line.packaging} · ${grindLabel}</small>
+                <strong>${line.coffeeName || q.coffeeName}</strong><br>
+                <small style="color:#666">${line.coffeeDetails || q.coffeeDetails} · ${PACKAGING_SIZES[line.packaging]?.label || line.packaging} · ${lineGrind}</small>
               </td>
               <td>${line.quantity}</td>
               <td>${formatCurrency(line.unitPrice)}</td>
               <td><strong>${formatCurrency(line.lineTotal)}</strong></td>
             </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>
         ${q.notes ? `<p style="margin-bottom:16px"><strong>Notas:</strong> ${q.notes}</p>` : ''}
@@ -1367,7 +1773,7 @@ const QuotationManager = {
             <span class="card-title">Análisis interno · ${q.number}</span>
             <span class="badge badge-neutral">Solo plataforma</span>
           </div>
-          <p><strong>Cliente:</strong> ${q.clientName} · <strong>Café:</strong> ${q.coffeeName}</p>
+          <p><strong>Cliente:</strong> ${q.clientName} · <strong>Café:</strong> ${formatQuotationCoffeeNames(q)}</p>
           ${supplierBlock}
           <div class="grid-4 sales-summary" style="margin-top:16px">
             <div class="stat-card">
